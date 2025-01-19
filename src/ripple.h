@@ -1,39 +1,44 @@
+#ifndef RIPPLE_DEFINE_MARROW_MAPA
+#define MARROW_MAPA_IMPLEMENTATION
+#endif
+
 #include <marrow/marrow.h>
-
-void Ripple_begin_element(const char* name, void* el) {}
-void Ripple_end_element(const char* name) {}
-
-#define RIPPLE(name, ...) \
-    for (u8 i = (Ripple_begin_element(name, (void*)&__VA_ARGS__), 0); i < 1; Ripple_end_element(name), i++)
 
 typedef enum {
     SVT_INVALID = 0,
     SVT_PERCENT,
     SVT_PIXELS
-} SizingValueType;
+} RippleSizingValueType;
 
 typedef struct {
-    SizingValueType _type;
+    RippleSizingValueType _type;
     union{
         f32 percent;
         u32 pixels;
     } _value;
-} SizingValue;
+} RippleSizingValue;
 
-#define PERCENT(value) (SizingValue) {\
+#define DEPTH(value) (SizingValue) {\
     ._type = SVT_PERCENT,\
     ._value.percent = value\
-}\
+}
+
+#define BUBBLES(value) (SizingValue) {\
+    ._type = SVT_PIXELS,\
+    ._value.pixels = value\
+}
 
 typedef u32 Color;
 
 typedef struct {
     bool centered;
-    SizingValue width;
-    SizingValue height;
-    SizingValue min_width;
-    SizingValue min_height;
+    RippleSizingValue width;
+    RippleSizingValue height;
+    RippleSizingValue min_width;
+    RippleSizingValue min_height;
 } RippleElementLayout;
+
+#define WAVE(...) (RippleElementLayout) { __VA_ARGS__ }
 
 typedef enum {
     RET_INVALID = 0,
@@ -43,19 +48,76 @@ typedef enum {
 
 typedef struct{
     RippleElementType _type;
-    RippleElementLayout layout;
     Color color;
 } RippleButtonConfig;
 
-#define BUTTON(...) (RippleButtonConfig) {\
+#define FISH(...) (RippleButtonConfig) {\
         ._type = RET_BUTTON,\
         __VA_ARGS__\
     }
 
-#define TEXT(...) 0
+typedef struct{
+    RippleElementType _type;
+    const char* content;
+    RippleSizingValue font_size;
+} RippleTextConfig;
+
+#define CURRENT(...) (RippleTextConfig) {__VA_ARGS__}
 #define PARENT
 #define CHILD
 #define GROW(...) {}
 #define FIXED(...) {}
 
 #define HOVERED() true
+
+typedef struct {
+    u32 width;
+    u32 height;
+} RippleWindowConfig;
+
+void Ripple_start_window(const char* name, RippleWindowConfig config);
+void Ripple_finish_window(const char* name);
+
+void Ripple_start_element(const char* name, RippleElementLayout layout);
+void Ripple_finish_element(const char* name, void* element);
+
+#define RIPPLE_UNIQUE_I i##__FILE__##__LINE__
+
+#define LAKE(name, ...) \
+    for (u8 RIPPLE_UNIQUE_I = (Ripple_start_window(name, (RippleWindowConfig) { __VA_ARGS__ }), 0); \
+    RIPPLE_UNIQUE_I < 1; \
+    Ripple_finish_window(name), RIPPLE_UNIQUE_I++)
+
+#define RIPPLE(name, layout, ...) \
+    for (u8 RIPPLE_UNIQUE_I = (Ripple_start_element(name, layout), 0); \
+    RIPPLE_UNIQUE_I < 1; \
+    Ripple_finish_element(name, (void*)&__VA_ARGS__), RIPPLE_UNIQUE_I++)
+
+typedef struct {
+    bool initialized;
+    u32 width;
+    u32 height;
+} Window;
+
+Window current_window;
+
+void Ripple_start_window(const char* name, RippleWindowConfig config)
+{
+    current_window = (Window) {
+            .initialized = true,
+            .width = config.width,
+            .height = config.height
+    };
+}
+
+void Ripple_finish_window(const char* name)
+{
+    current_window = (Window) {};
+}
+
+void Ripple_start_element(const char* name, RippleElementLayout layout)
+{
+
+}
+
+void Ripple_finish_element(const char* name, void* element) {}
