@@ -1,18 +1,17 @@
-#define RIPPLE_DEFINE_MARROW_MAPA
-#define MARROW_MAPA_IMPLEMENTATION
+#define RIPPLE_IMPLEMENTATION
 #include "src/ripple.h"
 
 int main(int argc, char* argv[])
 {
-    LAKE("moje jezero :D")
+    LAKE("moje jezero :D", .width = 800, .height = 300)
     {
         RIPPLE("ribica",
                 WAVE
                 (
                     .centered = true,
-                    .width = GROW(DEPTH(.5f), PARENT),
-                    .height = FIXED(BUBBLES(100)),
-                    .min_width = GROW(DEPTH(1.0f), CHILD)
+                    .height = BUBBLES(100),
+                    .width = DEPTH(0.33f, PARENT),
+                    .min_width = DEPTH(1.0f, CHILD),
                 ),
                 FISH
                 (
@@ -20,17 +19,18 @@ int main(int argc, char* argv[])
                 )
         )
         {
+            bool ribica_hovered = HOVERED();
+
             RIPPLE("tok",
                    WAVE
                    (
                        .centered = true,
-                       .width = GROW(DEPTH(1.0f), PARENT),
-                       .height = GROW(DEPTH(1.0f), PARENT),
+                       .height = DEPTH(1.0f, PARENT),
                    ),
                     CURRENT
                     (
-                        .content = "hey :D",
-                        .font_size = FIXED(BUBBLES(12)),
+                        .content = ribica_hovered ? "hey :D" : "xd",
+                        .font_size = BUBBLES(12),
                     )
             ){}
         }

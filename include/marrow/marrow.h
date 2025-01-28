@@ -30,15 +30,40 @@ typedef _Bool          bool;
 #define false 0
 #endif // false
 
+#ifndef nullptr
+#define nullptr 0
+#endif // nullptr
+
 #ifndef NULL
-#define NULL 0
+#define NULL {}
 #endif // NULL
+
+#ifndef loop
+#define loop while(true)
+#endif // loop
+
+#ifndef max
+#define max(a, b) (((a) > (b)) ? (a) : (b))
+#endif // max
+
+#ifndef min
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+#endif // min
+
+#ifndef clamp
+#define clamp(val, low, high) min(max(val, low), high)
+#endif // clamp
+
+#ifndef push_stream
+#define push_stream(stream) fflush(stream)
+#endif // push_stream
 
 void print(const char* format, ...) {
     va_list args;
     va_start(args, format);
     vprintf(format, args);
     va_end(args);
+    push_stream(stdout);
 }
 
 void println(const char* format, ...) {
@@ -47,15 +72,16 @@ void println(const char* format, ...) {
     vprintf(format, args);
     print("\n");
     va_end(args);
+    push_stream(stdout);
 }
 
 char* format(const char* format, ...) {
     va_list args;
     va_start(args, format);
 
-    i32 len = vsnprintf(NULL, 0, format, args);
+    i32 len = vsnprintf(nullptr, 0, format, args);
     if (len <= 0)
-        return NULL;
+        return nullptr;
 
     char* result = malloc(len + 1);
 
@@ -80,16 +106,195 @@ char* format(const char* format, ...) {
 #endif // text_color
 
 #ifndef debug
-#define debug(format, ...) fprintf(stderr, debug_color "[DEBUG]" text_color " %s on line %d:\x1b[0m " format "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#define debug(format, ...) do { fprintf(stderr, debug_color "[DEBUG]" text_color " %s on line %d:\x1b[0m " format "\n", __FILE__, __LINE__, ##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // debug
 
 #ifndef error
-#define error(format, ...) fprintf(stderr, error_color "[ERROR]" text_color " %s on line %d:\x1b[0m " format "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#define error(format, ...) do { fprintf(stderr, error_color "[ERROR]" text_color " %s on line %d:\x1b[0m " format "\n", __FILE__, __LINE__, ##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // error
 
 #ifndef abort
-#define abort(format, ...) fprintf(stderr, error_color "[ERROR]" text_color " %s on line %d:\x1b[0m " format "\n", __FILE__, __LINE__, ##__VA_ARGS__)
-#endif // error
+#define abort(format, ...) do { fprintf(stderr, error_color "[ABORT]" text_color " %s on line %d:\x1b[0m " format "\n", __FILE__, __LINE__, ##__VA_ARGS__); push_stream(stderr); exit(1); } while(0)
+#endif // abort
+
+// VEKTOR
+
+typedef u32 vektor_size_t;
+
+#ifdef MARROW_VEKTOR_IMPLEMENTATION
+
+typedef struct
+{
+  void* data;
+  vektor_size_t element_size;
+  vektor_size_t size;
+  vektor_size_t capacity;
+} Vektor;
+
+#else
+
+typedef void Vektor;
+
+#endif
+
+Vektor* vektor_create(vektor_size_t initial_capacity, vektor_size_t element_size);
+bool vektor_init(Vektor* vektor, vektor_size_t initial_capacity, vektor_size_t element_size);
+bool vektor_destroy(Vektor** vektor);
+bool vektor_empty(Vektor* vektor); // keeps capacity
+bool vektor_clear(Vektor* vektor); // deallocates
+
+void* vektor_add(Vektor* vektor, const void* data);
+void* vektor_insert(Vektor* vektor, vektor_size_t location, void* data);
+
+vektor_size_t vektor_size(Vektor* vektor);
+void vektor_set_size(Vektor* vektor, vektor_size_t new_size);
+
+void* vektor_get(Vektor* vektor, vektor_size_t index);
+void* vektor_pop(Vektor* vektor);
+void* vektor_last(Vektor* vektor);
+bool vektor_remove(Vektor* vektor, vektor_size_t index);
+
+#ifdef MARROW_VEKTOR_IMPLEMENTATION
+#undef MARROW_VEKTOR_IMPLEMENTATION
+
+Vektor* vektor_create(vektor_size_t initial_capacity, vektor_size_t element_size)
+{
+    Vektor* vektor = malloc(sizeof(Vektor));
+    vektor_init(vektor, initial_capacity, element_size);
+    return vektor;
+}
+
+bool vektor_init(Vektor* vektor, vektor_size_t initial_capacity, vektor_size_t element_size)
+{
+    *vektor = (Vektor){
+      .data = initial_capacity ? malloc(initial_capacity * element_size) : nullptr,
+      .size = 0,
+      .capacity = initial_capacity,
+      .element_size = element_size
+    };
+    return true;
+}
+
+bool vektor_destroy(Vektor** vektor_ptr)
+{
+    if(!vektor_ptr)
+        return false;
+
+    Vektor* vektor = *vektor_ptr;
+    vektor_clear(vektor);
+    free(vektor);
+    *vektor_ptr = nullptr;
+
+    return true;
+}
+
+bool vektor_empty(Vektor* vektor)
+{
+  vektor->size = 0;
+  return true;
+}
+
+bool vektor_clear(Vektor* vektor)
+{
+    free(vektor->data);
+    vektor->size = 0;
+    vektor->capacity = 0;
+    vektor->data = nullptr;
+
+    return true;
+}
+
+void internal_vektor_grow(Vektor* vektor)
+{
+    vektor->capacity = vektor->capacity * 2 + 1;
+    if (!vektor->data){
+        vektor->data = malloc(vektor->capacity * vektor->element_size);
+        return;
+    }
+    vektor->data = realloc(vektor->data, vektor->capacity * vektor->element_size);
+}
+
+void* vektor_add(Vektor* vektor, const void* data)
+{
+    if (vektor->size >= vektor->capacity)
+        internal_vektor_grow(vektor);
+
+    memcpy((u8*)vektor->data + vektor->size * vektor->element_size, data, vektor->element_size);
+    vektor->size++;
+    return vektor_last(vektor);
+}
+
+vektor_size_t vektor_size(Vektor* vektor)
+{
+    return vektor->size;
+}
+
+void vektor_set_size(Vektor* vektor, vektor_size_t new_size)
+{
+    vektor->size = new_size;
+    while(vektor->size > vektor->capacity)
+        internal_vektor_grow(vektor);
+}
+
+void* vektor_insert(Vektor* vektor, vektor_size_t location, void* data)
+{
+    if (vektor->size == location)
+        return vektor_add(vektor, data);
+
+    while(vektor->size >= vektor->capacity)
+        internal_vektor_grow(vektor);
+
+    location *= vektor->element_size;
+    u8* destination = (u8*)vektor->data + location;
+
+    memcpy(destination,
+           destination + vektor->element_size,
+           vektor->size * vektor->element_size - location);
+
+    memcpy(destination, data, vektor->element_size);
+
+    return destination;
+}
+
+void* vektor_get(Vektor* vektor, vektor_size_t index)
+{
+    if (index >= vektor->size)
+    {
+        error("accessing element out of vektor range");
+        return nullptr;
+    }
+    return (u8*)vektor->data + index * vektor->element_size;
+}
+
+void* vektor_pop(Vektor* vektor)
+{
+    if (vektor->size  == 0) return nullptr;
+
+    vektor->size--;
+    return (u8*)vektor->data + vektor->size * vektor->element_size;
+}
+
+void* vektor_last(Vektor* vektor)
+{
+    if (vektor->size == 0) return nullptr;
+    return (u8*)vektor->data + (vektor->size - 1) * vektor->element_size;
+}
+
+bool vektor_remove(Vektor* vektor, vektor_size_t index)
+{
+    i64 n = vektor->size - 1 - index;
+    if (n <= 0)
+        return true;
+
+    index *= vektor->element_size;
+    memcpy((u8*)vektor->data + index,
+           (u8*)vektor->data + index + vektor->element_size,
+            n * vektor->element_size);
+    return true;
+}
+
+#endif // MARROW_VEKTOR_IMPLEMENTATION
+
 
 // MAPA
 
@@ -115,15 +320,15 @@ typedef struct {
 
 typedef struct{
   void* key;
-  u64 key_size;
+  mapa_size_t key_size;
   MapaItem item;
 } MapaEntry;
 
 typedef struct
 {
   MapaEntry* entries;
-  u64 capacity;
-  u64 size;
+  mapa_size_t capacity;
+  mapa_size_t size;
 
   mapa_hash_func hash_func;
   mapa_cmp_func cmp_func;
@@ -163,11 +368,11 @@ void internal_mapa_grow(Mapa* mapa, mapa_size_t new_capacity)
   for (int i = 0; i < mapa->capacity; i++)
   {
     MapaEntry *entry = &mapa->entries[i];
-    if (entry->key == NULL)
+    if (entry->key == nullptr)
       continue;
 
     mapa_size_t index = mapa->hash_func(entry->key, entry->key_size) % new_capacity;
-    while(new_entries[index].key != NULL)
+    while(new_entries[index].key != nullptr)
       index = (index + 1) % new_capacity;
 
     new_entries[index] = *entry;
@@ -198,7 +403,7 @@ bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, 
   mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
   while(true)
   {
-    if (mapa->entries[index].key == NULL)
+    if (mapa->entries[index].key == nullptr)
     {
       mapa->size += 1; // only update the size if inserting a completely new element
       break;
@@ -230,7 +435,7 @@ bool mapa_insert_str(Mapa* mapa, char const* key, char* data)
 MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_size)
 {
   if (mapa->size == 0)
-    return NULL;
+    return nullptr;
 
   mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
   for(u32 i = 0; i < mapa->capacity; i++)
@@ -244,7 +449,7 @@ MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_size)
     index = (index + 1) % mapa->size;
   }
 
-  return NULL;
+  return nullptr;
 }
 
 MapaItem* mapa_get_str(Mapa* mapa, void const* key)
@@ -258,7 +463,7 @@ bool mapa_remove(Mapa* mapa, void const* key, mapa_size_t key_size)
   for (int i = 0; i < mapa->capacity; i++)
   {
     MapaEntry *entry = &mapa->entries[index];
-    if (entry->key == NULL)
+    if (entry->key == nullptr)
       return true; // item doesnt exist
 
     if (mapa->cmp_func(entry->key, entry->key_size, key, key_size) != 0)
@@ -279,7 +484,7 @@ bool mapa_remove(Mapa* mapa, void const* key, mapa_size_t key_size)
       MapaEntry *entry = &mapa->entries[index];
       mapa_size_t next_index = (index + i + 1) % mapa->capacity;
       MapaEntry *next_entry = &mapa->entries[next_index];
-      if(next_entry->key == NULL ||
+      if(next_entry->key == nullptr ||
          next_index == mapa->hash_func(next_entry->key, next_entry->key_size))
         break; // if entry is where it should be or if slot is empty
 

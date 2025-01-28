@@ -6,6 +6,8 @@ set(CMAKE_C_STANDARD 11)
 
 set(SOURCES main.c)
 
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Werror")
+
 add_executable(ripple ${SOURCES})
 
 target_include_directories(ripple PUBLIC
