@@ -139,30 +139,8 @@ static void print_rendered_layout(RenderedLayout layout)
         );
 }
 
-
-static RenderedLayout get_current_element_parent(void)
-{
-    // TODO
-}
-
-static RenderedLayout sum_up_current_element_children(void)
-{
-    // TODO
-}
-
 // aborts if value is of type SVT_NOT_SPECIFIED
-static i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 children_value)
-{
-    if (value._type == SVT_NOT_SPECIFIED)
-        abort("SVT_NOT_SPECIFIED");
-
-    if (value._type == SVT_FIXED)
-        return value._signed_value;
-
-    i32 relative_value = value._type == SVT_RELATIVE_PARENT ? parent_value : children_value;
-    f32 percentage_value = (f32)value._unsigned_value / (f32)(2<<14);
-    return percentage_value * relative_value;
-}
+i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 children_value);
 
 // returns or if value is SVT_NOT_SPECIFIED
 #define CALCULATE_SIZING_OR(value, relative_member, or) \
@@ -175,6 +153,46 @@ Vektor* element_layouts = nullptr;
 Vektor* parent_element_indices = nullptr;
 
 Window current_window;
+
+static RenderedLayout get_current_element_parent(void)
+{
+    u32 parent_element_indices_size = vektor_size(parent_element_indices);
+    if (parent_element_indices_size <= 1)
+    {
+        abort("getting parent of root element");
+    }
+
+    u32 parent_element_index = *(u32*)vektor_get(parent_element_indices, parent_element_indices_size - 2);
+    return *(RenderedLayout*)vektor_get(rendered_layouts, parent_element_index);
+}
+
+static RenderedLayout sum_up_current_element_children(void)
+{
+    RenderedLayout out_layout = {};
+    u32 current_element_index = *(u32*)vektor_last(parent_element_indices);
+    for (u32 i = current_element_index + 1; i < vektor_size(rendered_layouts); i++)
+    {
+        RenderedLayout child_layout = *(RenderedLayout*)vektor_get(rendered_layouts, i);
+        out_layout.x = min(out_layout.x, child_layout.x);
+        out_layout.y = min(out_layout.y, child_layout.y);
+        out_layout.w = max(out_layout.w, child_layout.w);
+        out_layout.h = max(out_layout.h, child_layout.h);
+    }
+    return out_layout;
+}
+
+i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 children_value)
+{
+    if (value._type == SVT_NOT_SPECIFIED)
+        abort("SVT_NOT_SPECIFIED");
+
+    if (value._type == SVT_FIXED)
+        return value._signed_value;
+
+    i32 relative_value = value._type == SVT_RELATIVE_PARENT ? parent_value : children_value;
+    f32 percentage_value = (f32)value._unsigned_value / (f32)(2<<14);
+    return percentage_value * relative_value;
+}
 
 void Ripple_start_window(const char* name, RippleWindowConfig config)
 {
@@ -237,43 +255,50 @@ static RenderedLayout render_layout(RenderedLayout this_layout, RippleElementLay
     return this_layout;
 }
 
+static void print_all_rendered_layouts()
+{
+    for(u32 i = 0; i < vektor_size(rendered_layouts); i++)
+        print_rendered_layout(*(RenderedLayout*)vektor_get(rendered_layouts, i));
+}
+
 void Ripple_start_element(const char* name, RippleElementLayoutConfig layout)
 {
-    RenderedLayout* rendered_layout = vektor_add(rendered_layouts, &(RenderedLayout){});
-    vektor_add(element_layouts, &layout);
-
     // add this element as parent for further child elements
     u32 this_index = vektor_size(rendered_layouts);
     vektor_add(parent_element_indices, &this_index);
 
+    RenderedLayout* rendered_layout = vektor_add(rendered_layouts, &(RenderedLayout){});
+    vektor_add(element_layouts, &layout);
+
     // render out this element so children that are relative to parents still work
     // values for children will be rendered in the finish call
     *rendered_layout = render_layout(*rendered_layout, layout);
+
     // debug print
     debug("---------STARTED ELEMENT %s------------", name);
     print_element_layout(layout);
     print_rendered_layout(*rendered_layout);
-    debug("---------------------------------------");
 }
 
 void Ripple_finish_element(const char* name, void* element)
 {
+    u32 this_index = *(u32*)vektor_last(parent_element_indices);
+
     // render values that are relative to children
-    RenderedLayout *rendered_layout = vektor_last(rendered_layouts);
-    RippleElementLayoutConfig layout = *(RippleElementLayoutConfig*)vektor_last(element_layouts);
+    RenderedLayout *rendered_layout = vektor_get(rendered_layouts, this_index);
+    RippleElementLayoutConfig layout = *(RippleElementLayoutConfig*)vektor_get(element_layouts, this_index);
     *rendered_layout = render_layout(*rendered_layout, layout);
 
     // TODO: submit layout for rendering
 
-    // delete all children
-    u32 this_index = *(u32*)vektor_pop(parent_element_indices);
+    // delete all children and pop this index
+    vektor_pop(parent_element_indices);
     vektor_set_size(rendered_layouts, this_index + 1);
     vektor_set_size(element_layouts, this_index + 1);
 
     debug("---------FINISHED ELEMENT %s------------", name);
     print_element_layout(layout);
     print_rendered_layout(*rendered_layout);
-    debug("---------------------------------------", name);
 }
 
 #endif // RIPPLE_IMPLEMENTATION

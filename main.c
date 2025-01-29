@@ -1,7 +1,11 @@
 #define RIPPLE_IMPLEMENTATION
 #include "src/ripple.h"
 
-int main(int argc, char* argv[])
+f32 text_width(const char* text, f32 font_size){
+    return (f32)strlen(text) * font_size;
+}
+
+u32 main(int argc, char* argv[])
 {
     LAKE("moje jezero :D", .width = 800, .height = 300)
     {

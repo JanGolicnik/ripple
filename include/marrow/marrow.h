@@ -268,7 +268,7 @@ void* vektor_get(Vektor* vektor, vektor_size_t index)
 
 void* vektor_pop(Vektor* vektor)
 {
-    if (vektor->size  == 0) return nullptr;
+    if (vektor->size == 0) return nullptr;
 
     vektor->size--;
     return (u8*)vektor->data + vektor->size * vektor->element_size;
