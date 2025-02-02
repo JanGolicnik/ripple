@@ -1,43 +1,43 @@
 #define RIPPLE_IMPLEMENTATION
+#define RIPPLE_WIDGETS
 #include "src/ripple.h"
 
-f32 text_width(const char* text, f32 font_size){
-    return (f32)strlen(text) * font_size;
-}
-
-u32 main(int argc, char* argv[])
+int main(int argc, char* argv[])
 {
-    LAKE("moje jezero :D", .width = 800, .height = 300)
+    SURFACE("surface", .width = 800, .height = 300,
+            .cursor_data = (RippleCursorData) {.x = 100, .y = 100, .left_click = true},
+            )
     {
-        RIPPLE("ribica",
-                WAVE
-                (
-                    .centered = true,
-                    .height = BUBBLES(100),
-                    .width = DEPTH(0.33f, PARENT),
-                    .min_width = DEPTH(1.0f, CHILD),
+        RIPPLE("consequence",
+                IDEA (
+                    FORM (
+                        .height = FIXED(100),
+                        .width = DEPTH(0.33f, FOUNDATION),
+                        .min_width = DEPTH(1.0f, REFINEMENT),
+                    ),
+                    .accept_input = true,
                 ),
-                FISH
-                (
-                    .color = HOVERED() ? 0xffffff : 0xaaaaaa
+                CONSEQUENCE (
+                    .color = TREMBLING() ? 0xffffff : 0xaaaaaa
                 )
-        )
-        {
-            bool ribica_hovered = HOVERED();
-
-            RIPPLE("tok",
-                   WAVE
-                   (
-                       .centered = true,
-                       .height = DEPTH(1.0f, PARENT),
-                   ),
-                    CURRENT
-                    (
-                        .content = ribica_hovered ? "hey :D" : "xd",
-                        .font_size = BUBBLES(12),
+        ){
+            RIPPLE("pettern",
+                    IDEA (
+                        FORM (
+                            .height = DEPTH(1.0f, FOUNDATION),
+                        )
+                    ),
+                    PATTERN (
+                        .content = IS_TREMBLING("consequence") ? ";hey;" : ";;;;;",
+                        .font_size = FIXED(12),
                     )
-            ){}
+            );
+        }
+
+        if (IS_INTERACTION()) {
+            RIPPLE("this is it", IDEA(), ACCEPTANCE);
         }
     }
+
     return 0;
 }

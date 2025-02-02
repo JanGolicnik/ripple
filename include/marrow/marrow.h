@@ -365,7 +365,7 @@ void internal_mapa_grow(Mapa* mapa, mapa_size_t new_capacity)
 {
   MapaEntry *new_entries = calloc(new_capacity, sizeof(MapaEntry));
 
-  for (int i = 0; i < mapa->capacity; i++)
+  for (mapa_size_t i = 0; i < mapa->capacity; i++)
   {
     MapaEntry *entry = &mapa->entries[i];
     if (entry->key == nullptr)
@@ -395,7 +395,6 @@ bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, 
     *item = new_item;
     return true;
   }
-
 
   if (mapa->size >= mapa->capacity * 0.55)
     internal_mapa_grow(mapa, mapa->capacity == 0 ? 1 : mapa->capacity * 2);
@@ -460,7 +459,7 @@ MapaItem* mapa_get_str(Mapa* mapa, void const* key)
 bool mapa_remove(Mapa* mapa, void const* key, mapa_size_t key_size)
 {
   mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
-  for (int i = 0; i < mapa->capacity; i++)
+  for (mapa_size_t i = 0; i < mapa->capacity; i++)
   {
     MapaEntry *entry = &mapa->entries[index];
     if (entry->key == nullptr)
@@ -478,7 +477,7 @@ bool mapa_remove(Mapa* mapa, void const* key, mapa_size_t key_size)
     mapa->size -= 1;
 
     // move remaining entries down
-    for(int i = 0; i < mapa->capacity; i++)
+    for(mapa_size_t i = 0; i < mapa->capacity; i++)
     {
       mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
       MapaEntry *entry = &mapa->entries[index];
@@ -568,7 +567,7 @@ mapa_hash_t mapa_hash_MurmurOAAT_32(void const* key, mapa_size_t key_size)
 
   u32 remaining = 0;
   u8 remaining_size = key_size % 4;
-  for (int i = 0; i < remaining_size; i++)
+  for (u8 i = 0; i < remaining_size; i++)
     remaining = ((u8*)key)[key_size - remaining_size + i] | (remaining << 8);
   hash ^= murmur_32_scramble(remaining);
 
