@@ -22,6 +22,16 @@ typedef double         f64;
 
 typedef _Bool          bool;
 
+const u8  U8_MAX  = (u8) ~0;
+const u16 U16_MAX = (u16)~0;
+const u32 U32_MAX = (u32)~0;
+const u64 U64_MAX = (u64)~0;
+
+const i8  I8_MAX  = (i8) (U8_MAX  >> 1);
+const i16 I16_MAX = (i16)(U16_MAX >> 1);
+const i32 I32_MAX = (i32)(U32_MAX >> 1);
+const i64 I64_MAX = (i64)(U64_MAX >> 1);
+
 #ifndef true
 #define true 1
 #endif // true
@@ -116,6 +126,20 @@ char* format(const char* format, ...) {
 #ifndef abort
 #define abort(format, ...) do { fprintf(stderr, error_color "[ABORT]" text_color " %s on line %d:\x1b[0m " format "\n", __FILE__, __LINE__, ##__VA_ARGS__); push_stream(stderr); exit(1); } while(0)
 #endif // abort
+
+#ifndef LINE_UNIQUE_I
+#define LINE_UNIQUE_I_CONCAT(a, b) a##b
+#define LINE_UNIQUE_I_PASS(a, b) LINE_UNIQUE_I_CONCAT(a, b)
+#define LINE_UNIQUE_I LINE_UNIQUE_I_PASS(i, __LINE__)
+#endif //LINE_UNIQUE_I
+
+#ifndef for_each
+#define for_each(el, ptr, n) u32 LINE_UNIQUE_I = 0; for(typeof(*(ptr)) el = ptr[LINE_UNIQUE_I]; LINE_UNIQUE_I < n; LINE_UNIQUE_I++, el = ptr[LINE_UNIQUE_I])
+#endif // for_each
+
+#ifndef for_each_i
+#define for_each_i(el, ptr, n, i) for(u32 i = 0, LINE_UNIQUE_I = 1; i < n; i++, LINE_UNIQUE_I = 1) for(typeof(*(ptr)) el = ptr[i]; LINE_UNIQUE_I ; LINE_UNIQUE_I = 0)
+#endif // for_each_i
 
 // VEKTOR
 

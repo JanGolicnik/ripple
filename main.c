@@ -21,12 +21,8 @@ int main(int argc, char* argv[])
                     .color = TREMBLING() ? 0xffffff : 0xaaaaaa
                 )
         ){
-            RIPPLE("pettern",
-                    IDEA (
-                        FORM (
-                            .height = DEPTH(1.0f, FOUNDATION),
-                        )
-                    ),
+            RIPPLE("pattern",
+                    IDEA ( FORM () ),
                     PATTERN (
                         .content = IS_TREMBLING("consequence") ? ";hey;" : ";;;;;",
                         .font_size = FIXED(12),

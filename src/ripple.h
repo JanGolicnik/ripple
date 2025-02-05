@@ -9,10 +9,10 @@
 #include <marrow/marrow.h>
 
 typedef enum {
-    SVT_NOT_SPECIFIED = 0,
+    SVT_GROW = 0,
     SVT_FIXED = 1,
     SVT_RELATIVE_CHILD = 2,
-    SVT_RELATIVE_PARENT = 3
+    SVT_RELATIVE_PARENT = 3,
 } RippleSizingValueType;
 
 typedef struct {
@@ -25,8 +25,16 @@ typedef struct {
 
 typedef u32 Color;
 
+typedef enum {
+    cld_HORIZONTAL,
+    cld_VERTICAL
+} RippleChildLayoutDirection;
+
 typedef struct {
-    bool fixed;
+    struct {
+        bool fixed : 1;
+        RippleChildLayoutDirection child_layout_direction : 1;
+    };
     RippleSizingValue x;
     RippleSizingValue y;
     RippleSizingValue width;
@@ -115,6 +123,8 @@ typedef struct {
     i32 y;
     i32 w;
     i32 h;
+    i32 max_w;
+    i32 max_h;
 } RenderedLayout;
 
 static void print_rendered_layout(RenderedLayout layout)
@@ -154,12 +164,12 @@ static bool update_element_state(RippleElementState* state, RenderedLayout layou
     return state;
 }
 
-// aborts if value is of type SVT_NOT_SPECIFIED
+// aborts if value is of type SVT_GROW
 i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 children_value);
 
-// returns or if value is SVT_NOT_SPECIFIED
+// returns or if value is SVT_GROW
 #define CALCULATE_SIZING_OR(value, relative_member, or) \
-    value._type == SVT_NOT_SPECIFIED ? or : \
+    value._type == SVT_GROW ? or : \
     apply_relative_sizing(value, get_current_element_parent().relative_member, sum_up_current_element_children().relative_member)
 
 #ifdef RIPPLE_IMPLEMENTATION
@@ -189,8 +199,7 @@ static RenderedLayout sum_up_current_element_children(void)
 {
     RenderedLayout out_layout = {};
     u32 current_element_index = *(u32*)vektor_last(parent_element_indices);
-    for (u32 i = current_element_index + 1; i < vektor_size(rendered_layouts); i++)
-    {
+    for (u32 i = current_element_index + 1; i < vektor_size(rendered_layouts); i++) {
         RenderedLayout child_layout = *(RenderedLayout*)vektor_get(rendered_layouts, i);
         out_layout.x = min(out_layout.x, child_layout.x);
         out_layout.y = min(out_layout.y, child_layout.y);
@@ -202,8 +211,8 @@ static RenderedLayout sum_up_current_element_children(void)
 
 i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 children_value)
 {
-    if (value._type == SVT_NOT_SPECIFIED)
-        abort("SVT_NOT_SPECIFIED");
+    if (value._type == SVT_GROW)
+        abort("SVT_GROW");
 
     if (value._type == SVT_FIXED)
         return value._signed_value;
@@ -260,19 +269,19 @@ static RenderedLayout render_layout(RenderedLayout this_layout, RippleElementLay
     RenderedLayout parent_layout = get_current_element_parent();
 
     this_layout.w = CALCULATE_SIZING_OR(layout.width, w, parent_layout.w);
-    i32 max_width = CALCULATE_SIZING_OR(layout.max_width, w, this_layout.w);
-    i32 min_width = CALCULATE_SIZING_OR(layout.min_width, w, this_layout.w);
-    this_layout.w = clamp(this_layout.w, min_width, max_width);
+    this_layout.max_w = CALCULATE_SIZING_OR(layout.max_width, w, I32_MAX);
+    i32 min_width = CALCULATE_SIZING_OR(layout.min_width, w, 0);
+    this_layout.w = clamp(this_layout.w, min_width, this_layout.max_w);
 
-    i32 x = CALCULATE_SIZING_OR(layout.x, w, (parent_layout.w - this_layout.w) / 2);
+    i32 x = CALCULATE_SIZING_OR(layout.x, w, 0);
     this_layout.x = parent_layout.x + x;
 
     this_layout.h = CALCULATE_SIZING_OR(layout.height, h, parent_layout.h);
-    i32 max_height = CALCULATE_SIZING_OR(layout.max_height, h, this_layout.h);
-    i32 min_height = CALCULATE_SIZING_OR(layout.min_height, h, this_layout.h);
-    this_layout.h = clamp(this_layout.h, min_height, max_height);
+    this_layout.max_h = CALCULATE_SIZING_OR(layout.max_height, h, I32_MAX);
+    i32 min_height = CALCULATE_SIZING_OR(layout.min_height, h, 0);
+    this_layout.h = clamp(this_layout.h, min_height, this_layout.max_h);
 
-    i32 y = CALCULATE_SIZING_OR(layout.y, h, (parent_layout.h - this_layout.h) / 2);
+    i32 y = CALCULATE_SIZING_OR(layout.y, h, 0);
     this_layout.y = parent_layout.y + y;
 
     return this_layout;
@@ -280,8 +289,146 @@ static RenderedLayout render_layout(RenderedLayout this_layout, RippleElementLay
 
 static void print_all_rendered_layouts()
 {
-    for(u32 i = 0; i < vektor_size(rendered_layouts); i++)
+    for (u32 i = 0; i < vektor_size(rendered_layouts); i++) {
         print_rendered_layout(*(RenderedLayout*)vektor_get(rendered_layouts, i));
+    }
+}
+
+static void apply_child_direction(RippleElementLayoutConfig config, RenderedLayout layout, u32 n_children)
+{
+    if (n_children == 0)
+        return;
+
+    RenderedLayout *child_layouts = (RenderedLayout*)vektor_get(rendered_layouts, vektor_size(rendered_layouts) - n_children);
+    RippleElementConfig *child_configs = (RippleElementConfig*)vektor_get(elements_layouts, vektor_size(rendered_layouts) - n_children);
+
+    if (config.child_layout_direction == cld_HORIZONTAL)
+    {
+        u32 free_width = layout.w;
+        for_each(child_layout, child_layouts, n_children) {
+            free_width = free_width >= (u32)child_layout.w ? free_width - (u32)child_layout.w : 0;
+        }
+
+        while(free_width > 0)
+        {
+            #define doest_grow_or_fixed_or_max_width child_configs[i].layout.width._type != SVT_GROW || child_configs[i].layout.fixed || child_layout.w >= child_layout.max_w
+
+            u32 smallest_width = free_width;
+            u32 second_smallest_width = free_width; // others are then resized to this
+            for_each_i(child_layout, child_layouts, n_children, i) {
+                if (doest_grow_or_fixed_or_max_width) continue;
+
+                if ((u32)child_layout.w <= smallest_width)
+                {
+                    second_smallest_width = smallest_width;
+                    smallest_width = (u32)child_layout.w;
+                }
+                else if ((u32)child_layout.w < second_smallest_width)
+                    second_smallest_width = (u32)child_layout.w;
+
+                if ((u32)child_layout.max_w <= second_smallest_width)
+                    second_smallest_width = (u32)child_layout.max_w;
+            }
+
+            u32 n_smallest = 0;
+            for_each_i(child_layout, child_layouts, n_children, i) {
+                if (doest_grow_or_fixed_or_max_width || (u32)child_layout.w != smallest_width) continue;
+                n_smallest += 1;
+            }
+
+            u32 size_diff = second_smallest_width - smallest_width;
+            u32 amount_to_add = min(size_diff, free_width / n_smallest);
+            for_each_i(child_layout, child_layouts, n_children, i) {
+                if (doest_grow_or_fixed_or_max_width || (u32)child_layout.w != smallest_width) continue;
+                child_layout.w += amount_to_add;
+            }
+
+            // distribute the remainder
+            u32 remaining_after_rounding = min(size_diff * n_smallest, free_width) - amount_to_add * n_smallest;
+            for_each_i(child_layout, child_layouts, n_children, i) {
+                if (remaining_after_rounding-- == 0) break;
+                if (doest_grow_or_fixed_or_max_width || (u32)child_layout.w != smallest_width) continue;
+                child_layout.w += 1;
+            }
+
+            free_width -= second_smallest_width;
+            #undef doest_grow_or_fixed_or_max_width
+        }
+
+        // reposition, centers vertically
+        u32 offset = 0;
+        for_each_i(child_layout, child_layouts, n_children, i) {
+            if (child_configs[i].layout.fixed)
+                continue;
+            child_layout.x = layout.x + (i32)offset;
+            offset += (u32)child_layout.w;
+            child_layout.y = layout.y + (layout.h - child_layout.h ) / 2;
+        }
+    }
+
+    if (config.child_layout_direction == cld_VERTICAL)
+    {
+        u32 free_height = (u32)layout.h;
+        for_each(child_layout, child_layouts, n_children) {
+            free_height = free_height >= (u32)child_layout.h ? free_height - (u32)child_layout.h : 0;
+        }
+
+        while(free_height > 0)
+        {
+            #define doest_grow_or_fixed_or_max_height child_configs[i].layout.height._type != SVT_GROW || child_configs[i].layout.fixed || child_layout.h >= child_layout.max_h
+
+            u32 smallest_height = free_height;
+            u32 second_smallest_height = free_height; // others are then resized to this
+            for_each_i(child_layout, child_layouts, n_children, i) {
+                if (doest_grow_or_fixed_or_max_height) continue;
+
+                if ((u32)child_layout.h <= smallest_height)
+                {
+                    second_smallest_height = smallest_height;
+                    smallest_height = (u32)child_layout.h;
+                }
+                else if ((u32)child_layout.h < second_smallest_height)
+                    second_smallest_height = (u32)child_layout.h;
+
+                if ((u32)child_layout.max_h <= second_smallest_height)
+                    second_smallest_height = (u32)child_layout.max_h;
+            }
+
+            u32 n_smallest = 0;
+            for_each_i(child_layout, child_layouts, n_children, i) {
+                if (doest_grow_or_fixed_or_max_height || (u32)child_layout.h != smallest_height) continue;
+                n_smallest += 1;
+            }
+
+            u32 size_diff = second_smallest_height - smallest_height;
+            u32 amount_to_add = min(size_diff, free_height / n_smallest);
+            for_each_i(child_layout, child_layouts, n_children, i) {
+                if (doest_grow_or_fixed_or_max_height || (u32)child_layout.h != smallest_height) continue;
+                child_layout.h += amount_to_add;
+            }
+
+            // distribute the remainder
+            u32 remaining_after_rounding = min(size_diff * n_smallest, free_height) - amount_to_add * n_smallest;
+            for_each_i(child_layout, child_layouts, n_children, i) {
+                if (remaining_after_rounding-- == 0) break;
+                if (doest_grow_or_fixed_or_max_height || (u32)child_layout.h != smallest_height) continue;
+                child_layout.h += 1;
+            }
+
+            free_height -= second_smallest_height;
+            #undef doest_grow_or_fixed_or_max_height
+        }
+
+        // reposition, centers horizontally
+        u32 offset = 0;
+        for_each_i(child_layout, child_layouts, n_children, i) {
+            if (child_configs[i].layout.fixed)
+                continue;
+            child_layout.y = layout.y + offset;
+            offset += child_layout.h;
+            child_layout.x = layout.x + (layout.h - child_layout.h) / 2;
+        }
+    }
 }
 
 void Ripple_start_element(const char* name, RippleElementConfig config)
@@ -305,9 +452,13 @@ void Ripple_finish_element(const char* name)
 {
     u32 this_index = *(u32*)vektor_last(parent_element_indices);
 
-    // render values that are relative to children
     RenderedLayout *rendered_layout = vektor_get(rendered_layouts, this_index);
     RippleElementConfig config = *(RippleElementConfig*)vektor_get(elements_layouts, this_index);
+
+    // reorder children based on layout
+    apply_child_direction(config.layout, *rendered_layout, vektor_size(rendered_layouts) - this_index - 1);
+
+    // render values that are relative to children
     *rendered_layout = render_layout(*rendered_layout, config.layout);
 
     RippleElementState *element_state = &(RippleElementState) {};
@@ -326,7 +477,6 @@ void Ripple_finish_element(const char* name)
        mapa_insert(elements_states, name, strlen(name), element_state, sizeof(*element_state));
 
     // TODO: submit all children for rendering
-
 
     // delete all children and pop this index
     vektor_pop(parent_element_indices);
@@ -352,15 +502,11 @@ void Ripple_submit_element(const char *name, void* user_data)
 #define DEPTH(value, relation) { ._unsigned_value = (u32)(value * (f32)(2<<14)), relation }
 #define FIXED(value) { ._signed_value = value, ._type = SVT_FIXED }
 
-#define RIPPLE_UNIQUE_I_CONCAT(a, b) a##b
-#define RIPPLE_UNIQUE_I_PASS(a, b) RIPPLE_UNIQUE_I_CONCAT(a, b)
-#define RIPPLE_UNIQUE_I RIPPLE_UNIQUE_I_PASS(i, __LINE__)
-
 #define SURFACE(name, ...) \
-    for (u8 RIPPLE_UNIQUE_I = (Ripple_start_window(name, (RippleWindowConfig) { __VA_ARGS__ }), 0); RIPPLE_UNIQUE_I < 1; Ripple_finish_window(name), RIPPLE_UNIQUE_I++)
+    for (u8 LINE_UNIQUE_I = (Ripple_start_window(name, (RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_I < 1; Ripple_finish_window(name), LINE_UNIQUE_I++)
 
 #define RIPPLE(name, layout, ...) \
-    for (u8 RIPPLE_UNIQUE_I = (Ripple_start_element(name, layout), 0); RIPPLE_UNIQUE_I < 1; Ripple_finish_element(name), Ripple_submit_element(name, &__VA_ARGS__), RIPPLE_UNIQUE_I++)
+    for (u8 LINE_UNIQUE_I = (Ripple_start_element(name, layout), 0); LINE_UNIQUE_I < 1; Ripple_finish_element(name), Ripple_submit_element(name, &__VA_ARGS__), LINE_UNIQUE_I++)
 
 #define IDEA(...) (RippleElementConfig) { __VA_ARGS__ }
 #define FORM(...) .layout = { __VA_ARGS__ }
