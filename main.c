@@ -6,7 +6,7 @@ int main(int argc, char* argv[])
 {
     SURFACE("surface", .width = 800, .height = 300,
             .cursor_data = (RippleCursorData) {.x = 100, .y = 100, .left_click = true},
-            )
+    )
     {
         RIPPLE("consequence",
                 IDEA (
@@ -22,16 +22,16 @@ int main(int argc, char* argv[])
                 )
         ){
             RIPPLE("pattern",
-                    IDEA ( FORM () ),
+                    IDEA(0),
                     PATTERN (
                         .content = IS_TREMBLING("consequence") ? ";hey;" : ";;;;;",
-                        .font_size = FIXED(12),
+                        .font_size = FIXED(12)
                     )
             );
         }
 
         if (IS_INTERACTION()) {
-            RIPPLE("this is it", IDEA(), ACCEPTANCE);
+            RIPPLE("this is it", IDEA(0), ACCEPTANCE);
         }
     }
 
