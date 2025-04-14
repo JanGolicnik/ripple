@@ -12,6 +12,43 @@
 #include <marrow/vektor.h>
 #include <marrow/mapa.h>
 
+#include <string.h>
+
+#ifdef RIPPLE_RENDERING_CUSTOM
+#else //RIPPLE_RENDERING_CUSTOM
+
+FILE* ripple_current_window_file = nullptr;
+
+void ripple_render_window_begin(const char* window_name, u32 width, u32 height)
+{
+    if (ripple_current_window_file)
+        fclose(ripple_current_window_file);
+
+    char file_name[255];
+    u32 len = print(file_name, 254, "{}.svg", window_name);
+    file_name[len] = 0;
+    ripple_current_window_file = fopen(file_name, "w");
+    printfb(ripple_current_window_file, "<svg xmlns='http://www.w3.org/2000/svg' width='{}' height='{}' style='background:#ffffff'>\n", width, height);
+    printfb(ripple_current_window_file, "    <rect x='0' y='0' width='{}' height='{}' fill='#eeeeee'/>\n", width, height);
+
+}
+
+void ripple_render_window_end()
+{
+    printfb(ripple_current_window_file, "</svg>\n");
+    if (ripple_current_window_file)
+        fclose(ripple_current_window_file);
+    ripple_current_window_file = nullptr;
+}
+
+void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, const char *color)
+{
+    printfb(ripple_current_window_file, "    <rect x='{}' y='{}' width='{}' height='{}' fill='{}'/>\n", x, y, w, h, color);
+}
+
+#endif
+
+
 #undef PRINTCCY_TYPES
 #define PRINTCCY_TYPES PRINTCCY_BASE_TYPES, RippleElementConfig: print_element_config, RenderedLayout: print_rendered_layout
 
@@ -179,6 +216,8 @@ typedef struct {
 } RenderData;
 
 typedef struct {
+    const char* name;
+
     RippleElementConfig config;
 
     RenderedLayout rendered_layout;
@@ -202,6 +241,9 @@ typedef struct {
 Mapa* windows;
 
 thread_local Window current_window;
+
+#define STATE() (RippleElementState) { 0 }
+#define STATE_OF(name) (RippleElementState) { 0 }
 
 static ElementData get_current_element_parent(void)
 {
@@ -255,10 +297,10 @@ void Ripple_start_window(const char* name, RippleWindowConfig config)
                     };
 
     if (current_window.elements) vektor_empty(current_window.elements);
-    else current_window.elements = vektor_create(0, sizeof(ElementData));
+    else current_window.elements = vektor_create(0, sizeof(ElementData), nullptr);
 
     if (current_window.parent_element_indices) vektor_empty(current_window.parent_element_indices);
-    else current_window.parent_element_indices = vektor_create(0, sizeof(u32));
+    else current_window.parent_element_indices = vektor_create(0, sizeof(u32), nullptr);
 
     if (!current_window.elements_states)
         current_window.elements_states = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes);
@@ -275,6 +317,8 @@ void Ripple_start_window(const char* name, RippleWindowConfig config)
     // // add root element data
     u32 root_index = 0;
     vektor_add(current_window.parent_element_indices, &root_index);
+
+    ripple_render_window_begin(name, current_window.width, current_window.height);
 
     debug("started window {}", name);
 }
@@ -293,14 +337,19 @@ void Ripple_finish_window(const char* name)
     if(window) *(Window*)window->data = current_window;
     else mapa_insert(windows, name, sizeof(name), &current_window, sizeof(current_window));
 
-    for (u32 i = 0; i < vektor_size(current_window.elements); i++)
+    for (u32 i = 1; i < vektor_size(current_window.elements); i++)
     {
-        render_element((ElementData*)vektor_get(current_window.elements, i));
+        ElementData* data = (ElementData*)vektor_get(current_window.elements, i);
+        printout("rendering element {}, {}\n", data->name, data->rendered_layout);
+        render_element(data);
     }
 
     vektor_clear(current_window.elements);
 
     current_window = (Window) {0};
+
+    ripple_render_window_end(name);
+
     debug("finished window {}", name);
 }
 
@@ -468,6 +517,7 @@ void Ripple_start_element(const char* name, RippleElementConfig config)
 {
     // add this element as parent for further child elements
     u32 this_index = vektor_size(current_window.elements);
+    // is popped in submit function
     vektor_add(current_window.parent_element_indices, &this_index);
 
     RenderedLayout rendered_layout = render_layout((RenderedLayout){0}, config.layout);
@@ -476,6 +526,7 @@ void Ripple_start_element(const char* name, RippleElementConfig config)
     vektor_add(current_window.elements, &(ElementData){
         .rendered_layout = rendered_layout,
         .config = config,
+        .name = name,
     });
 
     // debug print
@@ -512,9 +563,6 @@ void Ripple_finish_element(const char* name)
     if(!element_state_item)
        mapa_insert(current_window.elements_states, name, strlen(name), element_state, sizeof(*element_state));
 
-    // pop this index
-    vektor_pop(current_window.parent_element_indices);
-
     debug("---------FINISHED ELEMENT {}------------", name);
     debug("{}\n", data->config);
     debug("{}\n", data->rendered_layout);
@@ -522,7 +570,7 @@ void Ripple_finish_element(const char* name)
 
 void Ripple_submit_element(const char *name, render_func_t* render_func, void* render_data)
 {
-    u32 this_index = *(u32*)vektor_last(current_window.parent_element_indices);
+    u32 this_index = *(u32*)vektor_pop(current_window.parent_element_indices);
     ElementData *data = (ElementData*)vektor_get(current_window.elements, this_index);
     data->render_func = render_func;
     data->render_data = render_data;
@@ -550,10 +598,12 @@ typedef struct {
     Color color;
 } RippleButtonConfig;
 
+
 void render_button(RippleElementConfig config, RenderedLayout layout, void* data)
 {
     RippleButtonConfig button_data = *(RippleButtonConfig*)data;
-    debug("rendering a button with a 0x{08X} color", (int)button_data.color);
+    ripple_render_rect(layout.x, layout.y, layout.w, layout.h, "#6e6e6e");
+    debug("rendering a button ({} {} {} {}) with a 0x{08X} color", layout.x, layout.y, layout.w, layout.h, (int)button_data.color);
 }
 
 #define CONSEQUENCE(...) &render_button, &(RippleButtonConfig) { __VA_ARGS__ }
@@ -574,11 +624,7 @@ void render_text(RippleElementConfig config, RenderedLayout layout, void* data)
 
 #define ACCEPTANCE nullptr, nullptr
 
-// TODO:
-#define TREMBLING() false
-#define IS_TREMBLING(name) false
-
-#define INTERACTION() false
-#define IS_INTERACTION(name) false
+#define TREMBLING() ( STATE().hovered ? true : false )
+#define IS_TREMBLING(name) ( STATE_OF(name).hovered ? true : false )
 
 #endif // RIPPLE_WIDGETS

@@ -29,10 +29,6 @@ int main(int argc, char* argv[])
                     )
             );
         }
-
-        if (IS_INTERACTION()) {
-            RIPPLE("this is it", IDEA(0), ACCEPTANCE);
-        }
     }
 
     return 0;

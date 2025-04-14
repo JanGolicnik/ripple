@@ -73,7 +73,14 @@ _Thread_local struct {
 
 // define it youtself as:
 // #define PRINTCCY_CUSTOM_TYPES PRINTCCY_BASE_TYPES, my_type: print_my_type, my_type2: ...
-#define PRINTCCY_BASE_TYPES int: printccy_print_int, float: printccy_print_float, double: printccy_print_double, long long: printccy_print_long_long, const char*: printccy_print_char_ptr, char*: printccy_print_char_ptr, _PRINTCCY_BOOL: printccy_print_bool
+#define PRINTCCY_BASE_TYPES int: printccy_print_int,\
+    unsigned int: printccy_print_int,\
+    float: printccy_print_float,\
+    double: printccy_print_double,\
+    long long: printccy_print_long_long,\
+    const char*: printccy_print_char_ptr,\
+    char*: printccy_print_char_ptr,\
+    _PRINTCCY_BOOL: printccy_print_bool
 #define PRINTCCY_TYPES PRINTCCY_BASE_TYPES
 
 #define _PRINTCCY_MATCH_ARG_TYPE(X) _Generic((X), PRINTCCY_TYPES, default: 0)

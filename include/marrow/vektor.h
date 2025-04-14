@@ -3,7 +3,9 @@
 
 #include "marrow.h"
 
-typedef u32 vektor_size_t;
+#include <string.h>
+
+typedef size_t vektor_size_t;
 
 #ifdef MARROW_VEKTOR_IMPLEMENTATION
 
@@ -13,6 +15,7 @@ typedef struct
   vektor_size_t element_size;
   vektor_size_t size;
   vektor_size_t capacity;
+  Allocator* allocator;
 } Vektor;
 
 #else
@@ -21,14 +24,14 @@ typedef void Vektor;
 
 #endif
 
-Vektor* vektor_create(vektor_size_t initial_capacity, vektor_size_t element_size);
-bool vektor_init(Vektor* vektor, vektor_size_t initial_capacity, vektor_size_t element_size);
+Vektor* vektor_create(vektor_size_t initial_capacity, vektor_size_t element_size, Allocator* allocator);
+bool vektor_init(Vektor* vektor, vektor_size_t initial_capacity, vektor_size_t element_size, Allocator* allocator);
 bool vektor_destroy(Vektor** vektor);
 bool vektor_empty(Vektor* vektor); // keeps capacity
 bool vektor_clear(Vektor* vektor); // deallocates
 
 void* vektor_add(Vektor* vektor, const void* data);
-void* vektor_insert(Vektor* vektor, vektor_size_t location, void* data);
+void* vektor_insert(Vektor* vektor, vektor_size_t location, const void* data);
 
 vektor_size_t vektor_size(Vektor* vektor);
 void vektor_set_size(Vektor* vektor, vektor_size_t new_size);
@@ -41,20 +44,24 @@ bool vektor_remove(Vektor* vektor, vektor_size_t index);
 #ifdef MARROW_VEKTOR_IMPLEMENTATION
 #undef MARROW_VEKTOR_IMPLEMENTATION
 
-Vektor* vektor_create(vektor_size_t initial_capacity, vektor_size_t element_size)
+Vektor* vektor_create(vektor_size_t initial_capacity, vektor_size_t element_size, Allocator* allocator)
 {
-    Vektor* vektor = malloc(sizeof(Vektor));
-    vektor_init(vektor, initial_capacity, element_size);
+    Vektor* vektor = allocator ? allocator->alloc(allocator->context, sizeof(Vektor)) : malloc(sizeof(Vektor));
+    vektor_init(vektor, initial_capacity, element_size, allocator);
     return vektor;
 }
 
-bool vektor_init(Vektor* vektor, vektor_size_t initial_capacity, vektor_size_t element_size)
+bool vektor_init(Vektor* vektor, vektor_size_t initial_capacity, vektor_size_t element_size, Allocator* allocator)
 {
+    usize alloc_size = initial_capacity * element_size;
     *vektor = (Vektor){
-      .data = initial_capacity ? malloc(initial_capacity * element_size) : nullptr,
+      .data = initial_capacity ?
+                allocator ? allocator->alloc(allocator->context, alloc_size) : malloc(alloc_size)
+                : nullptr,
       .size = 0,
       .capacity = initial_capacity,
-      .element_size = element_size
+      .element_size = element_size,
+      .allocator = allocator,
     };
     return true;
 }
@@ -66,21 +73,22 @@ bool vektor_destroy(Vektor** vektor_ptr)
 
     Vektor* vektor = *vektor_ptr;
     vektor_clear(vektor);
-    free(vektor);
-    *vektor_ptr = nullptr;
+    vektor->allocator ? vektor->allocator->free(vektor->allocator->context, vektor, sizeof(Vektor)) : free(vektor);
 
+    *vektor_ptr = nullptr;
     return true;
 }
 
 bool vektor_empty(Vektor* vektor)
 {
-  vektor->size = 0;
-  return true;
+    vektor->size = 0;
+    return true;
 }
 
 bool vektor_clear(Vektor* vektor)
 {
-    free(vektor->data);
+    usize alloc_size = vektor->capacity * vektor->element_size;
+    vektor->allocator ? vektor->allocator->free(vektor->allocator->context, vektor->data, alloc_size) : free(vektor->data);
     vektor->size = 0;
     vektor->capacity = 0;
     vektor->data = nullptr;
@@ -90,12 +98,19 @@ bool vektor_clear(Vektor* vektor)
 
 void internal_vektor_grow(Vektor* vektor)
 {
-    vektor->capacity = vektor->capacity * 2 + 1;
-    if (!vektor->data){
-        vektor->data = malloc(vektor->capacity * vektor->element_size);
+    usize old_alloc_size = vektor->capacity * vektor->element_size;
+    vektor->capacity = vektor->capacity * 1.5 + 1;
+    usize alloc_size = vektor->capacity * vektor->element_size;
+
+    if (!vektor->data) {
+        vektor->data = vektor->allocator ?
+            vektor->allocator->alloc(vektor->allocator->context, alloc_size) : malloc(alloc_size);
         return;
     }
-    vektor->data = realloc(vektor->data, vektor->capacity * vektor->element_size);
+
+    vektor->data = vektor->allocator ?
+        vektor->allocator->realloc(vektor->allocator->context, vektor->data, alloc_size, old_alloc_size) :
+        realloc(vektor->data, alloc_size);
 }
 
 void* vektor_add(Vektor* vektor, const void* data)
@@ -120,7 +135,7 @@ void vektor_set_size(Vektor* vektor, vektor_size_t new_size)
         internal_vektor_grow(vektor);
 }
 
-void* vektor_insert(Vektor* vektor, vektor_size_t location, void* data)
+void* vektor_insert(Vektor* vektor, vektor_size_t location, const void* data)
 {
     if (vektor->size == location)
         return vektor_add(vektor, data);

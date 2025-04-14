@@ -1,30 +1,26 @@
 #ifndef MARROW_H
 #define MARROW_H
 
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
-
 #ifndef MARROW_NO_PRINTCCY
 #include <printccy/printccy.h>
 #endif // MARROW_NO_PRINTCCY
 
-typedef uint8_t        u8;
-typedef uint16_t       u16;
-typedef uint32_t       u32;
-typedef uint64_t       u64;
+typedef unsigned char       u8;
+typedef unsigned short      u16;
+typedef unsigned int        u32;
+typedef unsigned long long  u64;
 
-typedef int8_t         i8;
-typedef int16_t        i16;
-typedef int32_t        i32;
-typedef int32_t        i64;
+typedef signed char         i8;
+typedef signed short        i16;
+typedef signed int          i32;
+typedef signed long long    i64;
 
-typedef float          f32;
-typedef double         f64;
+typedef u64 usize;
 
-typedef _Bool          bool;
+typedef float               f32;
+typedef double              f64;
+
+typedef _Bool               bool;
 
 const u8  U8_MAX  = ~(u8) 0;
 const u16 U16_MAX = ~(u16)0;
@@ -45,7 +41,7 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #endif // false
 
 #ifndef nullptr
-#define nullptr 0
+#define nullptr (void*)0
 #endif // nullptr
 
 #ifndef NULL
@@ -129,5 +125,17 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #endif // for_each_i
 
 #define thread_local _Thread_local
+
+typedef void* (allocator_alloc_func)(void* ctx, usize size);
+typedef void* (allocator_realloc_func)(void* ctx, void* ptr, usize old_size, usize new_size);
+typedef void (allocator_free_func)(void* ctx, void* ptr, usize size);
+
+typedef struct
+{
+    void* context;
+    allocator_alloc_func* alloc;
+    allocator_realloc_func* realloc;
+    allocator_free_func* free;
+} Allocator;
 
 #endif // MARROW_H

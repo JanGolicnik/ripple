@@ -3,6 +3,8 @@
 
 #include "marrow.h"
 
+#include <string.h>
+
 typedef u64 mapa_size_t;
 typedef u64 mapa_hash_t;
 typedef mapa_hash_t (*mapa_hash_func)(void const*, mapa_size_t);
