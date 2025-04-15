@@ -110,11 +110,12 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 
 #endif // MARROW_NO_PRINTCCY
 
-#ifndef LINE_UNIQUE_I
-#define LINE_UNIQUE_I_CONCAT(a, b) a##b
-#define LINE_UNIQUE_I_PASS(a, b) LINE_UNIQUE_I_CONCAT(a, b)
-#define LINE_UNIQUE_I LINE_UNIQUE_I_PASS(i, __LINE__)
-#endif //LINE_UNIQUE_I
+#ifndef LINE_UNIQUE_VAR
+#define LINE_UNIQUE_VAR_CONCAT(a, b) a##b
+#define LINE_UNIQUE_VAR_PASS(a, b) LINE_UNIQUE_VAR_CONCAT(a, b)
+#define LINE_UNIQUE_VAR(var) LINE_UNIQUE_VAR_PASS(var, __LINE__)
+#define LINE_UNIQUE_I LINE_UNIQUE_VAR(i)
+#endif //LINE_UNIQUE_VAR
 
 #ifndef for_each
 #define for_each(el, ptr, n) u32 LINE_UNIQUE_I = 0; for(typeof(*(ptr))* el = &ptr[LINE_UNIQUE_I]; LINE_UNIQUE_I < n; LINE_UNIQUE_I++, el = &ptr[LINE_UNIQUE_I])

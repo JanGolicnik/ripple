@@ -11,23 +11,67 @@ int main(int argc, char* argv[])
         RIPPLE("consequence",
                 IDEA (
                     FORM (
-                        .height = FIXED(100),
-                        .width = DEPTH(0.33f, FOUNDATION),
+                        //.height = FIXED(100),
+                        .height = DEPTH(1.0f, FOUNDATION),
+                        .width = DEPTH(1.0f, FOUNDATION),
                         .min_width = DEPTH(1.0f, REFINEMENT),
                     ),
                     .accept_input = true,
                 ),
                 CONSEQUENCE (
-                    .color = TREMBLING() ? 0xffffff : 0xaaaaaa
+                    .color = TREMBLING() ? 0xffffff : 0x123456
                 )
         ){
-            RIPPLE("pattern",
-                    IDEA(0),
-                    PATTERN (
-                        .content = IS_TREMBLING("consequence") ? ";hey;" : ";;;;;",
-                        .font_size = FIXED(12)
+            //RIPPLE("pattern",
+            //        IDEA(0),
+            //        PATTERN (
+            //            .content = IS_TREMBLING("consequence") ? ";hey;" : ";;;;;",
+            //            .font_size = FIXED(12)
+            //        )
+            //);
+            RIPPLE("xd",
+                    IDEA (
+                        FORM (
+                            .height = FIXED(100),
+                        ),
+                    ),
+                    CONSEQUENCE (
+                        .color = 0xaaaaaa
                     )
-            );
+            ){}
+
+            RIPPLE("xd2",
+                    IDEA (
+                        FORM (
+                            .height = FIXED(100),
+                        ),
+                    ),
+                    CONSEQUENCE (
+                        .color = 0x2f2f2f
+                    )
+            ){
+                RIPPLE("xd4",
+                        IDEA ( 0 ),
+                        CONSEQUENCE (
+                            .color = 0xabcdef
+                        )
+                ){}
+
+                RIPPLE("xd5",
+                        IDEA ( 0 ),
+                        CONSEQUENCE (
+                            .color = 0x4f3e2d
+                        )
+                ){}
+
+            }
+
+            RIPPLE("xd3",
+                    IDEA ( 0 ),
+                    CONSEQUENCE (
+                        .color = 0xabcdef
+                    )
+            ){}
         }
     }
 

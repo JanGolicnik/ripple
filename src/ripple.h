@@ -41,9 +41,12 @@ void ripple_render_window_end()
     ripple_current_window_file = nullptr;
 }
 
-void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, const char *color)
+void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
 {
-    printfb(ripple_current_window_file, "    <rect x='{}' y='{}' width='{}' height='{}' fill='{}'/>\n", x, y, w, h, color);
+    char color_str[7];
+    for(i32 i = 0; i < 6; i++)
+        color_str[5 - i] = "0123456789abcdef"[(color >> (i*4)) & 0xf];
+    printfb(ripple_current_window_file, "    <rect x='{}' y='{}' width='{}' height='{}' fill='#{}'/>\n", x, y, w, h, color_str);
 }
 
 #endif
@@ -73,8 +76,8 @@ typedef struct {
 typedef u32 Color;
 
 typedef enum {
-    cld_HORIZONTAL,
-    cld_VERTICAL
+    cld_HORIZONTAL = 0,
+    cld_VERTICAL = 1
 } RippleChildLayoutDirection;
 
 typedef struct {
@@ -331,13 +334,15 @@ void render_element(ElementData* element)
     element->render_func(element->config, element->rendered_layout, element->render_data);
 }
 
+static void apply_child_direction(u32 element_index);
+
 void Ripple_finish_window(const char* name)
 {
     MapaItem* window = mapa_get(windows, name, sizeof(name));
     if(window) *(Window*)window->data = current_window;
     else mapa_insert(windows, name, sizeof(name), &current_window, sizeof(current_window));
 
-    for (u32 i = 1; i < vektor_size(current_window.elements); i++)
+    for (u32 i = 0; i < vektor_size(current_window.elements); i++)
     {
         ElementData* data = (ElementData*)vektor_get(current_window.elements, i);
         printout("rendering element {}, {}\n", data->name, data->rendered_layout);
@@ -355,10 +360,11 @@ void Ripple_finish_window(const char* name)
 
 static RenderedLayout render_layout(RenderedLayout this_layout, RippleElementLayoutConfig layout)
 {
-    RenderedLayout parent_layout = get_current_element_parent().rendered_layout;
+    ElementData parent_data = get_current_element_parent();
+    RenderedLayout parent_layout = parent_data.rendered_layout;
     RenderedLayout children_layout = sum_up_current_element_children();
 
-    this_layout.w = CALCULATE_SIZING_OR(layout.width, w, parent_layout.w);
+    this_layout.w = CALCULATE_SIZING_OR(layout.width, w, parent_data.config.layout.child_layout_direction == cld_HORIZONTAL ? 0 : parent_layout.w);
     this_layout.max_w = CALCULATE_SIZING_OR(layout.max_width, w, I32_MAX);
     i32 min_width = CALCULATE_SIZING_OR(layout.min_width, w, 0);
     this_layout.w = clamp(this_layout.w, min_width, this_layout.max_w);
@@ -366,7 +372,7 @@ static RenderedLayout render_layout(RenderedLayout this_layout, RippleElementLay
     i32 x = CALCULATE_SIZING_OR(layout.x, w, 0);
     this_layout.x = parent_layout.x + x;
 
-    this_layout.h = CALCULATE_SIZING_OR(layout.height, h, parent_layout.h);
+    this_layout.h = CALCULATE_SIZING_OR(layout.height, h, parent_data.config.layout.child_layout_direction == cld_VERTICAL ? 0 : parent_layout.h);
     this_layout.max_h = CALCULATE_SIZING_OR(layout.max_height, h, I32_MAX);
     i32 min_height = CALCULATE_SIZING_OR(layout.min_height, h, 0);
     this_layout.h = clamp(this_layout.h, min_height, this_layout.max_h);
@@ -377,17 +383,21 @@ static RenderedLayout render_layout(RenderedLayout this_layout, RippleElementLay
     return this_layout;
 }
 
-static void apply_child_direction(RippleElementLayoutConfig config, RenderedLayout layout, u32 n_children)
+static void apply_child_direction(u32 element_index)
 {
-    if (n_children == 0)
+    ElementData* data = (ElementData*)vektor_get(current_window.elements, element_index);
+    if (data->n_children == 0)
         return;
 
-    ElementData *child_data = (ElementData*)vektor_get(current_window.elements, vektor_size(current_window.elements) - n_children);
+    ElementData *child_data = data + 1;
 
-    if (config.child_layout_direction == cld_HORIZONTAL)
+    #define for_each_child u32 LINE_UNIQUE_I = 0; u32 LINE_UNIQUE_VAR(i2) = 0; for(ElementData* child = &child_data[LINE_UNIQUE_I]; LINE_UNIQUE_I < data->n_children; child = (LINE_UNIQUE_I++, LINE_UNIQUE_VAR(i2) += child->n_children, &child_data[LINE_UNIQUE_I + LINE_UNIQUE_VAR(i2)]))
+
+    if (data->config.layout.child_layout_direction == cld_HORIZONTAL)
     {
-        u32 free_width = layout.w;
-        for_each(child, child_data, n_children) {
+        u32 free_width = data->rendered_layout.w;
+        for_each_child {
+            printout("child name: {}\n", child->name);
             free_width = free_width >= (u32)child->rendered_layout.w ? free_width - (u32)child->rendered_layout.w : 0;
         }
 
@@ -397,15 +407,15 @@ static void apply_child_direction(RippleElementLayoutConfig config, RenderedLayo
 
             u32 smallest_width = free_width;
             u32 second_smallest_width = free_width; // others are then resized to this
-            for_each(child, child_data, n_children) {
+            for_each_child {
                 if (doest_grow_or_fixed_or_max_width) continue;
 
-                if ((u32)child->rendered_layout.w <= smallest_width)
+                if ((u32)child->rendered_layout.w < smallest_width)
                 {
                     second_smallest_width = smallest_width;
                     smallest_width = (u32)child->rendered_layout.w;
                 }
-                else if ((u32)child->rendered_layout.w < second_smallest_width)
+                else if ((u32)child->rendered_layout.w < second_smallest_width && (u32)child->rendered_layout.w != smallest_width)
                     second_smallest_width = (u32)child->rendered_layout.w;
 
                 if ((u32)child->rendered_layout.max_w <= second_smallest_width)
@@ -413,23 +423,26 @@ static void apply_child_direction(RippleElementLayoutConfig config, RenderedLayo
             }
 
             u32 n_smallest = 0;
-            for_each(child, child_data, n_children) {
+            for_each_child {
                 if (doest_grow_or_fixed_or_max_width || (u32)child->rendered_layout.w != smallest_width) continue;
                 n_smallest += 1;
             }
 
+            if (n_smallest == 0)
+                break;
+
             u32 size_diff = second_smallest_width - smallest_width;
             u32 amount_to_add = min(size_diff, free_width / n_smallest);
-            for_each(child, child_data, n_children) {
+            for_each_child {
                 if (doest_grow_or_fixed_or_max_width || (u32)child->rendered_layout.w != smallest_width) continue;
                 child->rendered_layout.w += amount_to_add;
             }
 
             // distribute the remainder
             u32 remaining_after_rounding = min(size_diff * n_smallest, free_width) - amount_to_add * n_smallest;
-            for_each(child, child_data, n_children) {
+            for_each_child {
                 if (remaining_after_rounding-- == 0) break;
-                if (doest_grow_or_fixed_or_max_width || (u32)child->rendered_layout.w != smallest_width) continue;
+                if (doest_grow_or_fixed_or_max_width || (u32)child->rendered_layout.w > second_smallest_width) continue;
                 child->rendered_layout.w += 1;
             }
 
@@ -439,19 +452,19 @@ static void apply_child_direction(RippleElementLayoutConfig config, RenderedLayo
 
         // reposition, centers vertically
         u32 offset = 0;
-        for_each(child, child_data, n_children) {
+        for_each_child {
             if (child->config.layout.fixed)
                 continue;
-            child->rendered_layout.x = layout.x + (i32)offset;
+            child->rendered_layout.x = data->rendered_layout.x + (i32)offset;
             offset += (u32)child->rendered_layout.w;
-            child->rendered_layout.y = layout.y + (layout.h - child->rendered_layout.h ) / 2;
+            child->rendered_layout.y = data->rendered_layout.y + (data->rendered_layout.h - child->rendered_layout.h ) / 2;
         }
     }
 
-    if (config.child_layout_direction == cld_VERTICAL)
+    if (data->config.layout.child_layout_direction == cld_VERTICAL)
     {
-        u32 free_height = (u32)layout.h;
-        for_each(child, child_data, n_children) {
+        u32 free_height = (u32)data->rendered_layout.h;
+        for_each_child {
             free_height = free_height >= (u32)child->rendered_layout.h ? free_height - (u32)child->rendered_layout.h : 0;
         }
 
@@ -461,15 +474,15 @@ static void apply_child_direction(RippleElementLayoutConfig config, RenderedLayo
 
             u32 smallest_height = free_height;
             u32 second_smallest_height = free_height; // others are then resized to this
-            for_each(child, child_data, n_children) {
+            for_each_child {
                 if (doest_grow_or_fixed_or_max_height) continue;
 
-                if ((u32)child->rendered_layout.h <= smallest_height)
+                if ((u32)child->rendered_layout.h < smallest_height)
                 {
                     second_smallest_height = smallest_height;
                     smallest_height = (u32)child->rendered_layout.h;
                 }
-                else if ((u32)child->rendered_layout.h < second_smallest_height)
+                else if ((u32)child->rendered_layout.h < second_smallest_height && (u32)child->rendered_layout.h != smallest_height)
                     second_smallest_height = (u32)child->rendered_layout.h;
 
                 if ((u32)child->rendered_layout.max_h <= second_smallest_height)
@@ -477,21 +490,24 @@ static void apply_child_direction(RippleElementLayoutConfig config, RenderedLayo
             }
 
             u32 n_smallest = 0;
-            for_each(child, child_data, n_children) {
+            for_each_child {
                 if (doest_grow_or_fixed_or_max_height || (u32)child->rendered_layout.h != smallest_height) continue;
                 n_smallest += 1;
             }
 
+            if (n_smallest == 0)
+                break;
+
             u32 size_diff = second_smallest_height - smallest_height;
             u32 amount_to_add = min(size_diff, free_height / n_smallest);
-            for_each(child, child_data, n_children) {
+            for_each_child {
                 if (doest_grow_or_fixed_or_max_height || (u32)child->rendered_layout.h != smallest_height) continue;
                 child->rendered_layout.h += amount_to_add;
             }
 
             // distribute the remainder
             u32 remaining_after_rounding = min(size_diff * n_smallest, free_height) - amount_to_add * n_smallest;
-            for_each(child, child_data, n_children) {
+            for_each_child {
                 if (remaining_after_rounding-- == 0) break;
                 if (doest_grow_or_fixed_or_max_height || (u32)child->rendered_layout.h != smallest_height) continue;
                 child->rendered_layout.h += 1;
@@ -503,14 +519,16 @@ static void apply_child_direction(RippleElementLayoutConfig config, RenderedLayo
 
         // reposition, centers horizontally
         u32 offset = 0;
-        for_each(child, child_data, n_children) {
+        for_each_child {
             if (child->config.layout.fixed)
                 continue;
-            child->rendered_layout.y = layout.y + offset;
+            child->rendered_layout.y = data->rendered_layout.y + offset;
             offset += child->rendered_layout.h;
-            child->rendered_layout.x = layout.x + (layout.h - child->rendered_layout.h) / 2;
+            child->rendered_layout.x = data->rendered_layout.x + (data->rendered_layout.h - child->rendered_layout.h) / 2;
         }
     }
+
+    #undef for_each_child
 }
 
 void Ripple_start_element(const char* name, RippleElementConfig config)
@@ -540,10 +558,14 @@ void Ripple_finish_element(const char* name)
     u32 this_index = *(u32*)vektor_last(current_window.parent_element_indices);
 
     ElementData *data = (ElementData*)vektor_get(current_window.elements, this_index);
-    data->n_children = vektor_size(current_window.elements) - this_index - 1;
 
-    // reorder children based on layout
-    apply_child_direction(data->config.layout, data->rendered_layout, data->n_children);
+    {
+        u32 parent_element_index = *(u32*)vektor_get(current_window.parent_element_indices, vektor_size(current_window.parent_element_indices) - 2);
+        ((ElementData*)vektor_get(current_window.elements, parent_element_index))->n_children++;
+    }
+    // Reorder children based on layout
+    printout("calling apply child direction on element {} it has {} children\n", name, data->n_children);
+    apply_child_direction(this_index);
 
     // render values that are relative to children
     data->rendered_layout = render_layout(data->rendered_layout, data->config.layout);
@@ -584,6 +606,7 @@ void Ripple_submit_element(const char *name, render_func_t* render_func, void* r
 #define REFINEMENT ._type = SVT_RELATIVE_CHILD
 #define DEPTH(value, relation) { ._unsigned_value = (u32)(value * (f32)(2<<14)), relation }
 #define FIXED(value) { ._signed_value = value, ._type = SVT_FIXED }
+#define GROW { ._type = SVT_GROW }
 
 #define SURFACE(name, ...) \
     for (u8 LINE_UNIQUE_I = (Ripple_start_window(name, (RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_I < 1; Ripple_finish_window(name), LINE_UNIQUE_I++)
@@ -602,7 +625,7 @@ typedef struct {
 void render_button(RippleElementConfig config, RenderedLayout layout, void* data)
 {
     RippleButtonConfig button_data = *(RippleButtonConfig*)data;
-    ripple_render_rect(layout.x, layout.y, layout.w, layout.h, "#6e6e6e");
+    ripple_render_rect(layout.x, layout.y, layout.w, layout.h, button_data.color);
     debug("rendering a button ({} {} {} {}) with a 0x{08X} color", layout.x, layout.y, layout.w, layout.h, (int)button_data.color);
 }
 
