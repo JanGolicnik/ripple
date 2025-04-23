@@ -326,15 +326,29 @@ void Ripple_start_window(const char* name, RippleWindowConfig config)
     debug("started window {}", name);
 }
 
-void render_element(ElementData* element)
+static void apply_child_direction(ElementData*);
+
+void render_element(u32 element_index)
 {
-    if(!element->render_func)
-        return;
+    ElementData* element = vektor_get(current_window.elements, element_index);
+    printout("rendering element {}, {}\n", element->name, element->rendered_layout);
 
-    element->render_func(element->config, element->rendered_layout, element->render_data);
+    if(element->render_func)
+        element->render_func(element->config, element->rendered_layout, element->render_data);
+
+    // Reorder children based on layout
+    printout("calling apply child direction on element {} it has {} children\n", element->name, element->n_children);
+    apply_child_direction(element);
+
+    u32 child_offset = 0;
+    for (u32 i = 1; i <= element->n_children; i++)
+    {
+        u32 child_index = element_index + i + child_offset;
+        render_element(child_index);
+        ElementData* child = vektor_get(current_window.elements, child_index);
+        child_offset += child->n_children;
+    }
 }
-
-static void apply_child_direction(u32 element_index);
 
 void Ripple_finish_window(const char* name)
 {
@@ -342,12 +356,7 @@ void Ripple_finish_window(const char* name)
     if(window) *(Window*)window->data = current_window;
     else mapa_insert(windows, name, sizeof(name), &current_window, sizeof(current_window));
 
-    for (u32 i = 0; i < vektor_size(current_window.elements); i++)
-    {
-        ElementData* data = (ElementData*)vektor_get(current_window.elements, i);
-        printout("rendering element {}, {}\n", data->name, data->rendered_layout);
-        render_element(data);
-    }
+    render_element(0);
 
     vektor_clear(current_window.elements);
 
@@ -383,9 +392,8 @@ static RenderedLayout render_layout(RenderedLayout this_layout, RippleElementLay
     return this_layout;
 }
 
-static void apply_child_direction(u32 element_index)
+static void apply_child_direction(ElementData* data)
 {
-    ElementData* data = (ElementData*)vektor_get(current_window.elements, element_index);
     if (data->n_children == 0)
         return;
 
@@ -537,7 +545,6 @@ void Ripple_start_element(const char* name, RippleElementConfig config)
     u32 this_index = vektor_size(current_window.elements);
     // is popped in submit function
     vektor_add(current_window.parent_element_indices, &this_index);
-
     RenderedLayout rendered_layout = render_layout((RenderedLayout){0}, config.layout);
 
     // render out this element so children that are relative to parents still work
@@ -563,9 +570,6 @@ void Ripple_finish_element(const char* name)
         u32 parent_element_index = *(u32*)vektor_get(current_window.parent_element_indices, vektor_size(current_window.parent_element_indices) - 2);
         ((ElementData*)vektor_get(current_window.elements, parent_element_index))->n_children++;
     }
-    // Reorder children based on layout
-    printout("calling apply child direction on element {} it has {} children\n", name, data->n_children);
-    apply_child_direction(this_index);
 
     // render values that are relative to children
     data->rendered_layout = render_layout(data->rendered_layout, data->config.layout);
@@ -611,8 +615,11 @@ void Ripple_submit_element(const char *name, render_func_t* render_func, void* r
 #define SURFACE(name, ...) \
     for (u8 LINE_UNIQUE_I = (Ripple_start_window(name, (RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_I < 1; Ripple_finish_window(name), LINE_UNIQUE_I++)
 
-#define RIPPLE(name, layout, ...) \
-    for (u8 LINE_UNIQUE_I = (Ripple_start_element(name, layout), 0); LINE_UNIQUE_I < 1; Ripple_finish_element(name), Ripple_submit_element(name, __VA_ARGS__), LINE_UNIQUE_I++)
+#define _RIPPLE_DECL_FUNC(name, ...) \
+    void name(RippleElementConfig _c, RenderedLayout _l, void* _p) { __VA_ARGS__ }
+#define _RIPPLE_DECL_BODY(name, layout, itername, funcname) \
+    for (u8 itername = (Ripple_start_element(name, layout), 0); itername < 1; Ripple_finish_element(name), Ripple_submit_element(name, &funcname, nullptr), itername++)
+#define RIPPLE(name, layout, ...) _RIPPLE_DECL_FUNC(LINE_UNIQUE_VAR(_ripplefunc), __VA_ARGS__); _RIPPLE_DECL_BODY(name, (layout), LINE_UNIQUE_I, LINE_UNIQUE_VAR(_ripplefunc))
 
 #define IDEA(...) (RippleElementConfig) { __VA_ARGS__ }
 #define FORM(...) .layout = { __VA_ARGS__ }
@@ -629,7 +636,7 @@ void render_button(RippleElementConfig config, RenderedLayout layout, void* data
     debug("rendering a button ({} {} {} {}) with a 0x{08X} color", layout.x, layout.y, layout.w, layout.h, (int)button_data.color);
 }
 
-#define CONSEQUENCE(...) &render_button, &(RippleButtonConfig) { __VA_ARGS__ }
+#define CONSEQUENCE(...) render_button(_c, _l, &(RippleButtonConfig) { __VA_ARGS__ });
 
 typedef struct {
     const char* content;
@@ -643,7 +650,7 @@ void render_text(RippleElementConfig config, RenderedLayout layout, void* data)
     debug("rendering text {} with font size", (char*)text_data.content);
 }
 
-#define PATTERN(...) &render_text, &(RippleTextConfig) { __VA_ARGS__ }
+#define PATTERN(...) render_text(_c, _l, &(RippleTextConfig) { __VA_ARGS__ });
 
 #define ACCEPTANCE nullptr, nullptr
 
