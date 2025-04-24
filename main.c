@@ -11,6 +11,7 @@ int main(int argc, char* argv[])
         RIPPLE("consequence",
                 IDEA (
                     FORM (
+                        .child_layout_direction = cld_VERTICAL,
                         //.height = FIXED(100),
                         .height = DEPTH(1.0f, FOUNDATION),
                         .width = DEPTH(1.0f, FOUNDATION),
@@ -19,20 +20,13 @@ int main(int argc, char* argv[])
                     .accept_input = true,
                 ),
                 CONSEQUENCE (
-                    .color = TREMBLING() ? 0xffffff : 0x123456
+                    .color = 0x0
                 )
         ){
-            //RIPPLE("pattern",
-            //        IDEA(0),
-            //        PATTERN (
-            //            .content = IS_TREMBLING("consequence") ? ";hey;" : ";;;;;",
-            //            .font_size = FIXED(12)
-            //        )
-            //);
             RIPPLE("xd",
                     IDEA (
                         FORM (
-                            .height = FIXED(100),
+                            .height = FIXED(200),
                         ),
                     ),
                     CONSEQUENCE (
@@ -41,21 +35,31 @@ int main(int argc, char* argv[])
             ){}
 
             RIPPLE("xd2",
-                    IDEA (
-                        FORM (
-                            .height = FIXED(100),
-                        ),
-                    ),
+                    IDEA ( 0 ),
                     CONSEQUENCE (
                         .color = 0x2f2f2f
                     )
             ){
                 RIPPLE("xd4",
-                        IDEA ( 0 ),
+                       IDEA ( FORM ( .child_layout_direction = cld_VERTICAL ) ),
                         CONSEQUENCE (
                             .color = 0xabcdef
                         )
-                ){}
+                ){
+                    RIPPLE("xd6",
+                        IDEA ( 0 ),
+                            CONSEQUENCE (
+                                .color = 0x262c36
+                            )
+                    ){}
+
+                    RIPPLE("xd7",
+                            IDEA ( 0 ),
+                            CONSEQUENCE (
+                                .color = 0x5c9475
+                            )
+                    ){}
+                }
 
                 RIPPLE("xd5",
                         IDEA ( 0 ),

@@ -206,11 +206,6 @@ static bool update_element_state(RippleElementState* state, RenderedLayout layou
 // aborts if value is of type SVT_GROW
 i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 children_value);
 
-// returns or if value is SVT_GROW
-#define CALCULATE_SIZING_OR(value, relative_member, or) \
-    value._type == SVT_GROW ? or : \
-    apply_relative_sizing(value, parent_layout.relative_member, children_layout.relative_member)
-
 #ifdef RIPPLE_IMPLEMENTATION
 #undef RIPPLE_IMPLEMENTATION
 
@@ -229,6 +224,7 @@ typedef struct {
     void* render_data;
 
     u32 n_children;
+    u32 next_sibling;
 } ElementData;
 
 typedef struct {
@@ -247,16 +243,6 @@ thread_local Window current_window;
 
 #define STATE() (RippleElementState) { 0 }
 #define STATE_OF(name) (RippleElementState) { 0 }
-
-static ElementData get_current_element_parent(void)
-{
-    u32 parent_element_indices_size = vektor_size(current_window.parent_element_indices);
-    if (parent_element_indices_size <= 1)
-        abort("getting parent of root element");
-
-    u32 parent_element_index = *(u32*)vektor_get(current_window.parent_element_indices, parent_element_indices_size - 2);
-    return *(ElementData*)vektor_get(current_window.elements, parent_element_index);
-}
 
 static RenderedLayout sum_up_current_element_children(void)
 {
@@ -327,11 +313,50 @@ void Ripple_start_window(const char* name, RippleWindowConfig config)
 }
 
 static void apply_child_direction(ElementData*);
+#define _I1 LINE_UNIQUE_VAR(_i)
+#define _for_each_child(el) u32 _I1 = 0; for (ElementData* child = el + 1; _I1 < el->n_children; child = (ElementData*)vektor_get(current_window.elements, child->next_sibling), _I1++ )
 
-void render_element(u32 element_index)
+// returns or if value is SVT_GROW
+#define CALCULATE_SIZING_OR(value, relative_member, or) \
+    value._type == SVT_GROW ? or : \
+    apply_relative_sizing(value, parent->rendered_layout.relative_member, children_layout.relative_member)
+
+static RenderedLayout render_layout(RenderedLayout this_layout, RippleElementLayoutConfig layout, ElementData* parent)
 {
-    ElementData* element = vektor_get(current_window.elements, element_index);
-    printout("rendering element {}, {}\n", element->name, element->rendered_layout);
+    RenderedLayout children_layout = sum_up_current_element_children();
+
+    this_layout.w = CALCULATE_SIZING_OR(layout.width, w, parent->config.layout.child_layout_direction == cld_HORIZONTAL ? this_layout.w : parent->rendered_layout.w);
+    this_layout.max_w = CALCULATE_SIZING_OR(layout.max_width, w, I32_MAX);
+    i32 min_width = CALCULATE_SIZING_OR(layout.min_width, w, 0);
+    this_layout.w = clamp(this_layout.w, min_width, this_layout.max_w);
+
+    if (layout.x._type != SVT_GROW )
+    {
+        i32 x = CALCULATE_SIZING_OR(layout.x, w, 0);
+        this_layout.x = parent->rendered_layout.x + x;
+    }
+
+    this_layout.h = CALCULATE_SIZING_OR(layout.height, h, parent->config.layout.child_layout_direction == cld_VERTICAL ? this_layout.h : parent->rendered_layout.h);
+    this_layout.max_h = CALCULATE_SIZING_OR(layout.max_height, h, I32_MAX);
+    i32 min_height = CALCULATE_SIZING_OR(layout.min_height, h, 0);
+    this_layout.h = clamp(this_layout.h, min_height, this_layout.max_h);
+
+    if (layout.y._type != SVT_GROW )
+    {
+        i32 y = CALCULATE_SIZING_OR(layout.y, h, 0);
+        this_layout.y = parent->rendered_layout.y + y;
+    }
+
+    return this_layout;
+}
+
+void render_element(ElementData* element)
+{
+    printout("rendering element {}, {},", element->name, element->rendered_layout);
+
+    ElementData* sibling = element->next_sibling ? vektor_get(current_window.elements, element->next_sibling) : nullptr;
+    if (sibling) printout("its sibling is {}", sibling->name);
+    printout("\n");
 
     if(element->render_func)
         element->render_func(element->config, element->rendered_layout, element->render_data);
@@ -340,13 +365,13 @@ void render_element(u32 element_index)
     printout("calling apply child direction on element {} it has {} children\n", element->name, element->n_children);
     apply_child_direction(element);
 
-    u32 child_offset = 0;
-    for (u32 i = 1; i <= element->n_children; i++)
+    _for_each_child(element)
     {
-        u32 child_index = element_index + i + child_offset;
-        render_element(child_index);
-        ElementData* child = vektor_get(current_window.elements, child_index);
-        child_offset += child->n_children;
+        printout("{} before last render: {} \n", child->name, child->rendered_layout);
+        child->rendered_layout = render_layout(child->rendered_layout, child->config.layout, element);
+        printout("{} after last render: {} \n", child->name, child->rendered_layout);
+        render_element(child);
+        printout("{} after rendering render: {} \n", child->name, child->rendered_layout);
     }
 }
 
@@ -356,7 +381,7 @@ void Ripple_finish_window(const char* name)
     if(window) *(Window*)window->data = current_window;
     else mapa_insert(windows, name, sizeof(name), &current_window, sizeof(current_window));
 
-    render_element(0);
+    render_element(vektor_get(current_window.elements, 0));
 
     vektor_clear(current_window.elements);
 
@@ -367,44 +392,15 @@ void Ripple_finish_window(const char* name)
     debug("finished window {}", name);
 }
 
-static RenderedLayout render_layout(RenderedLayout this_layout, RippleElementLayoutConfig layout)
-{
-    ElementData parent_data = get_current_element_parent();
-    RenderedLayout parent_layout = parent_data.rendered_layout;
-    RenderedLayout children_layout = sum_up_current_element_children();
-
-    this_layout.w = CALCULATE_SIZING_OR(layout.width, w, parent_data.config.layout.child_layout_direction == cld_HORIZONTAL ? 0 : parent_layout.w);
-    this_layout.max_w = CALCULATE_SIZING_OR(layout.max_width, w, I32_MAX);
-    i32 min_width = CALCULATE_SIZING_OR(layout.min_width, w, 0);
-    this_layout.w = clamp(this_layout.w, min_width, this_layout.max_w);
-
-    i32 x = CALCULATE_SIZING_OR(layout.x, w, 0);
-    this_layout.x = parent_layout.x + x;
-
-    this_layout.h = CALCULATE_SIZING_OR(layout.height, h, parent_data.config.layout.child_layout_direction == cld_VERTICAL ? 0 : parent_layout.h);
-    this_layout.max_h = CALCULATE_SIZING_OR(layout.max_height, h, I32_MAX);
-    i32 min_height = CALCULATE_SIZING_OR(layout.min_height, h, 0);
-    this_layout.h = clamp(this_layout.h, min_height, this_layout.max_h);
-
-    i32 y = CALCULATE_SIZING_OR(layout.y, h, 0);
-    this_layout.y = parent_layout.y + y;
-
-    return this_layout;
-}
-
 static void apply_child_direction(ElementData* data)
 {
     if (data->n_children == 0)
         return;
 
-    ElementData *child_data = data + 1;
-
-    #define for_each_child u32 LINE_UNIQUE_I = 0; u32 LINE_UNIQUE_VAR(i2) = 0; for(ElementData* child = &child_data[LINE_UNIQUE_I]; LINE_UNIQUE_I < data->n_children; child = (LINE_UNIQUE_I++, LINE_UNIQUE_VAR(i2) += child->n_children, &child_data[LINE_UNIQUE_I + LINE_UNIQUE_VAR(i2)]))
-
     if (data->config.layout.child_layout_direction == cld_HORIZONTAL)
     {
         u32 free_width = data->rendered_layout.w;
-        for_each_child {
+        _for_each_child(data) {
             printout("child name: {}\n", child->name);
             free_width = free_width >= (u32)child->rendered_layout.w ? free_width - (u32)child->rendered_layout.w : 0;
         }
@@ -415,7 +411,7 @@ static void apply_child_direction(ElementData* data)
 
             u32 smallest_width = free_width;
             u32 second_smallest_width = free_width; // others are then resized to this
-            for_each_child {
+            _for_each_child(data) {
                 if (doest_grow_or_fixed_or_max_width) continue;
 
                 if ((u32)child->rendered_layout.w < smallest_width)
@@ -431,7 +427,7 @@ static void apply_child_direction(ElementData* data)
             }
 
             u32 n_smallest = 0;
-            for_each_child {
+            _for_each_child(data) {
                 if (doest_grow_or_fixed_or_max_width || (u32)child->rendered_layout.w != smallest_width) continue;
                 n_smallest += 1;
             }
@@ -441,14 +437,14 @@ static void apply_child_direction(ElementData* data)
 
             u32 size_diff = second_smallest_width - smallest_width;
             u32 amount_to_add = min(size_diff, free_width / n_smallest);
-            for_each_child {
+            _for_each_child(data) {
                 if (doest_grow_or_fixed_or_max_width || (u32)child->rendered_layout.w != smallest_width) continue;
                 child->rendered_layout.w += amount_to_add;
             }
 
             // distribute the remainder
             u32 remaining_after_rounding = min(size_diff * n_smallest, free_width) - amount_to_add * n_smallest;
-            for_each_child {
+            _for_each_child(data) {
                 if (remaining_after_rounding-- == 0) break;
                 if (doest_grow_or_fixed_or_max_width || (u32)child->rendered_layout.w > second_smallest_width) continue;
                 child->rendered_layout.w += 1;
@@ -460,19 +456,18 @@ static void apply_child_direction(ElementData* data)
 
         // reposition, centers vertically
         u32 offset = 0;
-        for_each_child {
+        _for_each_child(data) {
             if (child->config.layout.fixed)
                 continue;
             child->rendered_layout.x = data->rendered_layout.x + (i32)offset;
             offset += (u32)child->rendered_layout.w;
-            child->rendered_layout.y = data->rendered_layout.y + (data->rendered_layout.h - child->rendered_layout.h ) / 2;
+            child->rendered_layout.y = data->rendered_layout.y;
         }
     }
-
-    if (data->config.layout.child_layout_direction == cld_VERTICAL)
+    else if (data->config.layout.child_layout_direction == cld_VERTICAL)
     {
         u32 free_height = (u32)data->rendered_layout.h;
-        for_each_child {
+        _for_each_child(data) {
             free_height = free_height >= (u32)child->rendered_layout.h ? free_height - (u32)child->rendered_layout.h : 0;
         }
 
@@ -482,7 +477,7 @@ static void apply_child_direction(ElementData* data)
 
             u32 smallest_height = free_height;
             u32 second_smallest_height = free_height; // others are then resized to this
-            for_each_child {
+            _for_each_child(data) {
                 if (doest_grow_or_fixed_or_max_height) continue;
 
                 if ((u32)child->rendered_layout.h < smallest_height)
@@ -498,7 +493,7 @@ static void apply_child_direction(ElementData* data)
             }
 
             u32 n_smallest = 0;
-            for_each_child {
+            _for_each_child(data) {
                 if (doest_grow_or_fixed_or_max_height || (u32)child->rendered_layout.h != smallest_height) continue;
                 n_smallest += 1;
             }
@@ -508,14 +503,14 @@ static void apply_child_direction(ElementData* data)
 
             u32 size_diff = second_smallest_height - smallest_height;
             u32 amount_to_add = min(size_diff, free_height / n_smallest);
-            for_each_child {
+            _for_each_child(data) {
                 if (doest_grow_or_fixed_or_max_height || (u32)child->rendered_layout.h != smallest_height) continue;
                 child->rendered_layout.h += amount_to_add;
             }
 
             // distribute the remainder
             u32 remaining_after_rounding = min(size_diff * n_smallest, free_height) - amount_to_add * n_smallest;
-            for_each_child {
+            _for_each_child(data) {
                 if (remaining_after_rounding-- == 0) break;
                 if (doest_grow_or_fixed_or_max_height || (u32)child->rendered_layout.h != smallest_height) continue;
                 child->rendered_layout.h += 1;
@@ -527,25 +522,37 @@ static void apply_child_direction(ElementData* data)
 
         // reposition, centers horizontally
         u32 offset = 0;
-        for_each_child {
+        _for_each_child(data) {
             if (child->config.layout.fixed)
                 continue;
             child->rendered_layout.y = data->rendered_layout.y + offset;
             offset += child->rendered_layout.h;
-            child->rendered_layout.x = data->rendered_layout.x + (data->rendered_layout.h - child->rendered_layout.h) / 2;
+            child->rendered_layout.x = data->rendered_layout.x;
         }
     }
-
-    #undef for_each_child
 }
 
 void Ripple_start_element(const char* name, RippleElementConfig config)
 {
     // add this element as parent for further child elements
     u32 this_index = vektor_size(current_window.elements);
+
+    u32 parent_element_index = *(u32*)vektor_get(current_window.parent_element_indices, vektor_size(current_window.parent_element_indices) - 1);
+    ElementData* parent = vektor_get(current_window.elements, parent_element_index);
+    // increment parent element children count and add itself to previous sibling if there is one
+    {
+        if (parent->n_children++ > 0)
+        {
+            ElementData* child = parent + 1;
+            while (child->next_sibling){ child = vektor_get(current_window.elements, child->next_sibling); }
+            child->next_sibling = this_index;
+        }
+    }
+
+
     // is popped in submit function
     vektor_add(current_window.parent_element_indices, &this_index);
-    RenderedLayout rendered_layout = render_layout((RenderedLayout){0}, config.layout);
+    RenderedLayout rendered_layout = render_layout((RenderedLayout){0}, config.layout, parent);
 
     // render out this element so children that are relative to parents still work
     vektor_add(current_window.elements, &(ElementData){
@@ -565,14 +572,6 @@ void Ripple_finish_element(const char* name)
     u32 this_index = *(u32*)vektor_last(current_window.parent_element_indices);
 
     ElementData *data = (ElementData*)vektor_get(current_window.elements, this_index);
-
-    {
-        u32 parent_element_index = *(u32*)vektor_get(current_window.parent_element_indices, vektor_size(current_window.parent_element_indices) - 2);
-        ((ElementData*)vektor_get(current_window.elements, parent_element_index))->n_children++;
-    }
-
-    // render values that are relative to children
-    data->rendered_layout = render_layout(data->rendered_layout, data->config.layout);
 
     RippleElementState *element_state = &(RippleElementState) {0};
     MapaItem* element_state_item = mapa_get_str(current_window.elements_states, name);

@@ -78,6 +78,7 @@ _Thread_local struct {
     float: printccy_print_float,\
     double: printccy_print_double,\
     long long: printccy_print_long_long,\
+    unsigned long long: printccy_print_long_long,\
     const char*: printccy_print_char_ptr,\
     char*: printccy_print_char_ptr,\
     _PRINTCCY_BOOL: printccy_print_bool
