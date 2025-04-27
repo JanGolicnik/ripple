@@ -104,7 +104,7 @@ typedef enum {
 typedef struct {
     struct {
         bool fixed : 1;
-        RippleChildLayoutDirection child_layout_direction : 1;
+        RippleChildLayoutDirection direction : 1;
     };
     RippleSizingValue x;
     RippleSizingValue y;
@@ -171,7 +171,7 @@ void Ripple_start_window(RippleWindowConfig config);
 void Ripple_finish_window();
 
 // makes a copy of the render_data if render_data_size is non 0
-void Ripple_start_element(RippleElementConfig config, render_func_t* render_func, void* render_data, u32 render_data_size);
+void Ripple_start_element(RippleElementConfig config, render_func_t* render_func, void* render_data, usize render_data_size);
 void Ripple_finish_element();
 
 int print_calculated_layout(char* output, size_t output_len, va_list* list, const char* args, size_t args_len)
@@ -308,7 +308,7 @@ static RenderedLayout calculate_layout(RippleElementLayoutConfig layout, Rendere
 {
     RenderedLayout children_layout = sum_up_current_element_children();
 
-    this_layout.w = CALCULATE_SIZING_OR(layout.width, w, parent->config.layout.child_layout_direction == cld_HORIZONTAL ? this_layout.w : parent->calculated_layout.w);
+    this_layout.w = CALCULATE_SIZING_OR(layout.width, w, parent->config.layout.direction == cld_HORIZONTAL ? this_layout.w : parent->calculated_layout.w);
     this_layout.max_w = CALCULATE_SIZING_OR(layout.max_width, w, I32_MAX);
     i32 min_width = CALCULATE_SIZING_OR(layout.min_width, w, 0);
     this_layout.w = clamp(this_layout.w, min_width, this_layout.max_w);
@@ -319,7 +319,7 @@ static RenderedLayout calculate_layout(RippleElementLayoutConfig layout, Rendere
         this_layout.x = parent->calculated_layout.x + x;
     }
 
-    this_layout.h = CALCULATE_SIZING_OR(layout.height, h, parent->config.layout.child_layout_direction == cld_VERTICAL ? this_layout.h : parent->calculated_layout.h);
+    this_layout.h = CALCULATE_SIZING_OR(layout.height, h, parent->config.layout.direction == cld_VERTICAL ? this_layout.h : parent->calculated_layout.h);
     this_layout.max_h = CALCULATE_SIZING_OR(layout.max_height, h, I32_MAX);
     i32 min_height = CALCULATE_SIZING_OR(layout.min_height, h, 0);
     this_layout.h = clamp(this_layout.h, min_height, this_layout.max_h);
@@ -337,7 +337,7 @@ static RenderedLayout calculate_layout(RippleElementLayoutConfig layout, Rendere
 static void submit_element(ElementData* element)
 {
     if (element->render_func) element->render_func(element->config, element->calculated_layout, element->render_data);
-    allocator_free(current_window.config.allocator, element->render_data);
+    allocator_free(&current_window.config.allocator, element->render_data, element->render_data_size);
 
     grow_children(element);
     _for_each_child(element)
@@ -370,7 +370,7 @@ static void grow_children(ElementData* data)
     if (data->n_children == 0)
         return;
 
-    if (data->config.layout.child_layout_direction == cld_HORIZONTAL)
+    if (data->config.layout.direction == cld_HORIZONTAL)
     {
         u32 free_width = data->calculated_layout.w;
         _for_each_child(data) {
@@ -436,7 +436,7 @@ static void grow_children(ElementData* data)
             child->calculated_layout.y = data->calculated_layout.y;
         }
     }
-    else if (data->config.layout.child_layout_direction == cld_VERTICAL)
+    else if (data->config.layout.direction == cld_VERTICAL)
     {
         u32 free_height = (u32)data->calculated_layout.h;
         _for_each_child(data) {
@@ -504,7 +504,7 @@ static void grow_children(ElementData* data)
     }
 }
 
-void Ripple_start_element(RippleElementConfig config, render_func_t* render_func, void* render_data, u32 render_data_size)
+void Ripple_start_element(RippleElementConfig config, render_func_t* render_func, void* render_data, usize render_data_size)
 {
     // add this element as parent for further child elements
     u32 this_index = vektor_size(current_window.elements);
@@ -532,7 +532,7 @@ void Ripple_start_element(RippleElementConfig config, render_func_t* render_func
         .calculated_layout = calculated_layout,
         .config = config,
         .render_func = render_func,
-        .render_data = render_data
+        .render_data = render_data,
         .render_data_size = render_data_size
     });
 
@@ -558,7 +558,7 @@ void Ripple_finish_element()
 
 #define FOUNDATION ._type = SVT_RELATIVE_PARENT
 #define REFINEMENT ._type = SVT_RELATIVE_CHILD
-#define DEPTH(value, relation) { ._unsigned_value = (u32)(value * (f32)(2<<14)), relation }
+#define DEPTH(value, relation) { ._unsigned_value = (u32)((value) * (f32)(2<<14)), relation }
 #define FIXED(value) { ._signed_value = value, ._type = SVT_FIXED }
 #define GROW { ._type = SVT_GROW }
 
@@ -585,7 +585,10 @@ void render_button(RippleElementConfig config, RenderedLayout layout, void* data
     debug("rendering a button ({} {} {} {}) with a 0x{08X} color", layout.x, layout.y, layout.w, layout.h, (int)button_data.color);
 }
 
-#define CONSEQUENCE(...) render_button, &(RippleButtonConfig) { __VA_ARGS__ }, sizeof(RippleButtonConfig)
+#define CONSEQUENCE(...)                                                       \
+  render_button, &(RippleButtonConfig){__VA_ARGS__}, sizeof(RippleButtonConfig)
+
+#define AETHER nullptr, nullptr, 0
 
 #define TREMBLING() ( STATE().hovered ? true : false )
 #define IS_TREMBLING(name) ( STATE_OF(name).hovered ? true : false )
