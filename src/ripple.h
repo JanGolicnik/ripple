@@ -1,3 +1,6 @@
+#ifndef RIPPLE_H
+#define RIPPLE_H
+
 #include <printccy/printccy.h>
 
 #ifndef RIPPLE_NO_DEFINE_MARROW_MAPA
@@ -10,6 +13,7 @@
 
 #include <marrow/marrow.h>
 #include <marrow/vektor.h>
+#include <marrow/allocator.h>
 #include <marrow/mapa.h>
 
 #include <string.h>
@@ -28,6 +32,8 @@ typedef struct {
 
 typedef struct {
     const char* title;
+
+    Allocator allocator;
 
     RippleCursorData cursor_data;
     u32 width;
@@ -164,7 +170,8 @@ typedef void (render_func_t)(RippleElementConfig, RenderedLayout, void*);
 void Ripple_start_window(RippleWindowConfig config);
 void Ripple_finish_window();
 
-void Ripple_start_element(RippleElementConfig config, render_func_t* render_func, void* render_data);
+// makes a copy of the render_data if render_data_size is non 0
+void Ripple_start_element(RippleElementConfig config, render_func_t* render_func, void* render_data, u32 render_data_size);
 void Ripple_finish_element();
 
 int print_calculated_layout(char* output, size_t output_len, va_list* list, const char* args, size_t args_len)
@@ -199,6 +206,7 @@ typedef struct {
     RenderedLayout calculated_layout;
     render_func_t* render_func;
     void* render_data;
+    usize render_data_size;
 
     u32 n_children;
     u32 next_sibling;
@@ -210,6 +218,7 @@ typedef struct {
 
     Vektor* elements;
     Vektor* parent_element_indices;
+
     Mapa* elements_states;
 } Window;
 Mapa* windows;
@@ -249,6 +258,8 @@ i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 childre
 void Ripple_start_window(RippleWindowConfig config)
 {
     if (!windows) windows = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes);
+
+    INIT_ALLOCATOR(config.allocator);
 
     MapaItem* window = mapa_get(windows, config.title, sizeof(config.title));
     current_window = window ?
@@ -326,6 +337,7 @@ static RenderedLayout calculate_layout(RippleElementLayoutConfig layout, Rendere
 static void submit_element(ElementData* element)
 {
     if (element->render_func) element->render_func(element->config, element->calculated_layout, element->render_data);
+    allocator_free(current_window.config.allocator, element->render_data);
 
     grow_children(element);
     _for_each_child(element)
@@ -492,7 +504,7 @@ static void grow_children(ElementData* data)
     }
 }
 
-void Ripple_start_element(RippleElementConfig config, render_func_t* render_func, void* render_data)
+void Ripple_start_element(RippleElementConfig config, render_func_t* render_func, void* render_data, u32 render_data_size)
 {
     // add this element as parent for further child elements
     u32 this_index = vektor_size(current_window.elements);
@@ -513,12 +525,15 @@ void Ripple_start_element(RippleElementConfig config, render_func_t* render_func
     vektor_add(current_window.parent_element_indices, &this_index);
     RenderedLayout calculated_layout = calculate_layout(config.layout, (RenderedLayout){0}, parent);
 
+    render_data = allocator_make_copy(&current_window.config.allocator, render_data, render_data_size);
+
     // render out this element so children that are relative to parents still work
     vektor_add(current_window.elements, &(ElementData){
         .calculated_layout = calculated_layout,
         .config = config,
         .render_func = render_func,
         .render_data = render_data
+        .render_data_size = render_data_size
     });
 
     // debug print
@@ -529,10 +544,10 @@ void Ripple_start_element(RippleElementConfig config, render_func_t* render_func
 
 void Ripple_finish_element()
 {
+    debug("---------FINISHED ELEMENT------------");
+
     u32 this_index = *(u32*)vektor_pop(current_window.parent_element_indices);
     ElementData *data = (ElementData*)vektor_get(current_window.elements, this_index);
-
-    debug("---------FINISHED ELEMENT------------");
     debug("{}", data->config);
     debug("{}\n", data->calculated_layout);
 }
@@ -556,6 +571,7 @@ void Ripple_finish_element()
 #define RIPPLE(layout, ...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_start_element(layout, __VA_ARGS__), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_finish_element(), LINE_UNIQUE_VAR(_rippleiter)++)
 
 #define IDEA(...) (RippleElementConfig) { __VA_ARGS__ }
+#define DISTURBANCE IDEA( 0 )
 #define FORM(...) .layout = { __VA_ARGS__ }
 
 typedef struct {
@@ -569,25 +585,11 @@ void render_button(RippleElementConfig config, RenderedLayout layout, void* data
     debug("rendering a button ({} {} {} {}) with a 0x{08X} color", layout.x, layout.y, layout.w, layout.h, (int)button_data.color);
 }
 
-#define CONSEQUENCE(...) render_button, &(RippleButtonConfig) { __VA_ARGS__ }
-
-typedef struct {
-    const char* content;
-    RippleSizingValue font_size;
-} RippleTextConfig;
-
-void render_text(RippleElementConfig config, RenderedLayout layout, void* data)
-{
-    RippleTextConfig text_data = *(RippleTextConfig*)data;
-    // TODO: alow some way of getting relative values here !!
-    debug("rendering text {} with font size", (char*)text_data.content);
-}
-
-#define PATTERN(...) render_text(_c, _l, &(RippleTextConfig) { __VA_ARGS__ });
-
-#define ACCEPTANCE nullptr, nullptr
+#define CONSEQUENCE(...) render_button, &(RippleButtonConfig) { __VA_ARGS__ }, sizeof(RippleButtonConfig)
 
 #define TREMBLING() ( STATE().hovered ? true : false )
 #define IS_TREMBLING(name) ( STATE_OF(name).hovered ? true : false )
 
 #endif // RIPPLE_WIDGETS
+
+#endif // RIPPLE_H

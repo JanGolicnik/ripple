@@ -127,16 +127,4 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 
 #define thread_local _Thread_local
 
-typedef void* (allocator_alloc_func)(void* ctx, usize size);
-typedef void* (allocator_realloc_func)(void* ctx, void* ptr, usize old_size, usize new_size);
-typedef void (allocator_free_func)(void* ctx, void* ptr, usize size);
-
-typedef struct
-{
-    void* context;
-    allocator_alloc_func* alloc;
-    allocator_realloc_func* realloc;
-    allocator_free_func* free;
-} Allocator;
-
 #endif // MARROW_H

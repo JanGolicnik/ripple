@@ -2,6 +2,7 @@
 #define MARROW_VEKTOR_H
 
 #include "marrow.h"
+#include "allocator.h"
 
 #include <string.h>
 
