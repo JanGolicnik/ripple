@@ -31,57 +31,27 @@ void flex_test(void)
         RIPPLE( IDEA (
                     LABEL(2),
                     FORM ( .height = DEPTH(3.0f/4.0f, FOUNDATION) ),
-                ), AETHER
+                ),
+                AETHER
         ){
-            RIPPLE( IDEA ( LABEL(3), FORM (.width = DEPTH(1.0f/3.0f, FOUNDATION), .direction = cld_VERTICAL ) ), AETHER )
-            {
-                RIPPLE( IDEA (FORM (.height = DEPTH(3.0f/4.0f, FOUNDATION ))), AETHER);
-                RIPPLE( IDEA ( FORM ( .width = DEPTH(.25f, FOUNDATION)) ),
+            RIPPLE( IDEA ( LABEL(3), FORM (.width = DEPTH(1.0f/3.0f, FOUNDATION), .direction = cld_VERTICAL ) ), AETHER
+            ){
+                RIPPLE( IDEA ( LABEL(123), FORM (.height = DEPTH(3.0f/4.0f, FOUNDATION ))), AETHER);
+
+                RIPPLE( IDEA ( LABEL(5), FORM ( .width = DEPTH(.25f, FOUNDATION)) ),
                         CONSEQUENCE ( .color = 0xFFC1DA ) );
 
                 RIPPLE( DISTURBANCE, CONSEQUENCE ( .color = 0xFF90BB ) );
             }
 
             CENTERED(
-                RIPPLE( IDEA( FORM( .width = FIXED(150), .height = FIXED(150) ) ),
+                RIPPLE( IDEA( LABEL(6), FORM( .width = FIXED(150), .height = FIXED(150) ) ),
                         CONSEQUENCE ( .color = 0x393E46 )
                 );
             );
         }
 
         RIPPLE( DISTURBANCE, CONSEQUENCE ( .color = 0x8ACCD5 ) );
-    }
-}
-
-
-// has 4 elements set to grow around the middle element
-void centering_test(void)
-{
-    RIPPLE( DISTURBANCE,
-            CONSEQUENCE (
-                .color = 0xf8f8e1
-            )
-    ){
-        RIPPLE( DISTURBANCE, AETHER );
-
-        RIPPLE( IDEA ( FORM (.direction = cld_VERTICAL) ), AETHER )
-        {
-            RIPPLE( DISTURBANCE, AETHER );
-
-            RIPPLE( IDEA (
-                        LABEL(2),
-                        FORM (
-                            .width = FIXED(200),
-                            .height = FIXED(200),
-                        ),
-                    ),
-                    CONSEQUENCE ( .color = 0xff90bb )
-            );
-
-            RIPPLE( DISTURBANCE, AETHER );
-        }
-
-        RIPPLE( DISTURBANCE, AETHER );
     }
 }
 
@@ -106,8 +76,6 @@ int main(int argc, char* argv[])
             .allocator = (Allocator){ .context = &allocator, .alloc = &linear_allocator_alloc, .free = &linear_allocator_free })
     {
         flex_test();
-
-        //centering_test();
     }
 
     free(allocator.data);

@@ -56,7 +56,7 @@ void ripple_render_window_begin(RippleWindowConfig config)
 
 }
 
-void ripple_render_window_end()
+void ripple_render_window_end(void)
 {
     printfb(ripple_current_window_file, "</svg>\n");
     if (ripple_current_window_file)
@@ -168,11 +168,11 @@ int print_element_config(char* output, size_t output_len, va_list* list, const c
 typedef void (render_func_t)(RippleElementConfig, RenderedLayout, void*);
 
 void Ripple_start_window(RippleWindowConfig config);
-void Ripple_finish_window();
+void Ripple_finish_window(void);
 
 // makes a copy of the render_data if render_data_size is non 0
 void Ripple_start_element(RippleElementConfig config, render_func_t* render_func, void* render_data, usize render_data_size);
-void Ripple_finish_element();
+void Ripple_finish_element(void);
 
 int print_calculated_layout(char* output, size_t output_len, va_list* list, const char* args, size_t args_len)
 {
@@ -348,7 +348,7 @@ static void submit_element(ElementData* element)
     }
 }
 
-void Ripple_finish_window()
+void Ripple_finish_window(void)
 {
     MapaItem* window_item = mapa_get(windows, current_window.config.title, sizeof(current_window.config.title));
     if (window_item) *(Window*)window_item->data = current_window;
@@ -358,7 +358,7 @@ void Ripple_finish_window()
 
     vektor_clear(current_window.elements);
 
-    ripple_render_window_end(current_window.config.title);
+    ripple_render_window_end();
 
     debug("finished window {}", current_window.config.title);
 
@@ -414,11 +414,13 @@ static void grow_children(ElementData* data)
                 child->calculated_layout.w += amount_to_add;
             }
 
+            smallest_width += amount_to_add;
+
             // distribute the remainder
             u32 remaining_after_rounding = min(size_diff * n_smallest, free_width) - amount_to_add * n_smallest;
             _for_each_child(data) {
-                if (remaining_after_rounding-- == 0) break;
                 if (doest_grow_or_fixed_or_max_width || (u32)child->calculated_layout.w > second_smallest_width) continue;
+                if (remaining_after_rounding-- == 0) break;
                 child->calculated_layout.w += 1;
             }
 
@@ -480,11 +482,13 @@ static void grow_children(ElementData* data)
                 child->calculated_layout.h += amount_to_add;
             }
 
+            smallest_height += amount_to_add;
+
             // distribute the remainder
             u32 remaining_after_rounding = min(size_diff * n_smallest, free_height) - amount_to_add * n_smallest;
             _for_each_child(data) {
-                if (remaining_after_rounding-- == 0) break;
                 if (doest_grow_or_fixed_or_max_height || (u32)child->calculated_layout.h != smallest_height) continue;
+                if (remaining_after_rounding-- == 0) break;
                 child->calculated_layout.h += 1;
             }
 
@@ -542,7 +546,7 @@ void Ripple_start_element(RippleElementConfig config, render_func_t* render_func
     debug("{}\n", calculated_layout);
 }
 
-void Ripple_finish_element()
+void Ripple_finish_element(void)
 {
     debug("---------FINISHED ELEMENT------------");
 
