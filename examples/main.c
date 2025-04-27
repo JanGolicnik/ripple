@@ -1,6 +1,6 @@
 #define RIPPLE_IMPLEMENTATION
 #define RIPPLE_WIDGETS
-#include "src/ripple.h"
+#include "ripple.h"
 
 #define CENTERED(...) do {\
         RIPPLE(DISTURBANCE, AETHER);\
@@ -54,18 +54,6 @@ void flex_test(void)
         RIPPLE( DISTURBANCE, CONSEQUENCE ( .color = 0x8ACCD5 ) );
     }
 }
-
-typedef struct { void *data; usize data_size; usize ptr; } LinearAllocator;
-
-void *linear_allocator_alloc(void *ctx, usize size)
-{
-    LinearAllocator* allocator = (LinearAllocator*)ctx;
-    void* ret = allocator->ptr + size <= allocator->data_size ? (u8*)allocator->data + allocator->ptr : nullptr;
-    allocator->ptr += size;
-    return ret;
-}
-
-void linear_allocator_free(void* ctx, void* ptr, usize size) { return; }
 
 int main(int argc, char* argv[])
 {

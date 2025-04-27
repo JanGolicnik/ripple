@@ -48,4 +48,21 @@ void allocator_free(Allocator* allocator, void* ptr, usize size)
     allocator->free(allocator->context, ptr, size);
 }
 
+// LINEAR ALLOCATOR
+// simple linear allocator, doesn't grow and doesnt free anything
+typedef struct { void *data; usize data_size; usize ptr; } LinearAllocator;
+
+void *linear_allocator_alloc(void *ctx, usize size)
+{
+    LinearAllocator* allocator = (LinearAllocator*)ctx;
+    void* ret = allocator->ptr + size <= allocator->data_size ? (u8*)allocator->data + allocator->ptr : nullptr;
+    allocator->ptr += size;
+    return ret;
+}
+
+void linear_allocator_free(void* ctx, void* ptr, usize size) { return; }
+
+// LINEAR ALLOCATOR
+
+
 #endif // MARROW_ALLOCATOR_H

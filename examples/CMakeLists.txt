@@ -13,5 +13,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_executable(ripple ${SOURCES})
 
 target_include_directories(ripple PUBLIC
-    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/../include
+    ${CMAKE_SOURCE_DIR}/..
 )
