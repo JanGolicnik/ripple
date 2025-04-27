@@ -2,56 +2,51 @@
 #define RIPPLE_WIDGETS
 #include "ripple.h"
 
-#define CENTERED(...) do {\
-        RIPPLE(DISTURBANCE, AETHER);\
-        RIPPLE(IDEA( FORM( .direction = cld_VERTICAL ) ), AETHER) {\
-            RIPPLE(DISTURBANCE, AETHER);\
-            { __VA_ARGS__ }\
-            RIPPLE(DISTURBANCE, AETHER);\
-        }\
-        RIPPLE(DISTURBANCE, AETHER);\
-    } while(false)
-
 // heirarchy or growing elements, some fixed some not
 void flex_test(void)
 {
-    RIPPLE( IDEA (
-                LABEL("1"),
-                FORM (
-                    .direction = cld_VERTICAL,
-                    //.height = FIXED(100),
-                    .height = DEPTH(1.0f, FOUNDATION),
-                    .width = DEPTH(1.0f, FOUNDATION),
-                    .min_width = DEPTH(1.0f, REFINEMENT),
-                ),
-                .accept_input = true,
+    RIPPLE( LABEL("1"),
+            FORM (
+                .direction = cld_VERTICAL,
+                .height = DEPTH(1.0f, FOUNDATION),
+                .width = DEPTH(1.0f, FOUNDATION),
+                .min_width = DEPTH(1.0f, REFINEMENT),
             ),
-            CONSEQUENCE ( .color = 0xF8F8E1 )
+            .accept_input = true,
+            RECTANGLE ( .color = 0xF8F8E1 )
     ){
-        RIPPLE( IDEA (
-                    LABEL(2),
-                    FORM ( .height = DEPTH(3.0f/4.0f, FOUNDATION) ),
-                ),
-                AETHER
-        ){
-            RIPPLE( IDEA ( LABEL(3), FORM (.width = DEPTH(1.0f/3.0f, FOUNDATION), .direction = cld_VERTICAL ) ), AETHER
-            ){
-                RIPPLE( IDEA ( LABEL(123), FORM (.height = DEPTH(3.0f/4.0f, FOUNDATION ))), AETHER);
+        RIPPLE( LABEL(2), FORM ( .height = DEPTH(3.0f/4.0f, FOUNDATION) ) )
+        {
+            RIPPLE( LABEL(3), FORM (.width = DEPTH(1.0f/3.0f, FOUNDATION), .direction = cld_VERTICAL ) )
+            {
+                RIPPLE( LABEL(123), FORM (.height = DEPTH(3.0f/4.0f, FOUNDATION ) ) );
 
-                RIPPLE( IDEA ( LABEL(5), FORM ( .width = DEPTH(.25f, FOUNDATION)) ),
-                        CONSEQUENCE ( .color = 0xFFC1DA ) );
+                RIPPLE( LABEL(5), FORM ( .width = DEPTH(.25f, FOUNDATION)), RECTANGLE ( .color = 0xFFC1DA ) );
 
-                RIPPLE( DISTURBANCE, CONSEQUENCE ( .color = 0xFF90BB ) );
+                RIPPLE( RECTANGLE ( .color = 0xFF90BB ) );
             }
 
             CENTERED(
-                RIPPLE( IDEA( LABEL(6), FORM( .width = FIXED(150), .height = FIXED(150) ) ),
-                        CONSEQUENCE ( .color = 0x393E46 )
-                );
+                RIPPLE( LABEL(6), FORM( .width = FIXED(150), .height = FIXED(150) ), RECTANGLE ( .color = 0x393E46 ) );
             );
         }
 
-        RIPPLE( DISTURBANCE, CONSEQUENCE ( .color = 0x8ACCD5 ) );
+        RIPPLE( RECTANGLE ( .color = 0x8ACCD5 ), FORM( .direction = cld_VERTICAL ) )
+        {
+            RIPPLE( DISTURBANCE );
+
+            RIPPLE( DISTURBANCE )
+            {
+                u32 n_elements = 12;
+                for(u32 i = 0; i < n_elements; i++)
+                {
+                    if (i) RIPPLE( RECTANGLE( .color = 0xa6e5ed ));
+                    RIPPLE( FORM( .width = FIXED(12) ) );
+                }
+            }
+
+            RIPPLE( FORM( .height = DEPTH(.1f, FOUNDATION) ) );
+        }
     }
 }
 

@@ -62,7 +62,5 @@ void *linear_allocator_alloc(void *ctx, usize size)
 
 void linear_allocator_free(void* ctx, void* ptr, usize size) { return; }
 
-// LINEAR ALLOCATOR
-
 
 #endif // MARROW_ALLOCATOR_H

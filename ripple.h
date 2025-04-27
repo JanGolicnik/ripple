@@ -96,6 +96,18 @@ typedef struct {
 
 typedef u32 Color;
 
+typedef struct {
+    i32 x;
+    i32 y;
+    i32 w;
+    i32 h;
+    i32 max_w;
+    i32 max_h;
+} RenderedLayout;
+
+struct RippleElementConfig;
+typedef void (render_func_t)(struct RippleElementConfig, RenderedLayout);
+
 typedef enum {
     cld_HORIZONTAL = 0,
     cld_VERTICAL = 1
@@ -116,20 +128,15 @@ typedef struct {
     RippleSizingValue max_height;
 } RippleElementLayoutConfig;
 
-typedef struct {
+typedef struct RippleElementConfig {
     u64 id;
     RippleElementLayoutConfig layout;
     bool accept_input;
-} RippleElementConfig;
 
-typedef struct {
-    i32 x;
-    i32 y;
-    i32 w;
-    i32 h;
-    i32 max_w;
-    i32 max_h;
-} RenderedLayout;
+    render_func_t* render_func;
+    void* render_data;
+    usize render_data_size;
+} RippleElementConfig;
 
 int print_element_config(char* output, size_t output_len, va_list* list, const char* args, size_t args_len) {
     RippleElementConfig config = va_arg(*list, RippleElementConfig);
@@ -165,13 +172,11 @@ int print_element_config(char* output, size_t output_len, va_list* list, const c
     #undef PRINT_VALUE
 }
 
-typedef void (render_func_t)(RippleElementConfig, RenderedLayout, void*);
-
 void Ripple_start_window(RippleWindowConfig config);
 void Ripple_finish_window(void);
 
 // makes a copy of the render_data if render_data_size is non 0
-void Ripple_start_element(RippleElementConfig config, render_func_t* render_func, void* render_data, usize render_data_size);
+void Ripple_start_element(RippleElementConfig config);
 void Ripple_finish_element(void);
 
 int print_calculated_layout(char* output, size_t output_len, va_list* list, const char* args, size_t args_len)
@@ -204,9 +209,6 @@ typedef struct {
 typedef struct {
     RippleElementConfig config;
     RenderedLayout calculated_layout;
-    render_func_t* render_func;
-    void* render_data;
-    usize render_data_size;
 
     u32 n_children;
     u32 next_sibling;
@@ -336,14 +338,18 @@ static RenderedLayout calculate_layout(RippleElementLayoutConfig layout, Rendere
 // submits element for rendering and calculates its input state
 static void submit_element(ElementData* element)
 {
-    if (element->render_func) element->render_func(element->config, element->calculated_layout, element->render_data);
-    allocator_free(&current_window.config.allocator, element->render_data, element->render_data_size);
+    if (element->config.render_func) element->config.render_func(element->config, element->calculated_layout);
+    allocator_free(&current_window.config.allocator, element->config.render_data, element->config.render_data_size);
 
-    grow_children(element);
+    // our layout is done and we can calculate children
     _for_each_child(element)
     {
-        // calulcate the elements final layout
         child->calculated_layout = calculate_layout(child->config.layout, child->calculated_layout, element);
+    }
+    grow_children(element);
+
+    _for_each_child(element)
+    {
         submit_element(child);
     }
 }
@@ -508,7 +514,7 @@ static void grow_children(ElementData* data)
     }
 }
 
-void Ripple_start_element(RippleElementConfig config, render_func_t* render_func, void* render_data, usize render_data_size)
+void Ripple_start_element(RippleElementConfig config)
 {
     // add this element as parent for further child elements
     u32 this_index = vektor_size(current_window.elements);
@@ -529,15 +535,14 @@ void Ripple_start_element(RippleElementConfig config, render_func_t* render_func
     vektor_add(current_window.parent_element_indices, &this_index);
     RenderedLayout calculated_layout = calculate_layout(config.layout, (RenderedLayout){0}, parent);
 
-    render_data = allocator_make_copy(&current_window.config.allocator, render_data, render_data_size);
+    // render_data is supposed to be set if render_data_size is also
+    if (config.render_data_size)
+        config.render_data = allocator_make_copy(&current_window.config.allocator, config.render_data, config.render_data_size);
 
     // render out this element so children that are relative to parents still work
     vektor_add(current_window.elements, &(ElementData){
         .calculated_layout = calculated_layout,
         .config = config,
-        .render_func = render_func,
-        .render_data = render_data,
-        .render_data_size = render_data_size
     });
 
     // debug print
@@ -572,31 +577,43 @@ void Ripple_finish_element(void)
 #define SURFACE(...) \
     for (u8 LINE_UNIQUE_I = (Ripple_start_window((RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_I < 1; Ripple_finish_window(), LINE_UNIQUE_I++)
 
-#define RIPPLE(layout, ...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_start_element(layout, __VA_ARGS__), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_finish_element(), LINE_UNIQUE_VAR(_rippleiter)++)
+#define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_start_element((RippleElementConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_finish_element(), LINE_UNIQUE_VAR(_rippleiter)++)
 
-#define IDEA(...) (RippleElementConfig) { __VA_ARGS__ }
-#define DISTURBANCE IDEA( 0 )
+#define DISTURBANCE 0
 #define FORM(...) .layout = { __VA_ARGS__ }
 
 typedef struct {
     Color color;
-} RippleButtonConfig;
+} RippleRectangleConfig;
 
-void render_button(RippleElementConfig config, RenderedLayout layout, void* data)
+void render_rectangle(RippleElementConfig config, RenderedLayout layout)
 {
-    RippleButtonConfig button_data = *(RippleButtonConfig*)data;
-    ripple_render_rect(layout.x, layout.y, layout.w, layout.h, button_data.color);
-    debug("rendering a button ({} {} {} {}) with a 0x{08X} color", layout.x, layout.y, layout.w, layout.h, (int)button_data.color);
+    RippleRectangleConfig rectangle_data = *(RippleRectangleConfig*)config.render_data;
+    ripple_render_rect(layout.x, layout.y, layout.w, layout.h, rectangle_data.color);
+    debug("rendering a rectangle ({} {} {} {}) with a 0x{08X} color", layout.x, layout.y, layout.w, layout.h, (int)rectangle_data.color);
 }
 
-#define CONSEQUENCE(...)                                                       \
-  render_button, &(RippleButtonConfig){__VA_ARGS__}, sizeof(RippleButtonConfig)
-
-#define AETHER nullptr, nullptr, 0
+#define RECTANGLE(...)\
+  .render_func = render_rectangle,\
+  .render_data = &(RippleRectangleConfig){__VA_ARGS__},\
+  .render_data_size = sizeof(RippleRectangleConfig)
 
 #define TREMBLING() ( STATE().hovered ? true : false )
 #define IS_TREMBLING(name) ( STATE_OF(name).hovered ? true : false )
 
+#define CENTERED_HORIZONTAL(...) do {\
+        RIPPLE(DISTURBANCE);\
+        { __VA_ARGS__ }\
+        RIPPLE(DISTURBANCE);\
+} while (false)
+#define CENTERED_VERTICAL(...) do {\
+        RIPPLE(FORM( .direction = cld_VERTICAL ) ) {\
+            RIPPLE(DISTURBANCE);\
+            { __VA_ARGS__ }\
+            RIPPLE(DISTURBANCE);\
+        }\
+} while (false)
+#define CENTERED(...) CENTERED_HORIZONTAL(CENTERED_VERTICAL(__VA_ARGS__);)
 #endif // RIPPLE_WIDGETS
 
 #endif // RIPPLE_H
