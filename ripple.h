@@ -18,9 +18,6 @@
 
 #include <string.h>
 
-#ifdef RIPPLE_RENDERING_CUSTOM
-#else //RIPPLE_RENDERING_CUSTOM
-
 typedef struct {
     i32 x;
     i32 y;
@@ -40,6 +37,11 @@ typedef struct {
     u32 height;
 } RippleWindowConfig;
 
+#ifdef RIPPLE_RENDERING_CUSTOM
+#else //RIPPLE_RENDERING_CUSTOM
+
+#include <windows.h>
+
 thread_local FILE* ripple_current_window_file = nullptr;
 
 void ripple_render_window_begin(RippleWindowConfig config)
@@ -48,19 +50,23 @@ void ripple_render_window_begin(RippleWindowConfig config)
         fclose(ripple_current_window_file);
 
     char file_name[255];
-    u32 len = print(file_name, 254, "{}.svg", config.title);
+    u32 len = print(file_name, 254, "{}_tmp.svg", config.title);
     file_name[len] = 0;
     ripple_current_window_file = fopen(file_name, "w");
     printfb(ripple_current_window_file, "<svg xmlns='http://www.w3.org/2000/svg' width='{}' height='{}' style='background:#ffffff'>\n", config.width, config.height);
     printfb(ripple_current_window_file, "    <rect x='0' y='0' width='{}' height='{}' fill='#eeeeee'/>\n", config.width, config.height);
-
 }
 
-void ripple_render_window_end(void)
+void ripple_render_window_end(RippleWindowConfig config)
 {
     printfb(ripple_current_window_file, "</svg>\n");
     if (ripple_current_window_file)
+    {
         fclose(ripple_current_window_file);
+        char old_file_name[255]; old_file_name[print(old_file_name, 254, "{}_tmp.svg", config.title)] = 0;
+        char new_file_name[255]; new_file_name[print(new_file_name, 254, "{}.svg", config.title)] = 0;
+        MoveFileExA(old_file_name, new_file_name, MOVEFILE_REPLACE_EXISTING);
+    }
     ripple_current_window_file = nullptr;
 }
 
@@ -265,10 +271,9 @@ void Ripple_start_window(RippleWindowConfig config)
 
     MapaItem* window = mapa_get(windows, config.title, sizeof(config.title));
     current_window = window ?
-        *(Window*)window : (Window) {
-                    .config = config,
-                    .initialized = true,
-                    };
+        *(Window*)window->data : (Window) { .initialized = true, };
+
+    current_window.config = config;
 
     if (current_window.elements) vektor_empty(current_window.elements);
     else current_window.elements = vektor_create(0, sizeof(ElementData), nullptr);
@@ -292,9 +297,26 @@ void Ripple_start_window(RippleWindowConfig config)
     u32 root_index = 0;
     vektor_add(current_window.parent_element_indices, &root_index);
 
-    ripple_render_window_begin(config);
-
     debug("started window {}", config.title);
+}
+
+static void submit_element(ElementData* element);
+
+void Ripple_finish_window(void)
+{
+    MapaItem* window_item = mapa_get(windows, current_window.config.title, sizeof(current_window.config.title));
+    if (window_item) *(Window*)window_item->data = current_window;
+    else mapa_insert(windows, current_window.config.title, sizeof(current_window.config.title), &current_window, sizeof(current_window));
+
+    ripple_render_window_begin(current_window.config);
+
+    submit_element(vektor_get(current_window.elements, 0));
+
+    ripple_render_window_end(current_window.config);
+
+    debug("finished window {}", current_window.config.title);
+
+    current_window = (Window) {0};
 }
 
 static void grow_children(ElementData*);
@@ -352,23 +374,6 @@ static void submit_element(ElementData* element)
     {
         submit_element(child);
     }
-}
-
-void Ripple_finish_window(void)
-{
-    MapaItem* window_item = mapa_get(windows, current_window.config.title, sizeof(current_window.config.title));
-    if (window_item) *(Window*)window_item->data = current_window;
-    else mapa_insert(windows, current_window.config.title, sizeof(current_window.config.title), &current_window, sizeof(current_window));
-
-    submit_element(vektor_get(current_window.elements, 0));
-
-    vektor_clear(current_window.elements);
-
-    ripple_render_window_end();
-
-    debug("finished window {}", current_window.config.title);
-
-    current_window = (Window) {0};
 }
 
 static void grow_children(ElementData* data)
@@ -557,6 +562,7 @@ void Ripple_finish_element(void)
 
     u32 this_index = *(u32*)vektor_pop(current_window.parent_element_indices);
     ElementData *data = (ElementData*)vektor_get(current_window.elements, this_index);
+    (void)data;
     debug("{}", data->config);
     debug("{}\n", data->calculated_layout);
 }

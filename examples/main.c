@@ -1,6 +1,10 @@
+#define debug(...) (void)0
+
 #define RIPPLE_IMPLEMENTATION
 #define RIPPLE_WIDGETS
 #include "ripple.h"
+
+#include <windows.h>
 
 // heirarchy or growing elements, some fixed some not
 void flex_test(void)
@@ -64,16 +68,27 @@ void number_test()
 
 int main(int argc, char* argv[])
 {
-    u32 alloc_size = 4096;
+    u32 alloc_size = 1024;
     LinearAllocator allocator = (LinearAllocator){ .data = malloc(alloc_size), .data_size = alloc_size };
 
-    SURFACE( .title = "surface", .width = 800, .height = 300,
-            .cursor_data = (RippleCursorData){.x = 100, .y = 100, .left_click = true },
-            .allocator = (Allocator){ .context = &allocator, .alloc = &linear_allocator_alloc, .free = &linear_allocator_free })
+    u32 width = 1;
+    u32 height = 1;
+    loop
     {
-        // flex_test();
+        SURFACE( .title = "surface", .width = width, .height = height,
+                .cursor_data = (RippleCursorData){.x = 100, .y = 100, .left_click = true },
+                .allocator = (Allocator){ .context = &allocator, .alloc = &linear_allocator_alloc, .free = &linear_allocator_free })
+        {
+            flex_test();
 
-        number_test();
+            // number_test();
+        }
+
+        if ((width += 2) > 800) width = 1;
+        if (height < 300) height += 2;
+
+        allocator.ptr = 0;
+        Sleep(16);
     }
 
     free(allocator.data);
