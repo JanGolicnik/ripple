@@ -155,7 +155,7 @@ int print_element_config(char* output, size_t output_len, va_list* list, const c
                     " min_width: ({}, {.2f}),"
                     " min_height: ({}, {.2f}),"
                     " max_width: ({}, {.2f}),"
-                    " min_width: ({}, {.2f}),"
+                    " max_width: ({}, {.2f}),"
                 "},"
             "} ",
             config.id,
@@ -547,7 +547,7 @@ void Ripple_start_element(RippleElementConfig config)
 
     // debug print
     debug("---------STARTED ELEMENT------------");
-    debug("{}{}", config);
+    debug("{}", config);
     debug("{}\n", calculated_layout);
 }
 

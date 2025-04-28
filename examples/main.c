@@ -50,15 +50,30 @@ void flex_test(void)
     }
 }
 
+void number_test()
+{
+    RIPPLE( RECTANGLE( .color = 0xffffff ) )
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            RIPPLE( LABEL(i), RECTANGLE( .color = 0x0 ) );
+            RIPPLE( DISTURBANCE );
+        }
+    }
+}
+
 int main(int argc, char* argv[])
 {
-    LinearAllocator allocator = (LinearAllocator){ .data = malloc(1024), .data_size = 1024 };
+    u32 alloc_size = 4096;
+    LinearAllocator allocator = (LinearAllocator){ .data = malloc(alloc_size), .data_size = alloc_size };
 
     SURFACE( .title = "surface", .width = 800, .height = 300,
             .cursor_data = (RippleCursorData){.x = 100, .y = 100, .left_click = true },
             .allocator = (Allocator){ .context = &allocator, .alloc = &linear_allocator_alloc, .free = &linear_allocator_free })
     {
-        flex_test();
+        // flex_test();
+
+        number_test();
     }
 
     free(allocator.data);
