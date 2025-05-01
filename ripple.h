@@ -38,6 +38,40 @@ typedef struct {
 } RippleWindowConfig;
 
 #ifdef RIPPLE_RENDERING_CUSTOM
+#elif defined (RIPPLE_RENDERING_RAYLIB)
+
+#include <raylib/raylib.h>
+
+static Mapa* open_windows = nullptr;
+
+void ripple_render_window_begin(RippleWindowConfig config)
+{
+    if (!open_windows)
+        open_windows = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes);
+
+    MapaItem* entry = mapa_get(open_windows, config.title, strlen(config.title));
+    if (!entry)
+    {
+        InitWindow(config.width, config.height, config.title);
+        mapa_insert(open_windows, config.title, strlen(config.title), nullptr, 0);
+    }
+
+    SetWindowSize(config.width, config.height);
+
+    BeginDrawing();
+    ClearBackground(RAYWHITE);
+}
+
+void ripple_render_window_end(RippleWindowConfig config)
+{
+    EndDrawing();
+}
+
+void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
+{
+    DrawRectangle(x, y, w, h, (Color) {.a = 0xff, .r = (color >> 16) & 0xff, .g = (color >> 8) & 0xff, .b = color & 0xff});
+}
+
 #else //RIPPLE_RENDERING_CUSTOM
 
 #include <windows.h>
@@ -68,6 +102,7 @@ void ripple_render_window_end(RippleWindowConfig config)
         MoveFileExA(old_file_name, new_file_name, MOVEFILE_REPLACE_EXISTING);
     }
     ripple_current_window_file = nullptr;
+    Sleep(16);
 }
 
 void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
@@ -100,7 +135,7 @@ typedef struct {
     RippleSizingValueType _type : 2;
 } RippleSizingValue;
 
-typedef u32 Color;
+typedef u32 RippleColor;
 
 typedef struct {
     i32 x;
@@ -589,7 +624,7 @@ void Ripple_finish_element(void)
 #define FORM(...) .layout = { __VA_ARGS__ }
 
 typedef struct {
-    Color color;
+    RippleColor color;
 } RippleRectangleConfig;
 
 void render_rectangle(RippleElementConfig config, RenderedLayout layout)

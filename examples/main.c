@@ -1,10 +1,9 @@
 #define debug(...) (void)0
 
+#define RIPPLE_RENDERING_RAYLIB
 #define RIPPLE_IMPLEMENTATION
 #define RIPPLE_WIDGETS
 #include "ripple.h"
-
-#include <windows.h>
 
 // heirarchy or growing elements, some fixed some not
 void flex_test(void)
@@ -84,11 +83,10 @@ int main(int argc, char* argv[])
             // number_test();
         }
 
-        if ((width += 2) > 800) width = 1;
-        if (height < 300) height += 2;
+        if ((width += 2) > 1600) width = 1;
+        if (height < 600) height += 2;
 
         allocator.ptr = 0;
-        Sleep(16);
     }
 
     free(allocator.data);
