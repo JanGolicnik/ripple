@@ -72,12 +72,12 @@ int main(int argc, char* argv[])
 
     u32 width = 1;
     u32 height = 1;
-    loop
+    do
     {
         SURFACE( .title = "surface", .width = width, .height = height,
                 .cursor_data = (RippleCursorData){.x = 100, .y = 100, .left_click = true },
-                .allocator = (Allocator){ .context = &allocator, .alloc = &linear_allocator_alloc, .free = &linear_allocator_free })
-        {
+                .allocator = (Allocator){ .context = &allocator, .alloc = &linear_allocator_alloc, .free = &linear_allocator_free }
+        ){
             flex_test();
 
             // number_test();
@@ -87,7 +87,8 @@ int main(int argc, char* argv[])
         if (height < 600) height += 2;
 
         allocator.ptr = 0;
-    }
+
+    } while( !SURFACE_SHOULD_CLOSE() );
 
     free(allocator.data);
 

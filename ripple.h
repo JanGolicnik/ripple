@@ -28,6 +28,11 @@ typedef struct {
 } RippleCursorData;
 
 typedef struct {
+    u8 initialized : 1;
+    u8 should_close : 1;
+} RippleWindowState;
+
+typedef struct {
     const char* title;
 
     Allocator allocator;
@@ -60,6 +65,19 @@ void ripple_render_window_begin(RippleWindowConfig config)
 
     BeginDrawing();
     ClearBackground(RAYWHITE);
+}
+
+RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWindowConfig config)
+{
+    // for some reason the first frame reports WinbdowShouldClose() as true
+    if ( !state.initialized )
+    {
+        state.initialized = 1;
+        return state;
+    }
+
+    state.should_close = WindowShouldClose();
+    return state;
 }
 
 void ripple_render_window_end(RippleWindowConfig config)
@@ -103,6 +121,11 @@ void ripple_render_window_end(RippleWindowConfig config)
     }
     ripple_current_window_file = nullptr;
     Sleep(16);
+}
+
+RippleWindowState ripple_update_window_state(RippleWindowConfig config)
+{
+    return (RippleWindowState){ .initialized = 1 };
 }
 
 void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
@@ -257,7 +280,7 @@ typedef struct {
 
 typedef struct {
     RippleWindowConfig config;
-    bool initialized;
+    RippleWindowState state;
 
     Vektor* elements;
     Vektor* parent_element_indices;
@@ -306,7 +329,7 @@ void Ripple_start_window(RippleWindowConfig config)
 
     MapaItem* window = mapa_get(windows, config.title, sizeof(config.title));
     current_window = window ?
-        *(Window*)window->data : (Window) { .initialized = true, };
+        *(Window*)window->data : (Window) { 0 };
 
     current_window.config = config;
 
@@ -339,9 +362,7 @@ static void submit_element(ElementData* element);
 
 void Ripple_finish_window(void)
 {
-    MapaItem* window_item = mapa_get(windows, current_window.config.title, sizeof(current_window.config.title));
-    if (window_item) *(Window*)window_item->data = current_window;
-    else mapa_insert(windows, current_window.config.title, sizeof(current_window.config.title), &current_window, sizeof(current_window));
+    current_window.state = ripple_update_window_state(current_window.state, current_window.config);
 
     ripple_render_window_begin(current_window.config);
 
@@ -349,9 +370,11 @@ void Ripple_finish_window(void)
 
     ripple_render_window_end(current_window.config);
 
-    debug("finished window {}", current_window.config.title);
+    MapaItem* window_item = mapa_get(windows, current_window.config.title, sizeof(current_window.config.title));
+    if (window_item) *(Window*)window_item->data = current_window;
+    else mapa_insert(windows, current_window.config.title, sizeof(current_window.config.title), &current_window, sizeof(current_window));
 
-    current_window = (Window) {0};
+    debug("finished window {}", current_window.config.title);
 }
 
 static void grow_children(ElementData*);
@@ -617,6 +640,8 @@ void Ripple_finish_element(void)
 
 #define SURFACE(...) \
     for (u8 LINE_UNIQUE_I = (Ripple_start_window((RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_I < 1; Ripple_finish_window(), LINE_UNIQUE_I++)
+
+#define SURFACE_SHOULD_CLOSE(...) ( current_window.state.should_close )
 
 #define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_start_element((RippleElementConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_finish_element(), LINE_UNIQUE_VAR(_rippleiter)++)
 
