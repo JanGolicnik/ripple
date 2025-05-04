@@ -68,29 +68,27 @@ void number_test()
 int main(int argc, char* argv[])
 {
     u32 alloc_size = 1024;
-    LinearAllocator allocator = (LinearAllocator){ .data = malloc(alloc_size), .data_size = alloc_size };
+    LinearAllocatorContext linear_allocator_context = (LinearAllocatorContext){ .data = malloc(alloc_size), .data_size = alloc_size };
+    Allocator linear_allocator = (Allocator){ .context = &linear_allocator_context, .alloc = &linear_allocator_alloc, .free = &linear_allocator_free };
 
-    u32 width = 1;
     u32 height = 1;
     do
     {
-        SURFACE( .title = "surface", .width = width, .height = height,
+        SURFACE( .title = "surface", .width = 800, .height = height,
                 .cursor_data = (RippleCursorData){.x = 100, .y = 100, .left_click = true },
-                .allocator = (Allocator){ .context = &allocator, .alloc = &linear_allocator_alloc, .free = &linear_allocator_free }
-        ){
+                .allocator = &linear_allocator
+       ){
             flex_test();
-
-            // number_test();
         }
 
-        if ((width += 2) > 1600) width = 1;
-        if (height < 600) height += 2;
+        height += 2;
+        if (height > 800) height = 1;
 
-        allocator.ptr = 0;
+        linear_allocator_context.ptr = 0;
 
     } while( !SURFACE_SHOULD_CLOSE() );
 
-    free(allocator.data);
+    free(linear_allocator_context.data);
 
     return 0;
 }

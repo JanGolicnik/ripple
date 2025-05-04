@@ -35,7 +35,7 @@ typedef struct {
 typedef struct {
     const char* title;
 
-    Allocator allocator;
+    Allocator* allocator;
 
     RippleCursorData cursor_data;
     u32 width;
@@ -325,8 +325,6 @@ void Ripple_start_window(RippleWindowConfig config)
 {
     if (!windows) windows = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes);
 
-    INIT_ALLOCATOR(config.allocator);
-
     MapaItem* window = mapa_get(windows, config.title, sizeof(config.title));
     current_window = window ?
         *(Window*)window->data : (Window) { 0 };
@@ -419,7 +417,7 @@ static RenderedLayout calculate_layout(RippleElementLayoutConfig layout, Rendere
 static void submit_element(ElementData* element)
 {
     if (element->config.render_func) element->config.render_func(element->config, element->calculated_layout);
-    allocator_free(&current_window.config.allocator, element->config.render_data, element->config.render_data_size);
+    allocator_free(current_window.config.allocator, element->config.render_data, element->config.render_data_size);
 
     // our layout is done and we can calculate children
     _for_each_child(element)
@@ -579,10 +577,9 @@ static void grow_children(ElementData* data)
 
 void Ripple_start_element(RippleElementConfig config)
 {
-    // add this element as parent for further child elements
     u32 this_index = vektor_size(current_window.elements);
 
-    u32 parent_element_index = *(u32*)vektor_get(current_window.parent_element_indices, vektor_size(current_window.parent_element_indices) - 1);
+    u32 parent_element_index = *(u32*)vektor_last(current_window.parent_element_indices);
     ElementData* parent = vektor_get(current_window.elements, parent_element_index);
     // increment parent element children count and add itself to previous sibling if there is one
     {
@@ -594,13 +591,13 @@ void Ripple_start_element(RippleElementConfig config)
         }
     }
 
-    // is popped in submit function
+    // is popped in finish function
     vektor_add(current_window.parent_element_indices, &this_index);
     RenderedLayout calculated_layout = calculate_layout(config.layout, (RenderedLayout){0}, parent);
 
     // render_data is supposed to be set if render_data_size is also
     if (config.render_data_size)
-        config.render_data = allocator_make_copy(&current_window.config.allocator, config.render_data, config.render_data_size);
+        config.render_data = allocator_make_copy(current_window.config.allocator, config.render_data, config.render_data_size);
 
     // render out this element so children that are relative to parents still work
     vektor_add(current_window.elements, &(ElementData){

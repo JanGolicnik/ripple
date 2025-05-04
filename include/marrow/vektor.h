@@ -47,7 +47,7 @@ bool vektor_remove(Vektor* vektor, vektor_size_t index);
 
 Vektor* vektor_create(vektor_size_t initial_capacity, vektor_size_t element_size, Allocator* allocator)
 {
-    Vektor* vektor = allocator ? allocator->alloc(allocator->context, sizeof(Vektor)) : malloc(sizeof(Vektor));
+    Vektor* vektor = allocator_alloc(allocator, sizeof(Vektor));
     vektor_init(vektor, initial_capacity, element_size, allocator);
     return vektor;
 }
@@ -56,9 +56,7 @@ bool vektor_init(Vektor* vektor, vektor_size_t initial_capacity, vektor_size_t e
 {
     usize alloc_size = initial_capacity * element_size;
     *vektor = (Vektor){
-      .data = initial_capacity ?
-                allocator ? allocator->alloc(allocator->context, alloc_size) : malloc(alloc_size)
-                : nullptr,
+      .data = initial_capacity ? allocator_alloc(allocator, alloc_size) : nullptr,
       .size = 0,
       .capacity = initial_capacity,
       .element_size = element_size,
@@ -74,7 +72,7 @@ bool vektor_destroy(Vektor** vektor_ptr)
 
     Vektor* vektor = *vektor_ptr;
     vektor_clear(vektor);
-    vektor->allocator ? vektor->allocator->free(vektor->allocator->context, vektor, sizeof(Vektor)) : free(vektor);
+    allocator_free(vektor->allocator, vektor, sizeof(Vektor));
 
     *vektor_ptr = nullptr;
     return true;
@@ -89,7 +87,7 @@ bool vektor_empty(Vektor* vektor)
 bool vektor_clear(Vektor* vektor)
 {
     usize alloc_size = vektor->capacity * vektor->element_size;
-    vektor->allocator ? vektor->allocator->free(vektor->allocator->context, vektor->data, alloc_size) : free(vektor->data);
+    allocator_free(vektor->allocator, vektor->data, alloc_size);
     vektor->size = 0;
     vektor->capacity = 0;
     vektor->data = nullptr;
@@ -104,14 +102,11 @@ void internal_vektor_grow(Vektor* vektor)
     usize alloc_size = vektor->capacity * vektor->element_size;
 
     if (!vektor->data) {
-        vektor->data = vektor->allocator ?
-            vektor->allocator->alloc(vektor->allocator->context, alloc_size) : malloc(alloc_size);
+        vektor->data = allocator_alloc(vektor->allocator, alloc_size);
         return;
     }
 
-    vektor->data = vektor->allocator ?
-        vektor->allocator->realloc(vektor->allocator->context, vektor->data, alloc_size, old_alloc_size) :
-        realloc(vektor->data, alloc_size);
+    vektor->data = allocator_realloc(vektor->allocator, vektor->data, old_alloc_size, alloc_size);
 }
 
 void* vektor_add(Vektor* vektor, const void* data)
