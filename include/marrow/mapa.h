@@ -39,6 +39,8 @@ typedef struct
 
   mapa_hash_func hash_func;
   mapa_cmp_func cmp_func;
+
+  Allocator* allocator;
 } Mapa;
 
 #else
@@ -52,7 +54,7 @@ mapa_hash_t mapa_hash_fnv(void const* key, mapa_size_t key_size);
 mapa_hash_t mapa_hash_MurmurOAAT_32(void const* key, mapa_size_t key_size);
 u8 mapa_cmp_bytes(void const* a, mapa_size_t a_size, void const* b, mapa_size_t b_size);
 
-Mapa* mapa_create(mapa_hash_func hash_func, mapa_cmp_func cmp_func);
+Mapa* mapa_create(mapa_hash_func hash_func, mapa_cmp_func cmp_func, Allocator* allocator);
 bool mapa_destroy(Mapa* mapa);
 
 bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, mapa_size_t data_size);
@@ -70,7 +72,9 @@ MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_len);
 
 void internal_mapa_grow(Mapa* mapa, mapa_size_t new_capacity)
 {
-  MapaEntry *new_entries = calloc(new_capacity, sizeof(MapaEntry));
+  u32 alloc_size = new_capacity * sizeof(MapaEntry);
+  MapaEntry *new_entries = allocator_alloc(mapa->allocator, alloc_size);
+  memset( new_entries, 0, alloc_size);
 
   for (mapa_size_t i = 0; i < mapa->capacity; i++)
   {
@@ -85,20 +89,20 @@ void internal_mapa_grow(Mapa* mapa, mapa_size_t new_capacity)
     new_entries[index] = *entry;
   }
 
-  free(mapa->entries);
+  allocator_free(mapa->allocator, mapa->entries, mapa->capacity * sizeof(MapaEntry));
   mapa->entries = new_entries;
   mapa->capacity = new_capacity;
 }
 
 bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, mapa_size_t data_size)
 {
-  MapaItem new_item = (MapaItem){ .data = malloc(data_size), .size = data_size};
+  MapaItem new_item = (MapaItem){ .data = allocator_alloc(mapa->allocator, data_size), .size = data_size};
   memcpy(new_item.data, data, data_size);
 
   MapaItem *item = mapa_get(mapa, key, key_size);
   if(item)
   {
-    free(item->data);
+    allocator_free(mapa->allocator, item->data, item->size);
     *item = new_item;
     return true;
   }
@@ -118,15 +122,15 @@ bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, 
     MapaEntry* entry = &mapa->entries[index];
     if(mapa->cmp_func(entry->key, entry->key_size, key, key_size) == 0)
     {
-      free(entry->item.data);
-      free(entry->key);
+      allocator_free(mapa->allocator, entry->item.data, entry->item.size);
+      allocator_free(mapa->allocator, entry->key, entry->key_size);
       break;
     }
 
     index = (index + 1) % mapa->capacity;
   }
 
-  MapaEntry entry = (MapaEntry){.key = malloc(key_size), .key_size = key_size, .item = new_item };
+  MapaEntry entry = (MapaEntry){.key = allocator_alloc(mapa->allocator, key_size), .key_size = key_size, .item = new_item };
   memcpy(entry.key, key, key_size);
 
   mapa->entries[index] = entry;
@@ -178,8 +182,8 @@ bool mapa_remove(Mapa* mapa, void const* key, mapa_size_t key_size)
       continue;
     }
 
-    free(entry->item.data);
-    free(entry->key);
+    allocator_free(mapa->allocator, entry->item.data, entry->item.size);
+    allocator_free(mapa->allocator, entry->key, entry->key_size);
     memset(entry, 0, sizeof(*entry));
     mapa->size -= 1;
 
@@ -210,10 +214,10 @@ bool mapa_remove_str(Mapa* mapa, void const* key)
 }
 
 
-Mapa* mapa_create(mapa_hash_func hash_func, mapa_cmp_func cmp_func)
+Mapa* mapa_create(mapa_hash_func hash_func, mapa_cmp_func cmp_func, Allocator* allocator)
 {
-  Mapa* mapa = (Mapa*)malloc(sizeof(Mapa));
-  *mapa = (Mapa){.hash_func = hash_func, .cmp_func = cmp_func};
+  Mapa* mapa = (Mapa*)allocator_alloc(allocator, sizeof(Mapa));
+  *mapa = (Mapa){.hash_func = hash_func, .cmp_func = cmp_func, .allocator = allocator };
   internal_mapa_grow(mapa, MAPA_INITIAL_CAPACITY);
   return mapa;
 }
@@ -223,11 +227,11 @@ bool mapa_destroy(Mapa* mapa)
   for (u32 i = 0; i < mapa->size; i++)
   {
     MapaEntry *entry = &mapa->entries[i];
-    free(entry->key);
-    free(entry->item.data);
+    allocator_free(mapa->allocator, entry->key, entry->key_size);
+    allocator_free(mapa->allocator, entry->item.data, entry->item.size);
   }
 
-  free(mapa);
+  allocator_free(mapa->allocator, mapa, sizeof(Mapa));
   return true;
 }
 

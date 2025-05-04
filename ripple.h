@@ -52,7 +52,7 @@ static Mapa* open_windows = nullptr;
 void ripple_render_window_begin(RippleWindowConfig config)
 {
     if (!open_windows)
-        open_windows = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes);
+        open_windows = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes, config.allocator);
 
     MapaItem* entry = mapa_get(open_windows, config.title, strlen(config.title));
     if (!entry)
@@ -323,11 +323,10 @@ i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 childre
 
 void Ripple_start_window(RippleWindowConfig config)
 {
-    if (!windows) windows = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes);
+    if (!windows) windows = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes, config.allocator);
 
     MapaItem* window = mapa_get(windows, config.title, sizeof(config.title));
-    current_window = window ?
-        *(Window*)window->data : (Window) { 0 };
+    current_window = window ? *(Window*)window->data : (Window) { 0 };
 
     current_window.config = config;
 
@@ -338,7 +337,7 @@ void Ripple_start_window(RippleWindowConfig config)
     else current_window.parent_element_indices = vektor_create(0, sizeof(u32), nullptr);
 
     if (!current_window.elements_states)
-        current_window.elements_states = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes);
+        current_window.elements_states = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes, config.allocator);
 
     vektor_add(current_window.elements, &(ElementData) {
             .calculated_layout = {
