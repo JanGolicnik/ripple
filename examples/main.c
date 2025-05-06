@@ -70,15 +70,13 @@ int main(int argc, char* argv[])
     u32 height = 1;
     while( !SURFACE_SHOULD_CLOSE() )
     {
-        SURFACE( .title = "surface", .width = 800, .height = height,
-                .cursor_data = (RippleCursorData){.x = 100, .y = 100, .left_click = true },
-       ){
+        SURFACE( .title = "surface", .width = 800, .height = height )
+        {
             flex_test();
         }
 
         height += 2;
         if (height > 800) height = 1;
-
     }
 
     return 0;

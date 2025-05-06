@@ -19,15 +19,6 @@
 #include <string.h>
 
 typedef struct {
-    i32 x;
-    i32 y;
-    i32 scroll;
-    bool left_click;
-    bool right_click;
-    bool _valid;
-} RippleCursorData;
-
-typedef struct {
     u8 initialized : 1;
     u8 should_close : 1;
 } RippleWindowState;
@@ -37,10 +28,74 @@ typedef struct {
 
     Allocator* allocator;
 
-    RippleCursorData cursor_data;
     u32 width;
     u32 height;
 } RippleWindowConfig;
+
+typedef enum {
+    SVT_GROW = 0,
+    SVT_FIXED = 1,
+    SVT_RELATIVE_CHILD = 2,
+    SVT_RELATIVE_PARENT = 3,
+} RippleSizingValueType;
+
+typedef struct {
+    union{
+        u32 _unsigned_value : 30;
+        i32 _signed_value : 30;
+    };
+    RippleSizingValueType _type : 2;
+} RippleSizingValue;
+
+typedef u32 RippleColor;
+
+typedef struct {
+    i32 x;
+    i32 y;
+    i32 w;
+    i32 h;
+    i32 max_w;
+    i32 max_h;
+} RenderedLayout;
+
+struct RippleElementConfig;
+typedef void (render_func_t)(struct RippleElementConfig, RenderedLayout);
+
+typedef enum {
+    cld_HORIZONTAL = 0,
+    cld_VERTICAL = 1
+} RippleChildLayoutDirection;
+
+typedef struct {
+    struct {
+        bool fixed : 1;
+        RippleChildLayoutDirection direction : 1;
+    };
+    RippleSizingValue x;
+    RippleSizingValue y;
+    RippleSizingValue width;
+    RippleSizingValue height;
+    RippleSizingValue min_width;
+    RippleSizingValue min_height;
+    RippleSizingValue max_width;
+    RippleSizingValue max_height;
+} RippleElementLayoutConfig;
+
+typedef struct RippleElementConfig {
+    u64 id;
+    RippleElementLayoutConfig layout;
+    bool accept_input;
+
+    render_func_t* render_func;
+    void* render_data;
+    usize render_data_size;
+} RippleElementConfig;
+
+typedef struct {
+    u32 clicked : 1;
+    u32 hovered : 1;
+    u32 held : 1;
+} RippleElementState;
 
 #ifdef RIPPLE_RENDERING_CUSTOM
 #elif defined (RIPPLE_RENDERING_RAYLIB)
@@ -143,65 +198,6 @@ void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
 int print_element_config(char* output, size_t output_len, va_list* list, const char* args, size_t args_len);
 int print_calculated_layout(char* output, size_t output_len, va_list* list, const char* args, size_t args_len);
 
-typedef enum {
-    SVT_GROW = 0,
-    SVT_FIXED = 1,
-    SVT_RELATIVE_CHILD = 2,
-    SVT_RELATIVE_PARENT = 3,
-} RippleSizingValueType;
-
-typedef struct {
-    union{
-        u32 _unsigned_value : 30;
-        i32 _signed_value : 30;
-    };
-    RippleSizingValueType _type : 2;
-} RippleSizingValue;
-
-typedef u32 RippleColor;
-
-typedef struct {
-    i32 x;
-    i32 y;
-    i32 w;
-    i32 h;
-    i32 max_w;
-    i32 max_h;
-} RenderedLayout;
-
-struct RippleElementConfig;
-typedef void (render_func_t)(struct RippleElementConfig, RenderedLayout);
-
-typedef enum {
-    cld_HORIZONTAL = 0,
-    cld_VERTICAL = 1
-} RippleChildLayoutDirection;
-
-typedef struct {
-    struct {
-        bool fixed : 1;
-        RippleChildLayoutDirection direction : 1;
-    };
-    RippleSizingValue x;
-    RippleSizingValue y;
-    RippleSizingValue width;
-    RippleSizingValue height;
-    RippleSizingValue min_width;
-    RippleSizingValue min_height;
-    RippleSizingValue max_width;
-    RippleSizingValue max_height;
-} RippleElementLayoutConfig;
-
-typedef struct RippleElementConfig {
-    u64 id;
-    RippleElementLayoutConfig layout;
-    bool accept_input;
-
-    render_func_t* render_func;
-    void* render_data;
-    usize render_data_size;
-} RippleElementConfig;
-
 int print_element_config(char* output, size_t output_len, va_list* list, const char* args, size_t args_len) {
     RippleElementConfig config = va_arg(*list, RippleElementConfig);
     #define PRINT_VALUE(name) (i32)config.name._type, config.name._type == SVT_FIXED ? \
@@ -243,32 +239,8 @@ void Ripple_finish_window(void);
 void Ripple_start_element(RippleElementConfig config);
 void Ripple_finish_element(void);
 
-int print_calculated_layout(char* output, size_t output_len, va_list* list, const char* args, size_t args_len)
-{
-    RenderedLayout layout = va_arg(*list, RenderedLayout);
-    return print(output, output_len, "RendredLayout %{ x: {}, y: {}, w: {}, h: {} }",
-          layout.x,
-          layout.y,
-          layout.w,
-          layout.h
-        );
-}
-
-typedef struct {
-    u32 clicked : 1;
-    u32 hovered : 1;
-    u32 held : 1;
-} RippleElementState;
-
-// aborts if value is of type SVT_GROW
-i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 children_value);
-
 #ifdef RIPPLE_IMPLEMENTATION
 #undef RIPPLE_IMPLEMENTATION
-
-typedef struct {
-    void* data;
-} RenderData;
 
 typedef struct {
     RippleElementConfig config;
@@ -289,10 +261,21 @@ typedef struct {
 } Window;
 Mapa* windows;
 
-thread_local Window current_window;
+static thread_local Window current_window;
 
-#define STATE() (RippleElementState) { 0 }
-#define STATE_OF(id) (RippleElementState) { 0 }
+int print_calculated_layout(char* output, size_t output_len, va_list* list, const char* args, size_t args_len)
+{
+    RenderedLayout layout = va_arg(*list, RenderedLayout);
+    return print(output, output_len, "RendredLayout %{ x: {}, y: {}, w: {}, h: {} }",
+          layout.x,
+          layout.y,
+          layout.w,
+          layout.h
+        );
+}
+
+// aborts if value is of type SVT_GROW
+i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 children_value);
 
 static RenderedLayout sum_up_current_element_children(void)
 {
@@ -624,6 +607,9 @@ void Ripple_finish_element(void)
 #endif // RIPPLE_IMPLEMENTATION
 
 #ifdef RIPPLE_WIDGETS
+
+#define STATE() (RippleElementState) { 0 }
+#define STATE_OF(id) (RippleElementState) { 0 }
 
 #define FOUNDATION ._type = SVT_RELATIVE_PARENT
 #define REFINEMENT ._type = SVT_RELATIVE_CHILD
