@@ -1,6 +1,9 @@
 #ifndef RIPPLE_H
 #define RIPPLE_H
 
+// for offsetof
+#include <stddef.h>
+
 #include <printccy/printccy.h>
 
 #ifndef RIPPLE_NO_DEFINE_MARROW_MAPA
@@ -419,37 +422,48 @@ static void grow_children(ElementData* data)
     if (data->n_children == 0)
         return;
 
-    if (data->config.layout.direction == cld_HORIZONTAL)
+    u32 dim_offset = data->config.layout.direction == cld_HORIZONTAL ? offsetof(RenderedLayout, w) : offsetof(RenderedLayout, h);
+    u32 max_dim_offset = data->config.layout.direction == cld_HORIZONTAL ? offsetof(RenderedLayout, max_w) : offsetof(RenderedLayout, max_h);
+    u32 pos_offset = data->config.layout.direction == cld_HORIZONTAL ? offsetof(RenderedLayout, x) : offsetof(RenderedLayout, y);
+    u32 other_pos_offset = data->config.layout.direction == cld_HORIZONTAL ? offsetof(RenderedLayout, y) : offsetof(RenderedLayout, x);
+    u32 layout_dim_offset = data->config.layout.direction == cld_HORIZONTAL ? offsetof(RippleElementLayoutConfig, width) : offsetof(RippleElementLayoutConfig, height);
+    #define DIM(arg) (*(i32*)((u8*)(&arg) + dim_offset))
+    #define MAX_DIM(arg) (*(i32*)((u8*)(&arg) + max_dim_offset))
+    #define POS(arg) (*(i32*)((u8*)(&arg) + pos_offset))
+    #define OTHER_POS(arg) (*(i32*)((u8*)(&arg) + other_pos_offset))
+    #define LAYOUT_DIM(arg) (*(RippleSizingValue*)((u8*)(&arg) + layout_dim_offset))
+
+    //if (data->config.layout.direction == cld_HORIZONTAL)
     {
-        u32 free_width = data->calculated_layout.w;
+        u32 free_width = (u32)DIM(data->calculated_layout);
         _for_each_child(data) {
-            free_width = free_width >= (u32)child->calculated_layout.w ? free_width - (u32)child->calculated_layout.w : 0;
+            free_width = free_width >= (u32)DIM(child->calculated_layout) ? free_width - (u32)DIM(child->calculated_layout) : 0;
         }
 
         while(free_width > 0)
         {
-            #define doest_grow_or_fixed_or_max_width child->config.layout.width._type != SVT_GROW || child->config.layout.fixed || child->calculated_layout.w >= child->calculated_layout.max_w
+            #define doest_grow_or_fixed_or_max_width (LAYOUT_DIM(child->config.layout))._type != SVT_GROW || child->config.layout.fixed || DIM(child->calculated_layout) >= MAX_DIM(child->calculated_layout)
 
             u32 smallest_width = free_width;
             u32 second_smallest_width = free_width; // others are then resized to this
             _for_each_child(data) {
                 if (doest_grow_or_fixed_or_max_width) continue;
 
-                if ((u32)child->calculated_layout.w < smallest_width)
+                if ((u32)DIM(child->calculated_layout) < smallest_width)
                 {
                     second_smallest_width = smallest_width;
-                    smallest_width = (u32)child->calculated_layout.w;
+                    smallest_width = (u32)DIM(child->calculated_layout);
                 }
-                else if ((u32)child->calculated_layout.w < second_smallest_width && (u32)child->calculated_layout.w != smallest_width)
-                    second_smallest_width = (u32)child->calculated_layout.w;
+                else if ((u32)DIM(child->calculated_layout) < second_smallest_width && ((u32)DIM(child->calculated_layout)) != smallest_width)
+                    second_smallest_width = (u32)DIM(child->calculated_layout);
 
-                if ((u32)child->calculated_layout.max_w <= second_smallest_width)
-                    second_smallest_width = (u32)child->calculated_layout.max_w;
+                if ((u32)MAX_DIM(child->calculated_layout) <= second_smallest_width)
+                    second_smallest_width = (u32)MAX_DIM(child->calculated_layout);
             }
 
             u32 n_smallest = 0;
             _for_each_child(data) {
-                if (doest_grow_or_fixed_or_max_width || (u32)child->calculated_layout.w != smallest_width) continue;
+                if (doest_grow_or_fixed_or_max_width || (u32)DIM(child->calculated_layout) != smallest_width) continue;
                 n_smallest += 1;
             }
 
@@ -459,8 +473,8 @@ static void grow_children(ElementData* data)
             u32 size_diff = second_smallest_width - smallest_width;
             u32 amount_to_add = min(size_diff, free_width / n_smallest);
             _for_each_child(data) {
-                if (doest_grow_or_fixed_or_max_width || (u32)child->calculated_layout.w != smallest_width) continue;
-                child->calculated_layout.w += amount_to_add;
+                if (doest_grow_or_fixed_or_max_width || (u32)DIM(child->calculated_layout) != smallest_width) continue;
+                DIM(child->calculated_layout) += amount_to_add;
             }
 
             smallest_width += amount_to_add;
@@ -468,7 +482,7 @@ static void grow_children(ElementData* data)
             // distribute the remainder
             u32 remaining_after_rounding = min(size_diff * n_smallest, free_width) - amount_to_add * n_smallest;
             _for_each_child(data) {
-                if (doest_grow_or_fixed_or_max_width || (u32)child->calculated_layout.w > second_smallest_width) continue;
+                if (doest_grow_or_fixed_or_max_width || (u32)DIM(child->calculated_layout) != smallest_width) continue;
                 if (remaining_after_rounding-- == 0) break;
                 child->calculated_layout.w += 1;
             }
@@ -482,79 +496,17 @@ static void grow_children(ElementData* data)
         _for_each_child(data) {
             if (child->config.layout.fixed)
                 continue;
-            child->calculated_layout.x = data->calculated_layout.x + (i32)offset;
-            offset += (u32)child->calculated_layout.w;
-            child->calculated_layout.y = data->calculated_layout.y;
+            POS(child->calculated_layout) = POS(data->calculated_layout) + offset;
+            offset += DIM(child->calculated_layout);
+            OTHER_POS(child->calculated_layout) = OTHER_POS(data->calculated_layout);
         }
     }
-    else if (data->config.layout.direction == cld_VERTICAL)
-    {
-        u32 free_height = (u32)data->calculated_layout.h;
-        _for_each_child(data) {
-            free_height = free_height >= (u32)child->calculated_layout.h ? free_height - (u32)child->calculated_layout.h : 0;
-        }
 
-        while(free_height > 0)
-        {
-            #define doest_grow_or_fixed_or_max_height child->config.layout.height._type != SVT_GROW || child->config.layout.fixed || child->calculated_layout.h >= child->calculated_layout.max_h
-
-            u32 smallest_height = free_height;
-            u32 second_smallest_height = free_height; // others are then resized to this
-            _for_each_child(data) {
-                if (doest_grow_or_fixed_or_max_height) continue;
-
-                if ((u32)child->calculated_layout.h < smallest_height)
-                {
-                    second_smallest_height = smallest_height;
-                    smallest_height = (u32)child->calculated_layout.h;
-                }
-                else if ((u32)child->calculated_layout.h < second_smallest_height && (u32)child->calculated_layout.h != smallest_height)
-                    second_smallest_height = (u32)child->calculated_layout.h;
-
-                if ((u32)child->calculated_layout.max_h <= second_smallest_height)
-                    second_smallest_height = (u32)child->calculated_layout.max_h;
-            }
-
-            u32 n_smallest = 0;
-            _for_each_child(data) {
-                if (doest_grow_or_fixed_or_max_height || (u32)child->calculated_layout.h != smallest_height) continue;
-                n_smallest += 1;
-            }
-
-            if (n_smallest == 0)
-                break;
-
-            u32 size_diff = second_smallest_height - smallest_height;
-            u32 amount_to_add = min(size_diff, free_height / n_smallest);
-            _for_each_child(data) {
-                if (doest_grow_or_fixed_or_max_height || (u32)child->calculated_layout.h != smallest_height) continue;
-                child->calculated_layout.h += amount_to_add;
-            }
-
-            smallest_height += amount_to_add;
-
-            // distribute the remainder
-            u32 remaining_after_rounding = min(size_diff * n_smallest, free_height) - amount_to_add * n_smallest;
-            _for_each_child(data) {
-                if (doest_grow_or_fixed_or_max_height || (u32)child->calculated_layout.h != smallest_height) continue;
-                if (remaining_after_rounding-- == 0) break;
-                child->calculated_layout.h += 1;
-            }
-
-            free_height -= second_smallest_height;
-            #undef doest_grow_or_fixed_or_max_height
-        }
-
-        // reposition, centers horizontally
-        u32 offset = 0;
-        _for_each_child(data) {
-            if (child->config.layout.fixed)
-                continue;
-            child->calculated_layout.y = data->calculated_layout.y + offset;
-            offset += child->calculated_layout.h;
-            child->calculated_layout.x = data->calculated_layout.x;
-        }
-    }
+    #undef DIM
+    #undef MAX_DIM
+    #undef POS
+    #undef OTHER_POS
+    #undef LAYOUT_DIM
 }
 
 void Ripple_start_element(RippleElementConfig config)
