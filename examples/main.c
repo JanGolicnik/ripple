@@ -20,6 +20,7 @@ void flex_test(void)
     ){
         RIPPLE( LABEL(2), FORM ( .height = DEPTH(3.0f/4.0f, FOUNDATION) ) )
         {
+            //printout("hovered: {}\n", (bool)STATE().hovered);
             RIPPLE( LABEL(3), FORM (.width = DEPTH(1.0f/3.0f, FOUNDATION), .direction = cld_VERTICAL ) )
             {
                 RIPPLE( LABEL(123), FORM (.height = DEPTH(3.0f/4.0f, FOUNDATION ) ) );
@@ -67,16 +68,19 @@ void number_test()
 
 int main(int argc, char* argv[])
 {
-    u32 height = 1;
+    u32 height = 650;
     while( !SURFACE_SHOULD_CLOSE() )
     {
         SURFACE( .title = "surface", .width = 800, .height = height )
         {
-            flex_test();
+            RIPPLE( LABEL(1), RECTANGLE( .color = STATE_OF(1).hovered ? 0xff0000 : 0x000000 ) );
+            RIPPLE( LABEL(2), RECTANGLE( .color = STATE_OF(2).hovered ? 0x00ff00 : 0x000000 ) );
+            RIPPLE( LABEL(3), RECTANGLE( .color = STATE_OF(3).hovered ? 0x0000ff : 0x000000 ) );
+            //flex_test();
         }
 
-        height += 2;
-        if (height > 800) height = 1;
+        //height += 2;
+        //if (height > 800) height = 1;
     }
 
     return 0;

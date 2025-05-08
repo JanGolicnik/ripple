@@ -129,6 +129,7 @@ bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, 
 
     index = (index + 1) % mapa->capacity;
   }
+  error("xd");
 
   MapaEntry entry = (MapaEntry){.key = allocator_alloc(mapa->allocator, key_size), .key_size = key_size, .item = new_item };
   memcpy(entry.key, key, key_size);
@@ -144,22 +145,22 @@ bool mapa_insert_str(Mapa* mapa, char const* key, char* data)
 
 MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_size)
 {
-  if (mapa->size == 0)
-    return nullptr;
+    if (mapa->size == 0)
+        return nullptr;
 
-  mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
-  for(u32 i = 0; i < mapa->capacity; i++)
-  {
-    MapaEntry *entry = &mapa->entries[index];
-    if(mapa->cmp_func(entry->key, entry->key_size, key, key_size) == 0)
+    mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
+    for(u32 i = 0; i < mapa->capacity; i++)
     {
-      return &entry->item;
+        MapaEntry *entry = &mapa->entries[index];
+        if (mapa->cmp_func(entry->key, entry->key_size, key, key_size) == 0)
+        {
+            return &entry->item;
+        }
+
+        index = (index + 1) % mapa->size;
     }
 
-    index = (index + 1) % mapa->size;
-  }
-
-  return nullptr;
+    return nullptr;
 }
 
 MapaItem* mapa_get_str(Mapa* mapa, void const* key)
@@ -262,6 +263,11 @@ u32 murmur_32_scramble(u32 k)
   k = (k << 15) | (k >> 17);
   k *= 0x1b873593;
   return k;
+}
+
+mapa_hash_t mapa_hash_u64(void const* key, mapa_size_t key_size)
+{
+    return *(u64*)key;
 }
 
 mapa_hash_t mapa_hash_MurmurOAAT_32(void const* key, mapa_size_t key_size)

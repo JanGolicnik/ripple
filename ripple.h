@@ -22,9 +22,25 @@
 #include <string.h>
 
 typedef struct {
+    u32 clicked : 1;
+    u32 hovered : 1;
+    u32 held : 1;
+} RippleElementState;
+
+typedef struct {
     u8 initialized : 1;
     u8 should_close : 1;
 } RippleWindowState;
+
+typedef struct {
+    struct {
+        u32 left_pressed : 1;
+        u32 right_pressed : 1;
+        u32 middle_pressed : 1;
+    };
+    i32 x;
+    i32 y;
+} RippleCursorState;
 
 typedef struct {
     const char* title;
@@ -94,12 +110,6 @@ typedef struct RippleElementConfig {
     usize render_data_size;
 } RippleElementConfig;
 
-typedef struct {
-    u32 clicked : 1;
-    u32 hovered : 1;
-    u32 held : 1;
-} RippleElementState;
-
 #ifdef RIPPLE_RENDERING_CUSTOM
 #elif defined (RIPPLE_RENDERING_RAYLIB)
 
@@ -135,6 +145,16 @@ RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWind
     }
 
     state.should_close = WindowShouldClose();
+    return state;
+}
+
+RippleCursorState ripple_update_cursor_state(RippleCursorState state)
+{
+    state.x = GetMousePosition().x;
+    state.y = GetMousePosition().y;
+    state.left_pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    state.right_pressed = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
+    state.middle_pressed = IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE);
     return state;
 }
 
@@ -246,6 +266,11 @@ void Ripple_finish_element(void);
 #undef RIPPLE_IMPLEMENTATION
 
 typedef struct {
+    RippleElementState state;
+    RenderedLayout layout;
+} ElementState;
+
+typedef struct {
     RippleElementConfig config;
     RenderedLayout calculated_layout;
 
@@ -256,6 +281,8 @@ typedef struct {
 typedef struct {
     RippleWindowConfig config;
     RippleWindowState state;
+
+    RippleCursorState cursor_state;
 
     Vektor* elements;
     Vektor* parent_element_indices;
@@ -323,7 +350,9 @@ void Ripple_start_window(RippleWindowConfig config)
     else current_window.parent_element_indices = vektor_create(0, sizeof(u32), nullptr);
 
     if (!current_window.elements_states)
-        current_window.elements_states = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes, config.allocator);
+        current_window.elements_states = mapa_create(mapa_hash_u64, mapa_cmp_bytes, config.allocator);
+
+    current_window.cursor_state = ripple_update_cursor_state(current_window.cursor_state);
 
     vektor_add(current_window.elements, &(ElementData) {
             .calculated_layout = {
@@ -401,8 +430,19 @@ static RenderedLayout calculate_layout(RippleElementLayoutConfig layout, Rendere
 // submits element for rendering and calculates its input state
 static void submit_element(ElementData* element)
 {
+    //printout("submitting element with id {}\n", element->config.id);
     if (element->config.render_func) element->config.render_func(element->config, element->calculated_layout);
     allocator_free(current_window.config.allocator, element->config.render_data, element->config.render_data_size);
+
+    MapaItem* state_item = mapa_get(current_window.elements_states, &element->config.id, sizeof(element->config.id));
+    if (state_item)
+    {
+        ((ElementState*)state_item->data)->layout = element->calculated_layout;
+    }
+    else
+    {
+        mapa_insert(current_window.elements_states, &element->config.id, sizeof(element->config.id), &(ElementState) { .layout = element->calculated_layout }, sizeof(ElementState));
+    }
 
     // our layout is done and we can calculate children
     _for_each_child(element)
@@ -422,84 +462,81 @@ static void grow_children(ElementData* data)
     if (data->n_children == 0)
         return;
 
-    u32 dim_offset = data->config.layout.direction == cld_HORIZONTAL ? offsetof(RenderedLayout, w) : offsetof(RenderedLayout, h);
-    u32 max_dim_offset = data->config.layout.direction == cld_HORIZONTAL ? offsetof(RenderedLayout, max_w) : offsetof(RenderedLayout, max_h);
-    u32 pos_offset = data->config.layout.direction == cld_HORIZONTAL ? offsetof(RenderedLayout, x) : offsetof(RenderedLayout, y);
-    u32 other_pos_offset = data->config.layout.direction == cld_HORIZONTAL ? offsetof(RenderedLayout, y) : offsetof(RenderedLayout, x);
-    u32 layout_dim_offset = data->config.layout.direction == cld_HORIZONTAL ? offsetof(RippleElementLayoutConfig, width) : offsetof(RippleElementLayoutConfig, height);
-    #define DIM(arg) (*(i32*)((u8*)(&arg) + dim_offset))
-    #define MAX_DIM(arg) (*(i32*)((u8*)(&arg) + max_dim_offset))
-    #define POS(arg) (*(i32*)((u8*)(&arg) + pos_offset))
-    #define OTHER_POS(arg) (*(i32*)((u8*)(&arg) + other_pos_offset))
-    #define LAYOUT_DIM(arg) (*(RippleSizingValue*)((u8*)(&arg) + layout_dim_offset))
+    u32 dim_offsets[] = { offsetof(RenderedLayout, w), offsetof(RenderedLayout, h) };
+    u32 max_dim_offsets[] = { offsetof(RenderedLayout, max_w), offsetof(RenderedLayout, max_h) };
+    u32 pos_offsets[] = { offsetof(RenderedLayout, x), offsetof(RenderedLayout, y) };
+    u32 other_pos_offsets[] = { offsetof(RenderedLayout, y), offsetof(RenderedLayout, x) };
+    u32 layout_dim_offsets[] = { offsetof(RippleElementLayoutConfig, width), offsetof(RippleElementLayoutConfig, height) };
+    #define DIM(arg) (*(i32*)((u8*)(&arg) + dim_offsets[(u32)data->config.layout.direction]))
+    #define MAX_DIM(arg) (*(i32*)((u8*)(&arg) + max_dim_offsets[(u32)data->config.layout.direction]))
+    #define POS(arg) (*(i32*)((u8*)(&arg) + pos_offsets[(u32)data->config.layout.direction]))
+    #define OTHER_POS(arg) (*(i32*)((u8*)(&arg) + other_pos_offsets[(u32)data->config.layout.direction]))
+    #define LAYOUT_DIM(arg) (*(RippleSizingValue*)((u8*)(&arg) + layout_dim_offsets[(u32)data->config.layout.direction]))
 
-    //if (data->config.layout.direction == cld_HORIZONTAL)
+    u32 free_space = (u32)DIM(data->calculated_layout);
+    _for_each_child(data) {
+        free_space = free_space >= (u32)DIM(child->calculated_layout) ? free_space - (u32)DIM(child->calculated_layout) : 0;
+    }
+
+    while(free_space > 0)
     {
-        u32 free_width = (u32)DIM(data->calculated_layout);
+        #define doest_grow_or_fixed_or_max_width (LAYOUT_DIM(child->config.layout))._type != SVT_GROW || child->config.layout.fixed || DIM(child->calculated_layout) >= MAX_DIM(child->calculated_layout)
+
+        u32 smallest_width = free_space;
+        u32 second_smallest_width = free_space; // others are then resized to this
         _for_each_child(data) {
-            free_width = free_width >= (u32)DIM(child->calculated_layout) ? free_width - (u32)DIM(child->calculated_layout) : 0;
+            if (doest_grow_or_fixed_or_max_width) continue;
+
+            if ((u32)DIM(child->calculated_layout) < smallest_width)
+            {
+                second_smallest_width = smallest_width;
+                smallest_width = (u32)DIM(child->calculated_layout);
+            }
+            else if ((u32)DIM(child->calculated_layout) < second_smallest_width && ((u32)DIM(child->calculated_layout)) != smallest_width)
+                second_smallest_width = (u32)DIM(child->calculated_layout);
+
+            if ((u32)MAX_DIM(child->calculated_layout) <= second_smallest_width)
+                second_smallest_width = (u32)MAX_DIM(child->calculated_layout);
         }
 
-        while(free_width > 0)
-        {
-            #define doest_grow_or_fixed_or_max_width (LAYOUT_DIM(child->config.layout))._type != SVT_GROW || child->config.layout.fixed || DIM(child->calculated_layout) >= MAX_DIM(child->calculated_layout)
-
-            u32 smallest_width = free_width;
-            u32 second_smallest_width = free_width; // others are then resized to this
-            _for_each_child(data) {
-                if (doest_grow_or_fixed_or_max_width) continue;
-
-                if ((u32)DIM(child->calculated_layout) < smallest_width)
-                {
-                    second_smallest_width = smallest_width;
-                    smallest_width = (u32)DIM(child->calculated_layout);
-                }
-                else if ((u32)DIM(child->calculated_layout) < second_smallest_width && ((u32)DIM(child->calculated_layout)) != smallest_width)
-                    second_smallest_width = (u32)DIM(child->calculated_layout);
-
-                if ((u32)MAX_DIM(child->calculated_layout) <= second_smallest_width)
-                    second_smallest_width = (u32)MAX_DIM(child->calculated_layout);
-            }
-
-            u32 n_smallest = 0;
-            _for_each_child(data) {
-                if (doest_grow_or_fixed_or_max_width || (u32)DIM(child->calculated_layout) != smallest_width) continue;
-                n_smallest += 1;
-            }
-
-            if (n_smallest == 0)
-                break;
-
-            u32 size_diff = second_smallest_width - smallest_width;
-            u32 amount_to_add = min(size_diff, free_width / n_smallest);
-            _for_each_child(data) {
-                if (doest_grow_or_fixed_or_max_width || (u32)DIM(child->calculated_layout) != smallest_width) continue;
-                DIM(child->calculated_layout) += amount_to_add;
-            }
-
-            smallest_width += amount_to_add;
-
-            // distribute the remainder
-            u32 remaining_after_rounding = min(size_diff * n_smallest, free_width) - amount_to_add * n_smallest;
-            _for_each_child(data) {
-                if (doest_grow_or_fixed_or_max_width || (u32)DIM(child->calculated_layout) != smallest_width) continue;
-                if (remaining_after_rounding-- == 0) break;
-                child->calculated_layout.w += 1;
-            }
-
-            free_width -= second_smallest_width;
-            #undef doest_grow_or_fixed_or_max_width
-        }
-
-        // reposition, centers vertically
-        u32 offset = 0;
+        u32 n_smallest = 0;
         _for_each_child(data) {
-            if (child->config.layout.fixed)
-                continue;
-            POS(child->calculated_layout) = POS(data->calculated_layout) + offset;
-            offset += DIM(child->calculated_layout);
-            OTHER_POS(child->calculated_layout) = OTHER_POS(data->calculated_layout);
+            if (doest_grow_or_fixed_or_max_width || (u32)DIM(child->calculated_layout) != smallest_width) continue;
+            n_smallest += 1;
         }
+
+        if (n_smallest == 0)
+            break;
+
+        u32 size_diff = second_smallest_width - smallest_width;
+        u32 amount_to_add = min(size_diff, free_space / n_smallest);
+        _for_each_child(data) {
+            if (doest_grow_or_fixed_or_max_width || (u32)DIM(child->calculated_layout) != smallest_width) continue;
+            DIM(child->calculated_layout) += amount_to_add;
+        }
+
+        smallest_width += amount_to_add;
+
+        // distribute the remainder
+        u32 remaining_after_rounding = min(size_diff * n_smallest, free_space) - amount_to_add * n_smallest;
+        _for_each_child(data) {
+            if (doest_grow_or_fixed_or_max_width || (u32)DIM(child->calculated_layout) != smallest_width) continue;
+            if (remaining_after_rounding-- == 0) break;
+            child->calculated_layout.w += 1;
+        }
+
+        free_space -= second_smallest_width;
+        #undef doest_grow_or_fixed_or_max_width
+    }
+
+    // reposition, centers on other dimension
+    u32 offset = 0;
+    _for_each_child(data) {
+        if (child->config.layout.fixed)
+            continue;
+        POS(child->calculated_layout) = POS(data->calculated_layout) + offset;
+        offset += DIM(child->calculated_layout);
+        OTHER_POS(child->calculated_layout) = OTHER_POS(data->calculated_layout);
     }
 
     #undef DIM
@@ -509,20 +546,32 @@ static void grow_children(ElementData* data)
     #undef LAYOUT_DIM
 }
 
+static void update_element_state(u64 element_id)
+{
+    MapaItem* element_state_item = mapa_get(current_window.elements_states, &element_id, sizeof(element_id));
+    if (!element_state_item) // we dont update new elements yet, they get added in their finish function
+        return;
+
+    ElementState *state = (ElementState*)element_state_item->data;
+    state->state.hovered =
+        current_window.cursor_state.x >= state->layout.x && current_window.cursor_state.x < state->layout.x + state->layout.w &&
+        current_window.cursor_state.y >= state->layout.y && current_window.cursor_state.y < state->layout.y + state->layout.h;
+    state->state.clicked = state->state.hovered && current_window.cursor_state.left_pressed;
+}
+
 void Ripple_start_element(RippleElementConfig config)
 {
+    update_element_state(config.id);
+
     u32 this_index = vektor_size(current_window.elements);
 
     u32 parent_element_index = *(u32*)vektor_last(current_window.parent_element_indices);
     ElementData* parent = vektor_get(current_window.elements, parent_element_index);
-    // increment parent element children count and add itself to previous sibling if there is one
+    if (parent->n_children++ > 0)
     {
-        if (parent->n_children++ > 0)
-        {
-            ElementData* child = parent + 1;
-            while (child->next_sibling){ child = vektor_get(current_window.elements, child->next_sibling); }
-            child->next_sibling = this_index;
-        }
+        ElementData* child = parent + 1;
+        while (child->next_sibling){ child = vektor_get(current_window.elements, child->next_sibling); }
+        child->next_sibling = this_index;
     }
 
     // is popped in finish function
@@ -533,11 +582,13 @@ void Ripple_start_element(RippleElementConfig config)
     if (config.render_data_size)
         config.render_data = allocator_make_copy(current_window.config.allocator, config.render_data, config.render_data_size);
 
-    // render out this element so children that are relative to parents still work
-    vektor_add(current_window.elements, &(ElementData){
+    ElementData element = (ElementData){
         .calculated_layout = calculated_layout,
         .config = config,
-    });
+    };
+
+    // render out this element so children that are relative to parents still work
+    vektor_add(current_window.elements, &element);
 
     // debug print
     debug("---------STARTED ELEMENT------------");
@@ -560,8 +611,15 @@ void Ripple_finish_element(void)
 
 #ifdef RIPPLE_WIDGETS
 
-#define STATE() (RippleElementState) { 0 }
-#define STATE_OF(id) (RippleElementState) { 0 }
+static u64 _get_latest_element_id() { return ((ElementData*)vektor_last(current_window.elements))->config.id; }
+static RippleElementState _get_element_state(u64 id)
+{
+    MapaItem* item = mapa_get(current_window.elements_states, &id, sizeof(id));
+    return item ? ((ElementState*)item->data)->state : (RippleElementState){ 0 };
+}
+
+#define STATE() (_get_element_state(_get_latest_element_id()))
+#define STATE_OF(id) (_get_element_state(id))
 
 #define FOUNDATION ._type = SVT_RELATIVE_PARENT
 #define REFINEMENT ._type = SVT_RELATIVE_CHILD
