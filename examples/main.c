@@ -27,7 +27,7 @@ void flex_test(void)
 
                 RIPPLE( LABEL(5), FORM ( .width = DEPTH(.25f, FOUNDATION)), RECTANGLE ( .color = 0xFFC1DA ) );
 
-                RIPPLE( RECTANGLE ( .color = 0xFF90BB ) );
+                RIPPLE( UNNAMED, RECTANGLE ( .color = 0xFF90BB ) );
             }
 
             CENTERED(
@@ -35,33 +35,33 @@ void flex_test(void)
             );
         }
 
-        RIPPLE( RECTANGLE ( .color = 0x8ACCD5 ), FORM( .direction = cld_VERTICAL ) )
+        RIPPLE( UNNAMED, RECTANGLE ( .color = 0x8ACCD5 ), FORM( .direction = cld_VERTICAL ) )
         {
-            RIPPLE( DISTURBANCE );
+            RIPPLE( UNNAMED, DISTURBANCE );
 
-            RIPPLE( DISTURBANCE )
+            RIPPLE( UNNAMED, DISTURBANCE )
             {
                 u32 n_elements = 12;
                 for(u32 i = 0; i < n_elements; i++)
                 {
-                    if (i) RIPPLE( RECTANGLE( .color = 0xa6e5ed ));
-                    RIPPLE( FORM( .width = FIXED(12) ) );
+                    if (i) RIPPLE( UNNAMED, RECTANGLE( .color = 0xa6e5ed ));
+                    RIPPLE( UNNAMED, FORM( .width = FIXED(12) ) );
                 }
             }
 
-            RIPPLE( FORM( .height = DEPTH(.1f, FOUNDATION) ) );
+            RIPPLE( UNNAMED, FORM( .height = DEPTH(.1f, FOUNDATION) ) );
         }
     }
 }
 
 void number_test()
 {
-    RIPPLE( RECTANGLE( .color = 0xffffff ) )
+    RIPPLE( LABEL(0), RECTANGLE( .color = 0xffffff ) )
     {
         for (int i = 0; i < 200; i++)
         {
             RIPPLE( LABEL(i), RECTANGLE( .color = 0x0 ) );
-            RIPPLE( DISTURBANCE );
+            RIPPLE( UNNAMED, DISTURBANCE );
         }
     }
 }
@@ -73,9 +73,9 @@ int main(int argc, char* argv[])
     {
         SURFACE( .title = "surface", .width = 800, .height = height )
         {
-            RIPPLE( LABEL(1), RECTANGLE( .color = STATE_OF(1).hovered ? 0xff0000 : 0x000000 ) );
-            RIPPLE( LABEL(2), RECTANGLE( .color = STATE_OF(2).hovered ? 0x00ff00 : 0x000000 ) );
-            RIPPLE( LABEL(3), RECTANGLE( .color = STATE_OF(3).hovered ? 0x0000ff : 0x000000 ) );
+            RIPPLE( LABEL(1), RECTANGLE( .color = STATE().hovered ? 0xff0000 : 0x000000 ) );
+            RIPPLE( LABEL(2), RECTANGLE( .color = STATE().hovered ? 0x00ff00 : 0x000000 ) );
+            RIPPLE( LABEL(3), RECTANGLE( .color = STATE().hovered ? 0x0000ff : 0x000000 ) );
             //flex_test();
         }
 

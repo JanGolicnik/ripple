@@ -101,7 +101,6 @@ typedef struct {
 } RippleElementLayoutConfig;
 
 typedef struct RippleElementConfig {
-    u64 id;
     RippleElementLayoutConfig layout;
     bool accept_input;
 
@@ -241,7 +240,6 @@ int print_element_config(char* output, size_t output_len, va_list* list, const c
                     " max_width: ({}, {.2f}),"
                 "},"
             "} ",
-            config.id,
             config.layout.fixed,
             PRINT_VALUE(layout.x),
             PRINT_VALUE(layout.y),
@@ -258,9 +256,9 @@ int print_element_config(char* output, size_t output_len, va_list* list, const c
 void Ripple_start_window(RippleWindowConfig config);
 void Ripple_finish_window(void);
 
-// makes a copy of the render_data if render_data_size is non 0
-void Ripple_start_element(RippleElementConfig config);
-void Ripple_finish_element(void);
+void Ripple_push_id(u64);
+void Ripple_submit_element(RippleElementConfig config); // copies render data if its size is non zero
+void Ripple_pop_id(void);
 
 #ifdef RIPPLE_IMPLEMENTATION
 #undef RIPPLE_IMPLEMENTATION
@@ -271,9 +269,11 @@ typedef struct {
 } ElementState;
 
 typedef struct {
+    u64 id;
     RippleElementConfig config;
     RenderedLayout calculated_layout;
 
+    u32 parent_element;
     u32 n_children;
     u32 next_sibling;
 } ElementData;
@@ -285,7 +285,10 @@ typedef struct {
     RippleCursorState cursor_state;
 
     Vektor* elements;
-    Vektor* parent_element_indices;
+    struct {
+        u64 id;
+        u32 index;
+    } current_element;
 
     Mapa* elements_states;
 } Window;
@@ -310,8 +313,7 @@ i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 childre
 static RenderedLayout sum_up_current_element_children(void)
 {
     RenderedLayout out_layout = {0};
-    u32 current_element_index = *(u32*)vektor_last(current_window.parent_element_indices);
-    for (u32 i = current_element_index + 1; i < vektor_size(current_window.elements); i++) {
+    for (u32 i = current_window.current_element.index + 1; i < vektor_size(current_window.elements); i++) {
         RenderedLayout child_layout = ((ElementData*)vektor_get(current_window.elements, i))->calculated_layout;
         out_layout.x = min(out_layout.x, child_layout.x);
         out_layout.y = min(out_layout.y, child_layout.y);
@@ -346,9 +348,6 @@ void Ripple_start_window(RippleWindowConfig config)
     if (current_window.elements) vektor_empty(current_window.elements);
     else current_window.elements = vektor_create(0, sizeof(ElementData), nullptr);
 
-    if (current_window.parent_element_indices) vektor_empty(current_window.parent_element_indices);
-    else current_window.parent_element_indices = vektor_create(0, sizeof(u32), nullptr);
-
     if (!current_window.elements_states)
         current_window.elements_states = mapa_create(mapa_hash_u64, mapa_cmp_bytes, config.allocator);
 
@@ -363,9 +362,8 @@ void Ripple_start_window(RippleWindowConfig config)
             },
     });
 
-    // add root element data
-    u32 root_index = 0;
-    vektor_add(current_window.parent_element_indices, &root_index);
+    current_window.current_element.index = 0;
+    current_window.current_element.id = 0;
 
     debug("started window {}", config.title);
 }
@@ -430,19 +428,14 @@ static RenderedLayout calculate_layout(RippleElementLayoutConfig layout, Rendere
 // submits element for rendering and calculates its input state
 static void submit_element(ElementData* element)
 {
-    //printout("submitting element with id {}\n", element->config.id);
     if (element->config.render_func) element->config.render_func(element->config, element->calculated_layout);
     allocator_free(current_window.config.allocator, element->config.render_data, element->config.render_data_size);
 
-    MapaItem* state_item = mapa_get(current_window.elements_states, &element->config.id, sizeof(element->config.id));
+    MapaItem* state_item = mapa_get(current_window.elements_states, &element->id, sizeof(element->id));
     if (state_item)
-    {
         ((ElementState*)state_item->data)->layout = element->calculated_layout;
-    }
     else
-    {
-        mapa_insert(current_window.elements_states, &element->config.id, sizeof(element->config.id), &(ElementState) { .layout = element->calculated_layout }, sizeof(ElementState));
-    }
+        mapa_insert(current_window.elements_states, &element->id, sizeof(element->id), &(ElementState) { .layout = element->calculated_layout }, sizeof(ElementState));
 
     // our layout is done and we can calculate children
     _for_each_child(element)
@@ -559,13 +552,18 @@ static void update_element_state(u64 element_id)
     state->state.clicked = state->state.hovered && current_window.cursor_state.left_pressed;
 }
 
-void Ripple_start_element(RippleElementConfig config)
+// should be called before start element
+void Ripple_push_id(u64 id)
 {
-    update_element_state(config.id);
+    current_window.current_element.id = id;
+    update_element_state(current_window.current_element.id);
+}
 
+void Ripple_submit_element(RippleElementConfig config)
+{
     u32 this_index = vektor_size(current_window.elements);
 
-    u32 parent_element_index = *(u32*)vektor_last(current_window.parent_element_indices);
+    u32 parent_element_index = current_window.current_element.index;
     ElementData* parent = vektor_get(current_window.elements, parent_element_index);
     if (parent->n_children++ > 0)
     {
@@ -574,8 +572,6 @@ void Ripple_start_element(RippleElementConfig config)
         child->next_sibling = this_index;
     }
 
-    // is popped in finish function
-    vektor_add(current_window.parent_element_indices, &this_index);
     RenderedLayout calculated_layout = calculate_layout(config.layout, (RenderedLayout){0}, parent);
 
     // render_data is supposed to be set if render_data_size is also
@@ -585,40 +581,34 @@ void Ripple_start_element(RippleElementConfig config)
     ElementData element = (ElementData){
         .calculated_layout = calculated_layout,
         .config = config,
+        .parent_element = parent_element_index,
+        .id = current_window.current_element.id
+
     };
 
     // render out this element so children that are relative to parents still work
     vektor_add(current_window.elements, &element);
-
-    // debug print
-    debug("---------STARTED ELEMENT------------");
-    debug("{}", config);
-    debug("{}\n", calculated_layout);
 }
 
-void Ripple_finish_element(void)
+void Ripple_pop_id(void)
 {
-    debug("---------FINISHED ELEMENT------------");
-
-    u32 this_index = *(u32*)vektor_pop(current_window.parent_element_indices);
-    ElementData *data = (ElementData*)vektor_get(current_window.elements, this_index);
-    (void)data;
-    debug("{}", data->config);
-    debug("{}\n", data->calculated_layout);
+    ElementData *data = (ElementData*)vektor_get(current_window.elements, current_window.current_element.index);
+    current_window.current_element.index = data->parent_element;
+    ElementData *parent = (ElementData*)vektor_get(current_window.elements, data->parent_element);
+    current_window.current_element.id = parent->id;
 }
 
 #endif // RIPPLE_IMPLEMENTATION
 
 #ifdef RIPPLE_WIDGETS
 
-static u64 _get_latest_element_id() { return ((ElementData*)vektor_last(current_window.elements))->config.id; }
 static RippleElementState _get_element_state(u64 id)
 {
     MapaItem* item = mapa_get(current_window.elements_states, &id, sizeof(id));
     return item ? ((ElementState*)item->data)->state : (RippleElementState){ 0 };
 }
 
-#define STATE() (_get_element_state(_get_latest_element_id()))
+#define STATE() (_get_element_state(current_window.current_element.id))
 #define STATE_OF(id) (_get_element_state(id))
 
 #define FOUNDATION ._type = SVT_RELATIVE_PARENT
@@ -628,14 +618,15 @@ static RippleElementState _get_element_state(u64 id)
 #define GROW { ._type = SVT_GROW }
 
 #define _HASH_LABEL(var) _Generic((var), char*: (u64)var, default: var)
-#define LABEL(var) .id = _HASH_LABEL(var)
+#define LABEL(var) (_HASH_LABEL(var))
+#define UNNAMED 123
 
 #define SURFACE(...) \
     for (u8 LINE_UNIQUE_I = (Ripple_start_window((RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_I < 1; Ripple_finish_window(), LINE_UNIQUE_I++)
 
 #define SURFACE_SHOULD_CLOSE(...) ( current_window.state.should_close )
 
-#define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_start_element((RippleElementConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_finish_element(), LINE_UNIQUE_VAR(_rippleiter)++)
+#define RIPPLE(id, ...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_push_id(id), Ripple_submit_element((RippleElementConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_pop_id(), LINE_UNIQUE_VAR(_rippleiter)++)
 
 #define DISTURBANCE 0
 #define FORM(...) .layout = { __VA_ARGS__ }
@@ -660,15 +651,15 @@ void render_rectangle(RippleElementConfig config, RenderedLayout layout)
 #define IS_TREMBLING(name) ( STATE_OF(name).hovered ? true : false )
 
 #define CENTERED_HORIZONTAL(...) do {\
-        RIPPLE(DISTURBANCE);\
+        RIPPLE( UNNAMED, DISTURBANCE );\
         { __VA_ARGS__ }\
-        RIPPLE(DISTURBANCE);\
+        RIPPLE( UNNAMED, DISTURBANCE );\
 } while (false)
 #define CENTERED_VERTICAL(...) do {\
-        RIPPLE(FORM( .direction = cld_VERTICAL ) ) {\
-            RIPPLE(DISTURBANCE);\
+        RIPPLE( UNNAMED, FORM( .direction = cld_VERTICAL ) ) {\
+            RIPPLE( UNNAMED, DISTURBANCE );\
             { __VA_ARGS__ }\
-            RIPPLE(DISTURBANCE);\
+            RIPPLE( UNNAMED, DISTURBANCE );\
         }\
 } while (false)
 #define CENTERED(...) CENTERED_HORIZONTAL(CENTERED_VERTICAL(__VA_ARGS__);)
