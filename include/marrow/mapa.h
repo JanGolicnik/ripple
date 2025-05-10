@@ -129,7 +129,6 @@ bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, 
 
     index = (index + 1) % mapa->capacity;
   }
-  error("xd");
 
   MapaEntry entry = (MapaEntry){.key = allocator_alloc(mapa->allocator, key_size), .key_size = key_size, .item = new_item };
   memcpy(entry.key, key, key_size);

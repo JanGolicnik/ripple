@@ -561,15 +561,15 @@ void Ripple_push_id(u64 id)
 
 void Ripple_submit_element(RippleElementConfig config)
 {
-    u32 this_index = vektor_size(current_window.elements);
-
     u32 parent_element_index = current_window.current_element.index;
+    current_window.current_element.index = vektor_size(current_window.elements);
+
     ElementData* parent = vektor_get(current_window.elements, parent_element_index);
     if (parent->n_children++ > 0)
     {
         ElementData* child = parent + 1;
         while (child->next_sibling){ child = vektor_get(current_window.elements, child->next_sibling); }
-        child->next_sibling = this_index;
+        child->next_sibling = current_window.current_element.index;
     }
 
     RenderedLayout calculated_layout = calculate_layout(config.layout, (RenderedLayout){0}, parent);
