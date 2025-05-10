@@ -57,8 +57,8 @@ u8 mapa_cmp_bytes(void const* a, mapa_size_t a_size, void const* b, mapa_size_t 
 Mapa* mapa_create(mapa_hash_func hash_func, mapa_cmp_func cmp_func, Allocator* allocator);
 bool mapa_destroy(Mapa* mapa);
 
-bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, mapa_size_t data_size);
-bool mapa_insert_str(Mapa* mapa, char const* key, char* data); //expects null terminated string
+MapaItem* mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, mapa_size_t data_size);
+MapaItem* mapa_insert_str(Mapa* mapa, char const* key, char* data); //expects null terminated string
 
 MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_size);
 MapaItem* mapa_get_str(Mapa* mapa, void const* key); // expects null terminated string
@@ -94,7 +94,7 @@ void internal_mapa_grow(Mapa* mapa, mapa_size_t new_capacity)
   mapa->capacity = new_capacity;
 }
 
-bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, mapa_size_t data_size)
+MapaItem* mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, mapa_size_t data_size)
 {
   MapaItem new_item = (MapaItem){ .data = allocator_alloc(mapa->allocator, data_size), .size = data_size};
   memcpy(new_item.data, data, data_size);
@@ -104,7 +104,7 @@ bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, 
   {
     allocator_free(mapa->allocator, item->data, item->size);
     *item = new_item;
-    return true;
+    return item;
   }
 
   if (mapa->size >= mapa->capacity * 0.55)
@@ -134,10 +134,10 @@ bool mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, 
   memcpy(entry.key, key, key_size);
 
   mapa->entries[index] = entry;
-  return true;
+  return &mapa->entries[index].item;
 }
 
-bool mapa_insert_str(Mapa* mapa, char const* key, char* data)
+MapaItem* mapa_insert_str(Mapa* mapa, char const* key, char* data)
 {
   return mapa_insert(mapa, key, strlen(key) + 1, data, strlen(data) + 1);
 }
