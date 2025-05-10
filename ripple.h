@@ -556,6 +556,9 @@ static void update_element_state(u64 element_id)
 void Ripple_push_id(u64 id)
 {
     current_window.current_element.id = id;
+
+    if (id == 0) return;
+
     update_element_state(current_window.current_element.id);
 }
 
@@ -619,7 +622,7 @@ static RippleElementState _get_element_state(u64 id)
 
 #define _HASH_LABEL(var) _Generic((var), char*: (u64)var, default: var)
 #define LABEL(var) (_HASH_LABEL(var))
-#define UNNAMED 123
+#define UNNAMED 0
 
 #define SURFACE(...) \
     for (u8 LINE_UNIQUE_I = (Ripple_start_window((RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_I < 1; Ripple_finish_window(), LINE_UNIQUE_I++)

@@ -8,40 +8,40 @@
 // heirarchy or growing elements, some fixed some not
 void flex_test(void)
 {
-    RIPPLE( LABEL(1),
+    RIPPLE( UNNAMED,
             FORM ( .direction = cld_VERTICAL ),
-            RECTANGLE ( .color = STATE().hovered ? 0xFFFFF5 : 0xF8F8E1 )
+            RECTANGLE ( .color = 0xF8F8E1 )
     ){
-        RIPPLE( LABEL(2), FORM ( .height = DEPTH(3.0f/4.0f, FOUNDATION) ) )
+        RIPPLE( LINE_UNIQUE_HASH, FORM ( .height = DEPTH(3.0f/4.0f, FOUNDATION) ) )
         {
-            RIPPLE( LABEL(3), FORM (.width = DEPTH(1.0f/3.0f, FOUNDATION), .direction = cld_VERTICAL ) )
+            RIPPLE( LINE_UNIQUE_HASH, FORM (.width = DEPTH(1.0f/3.0f, FOUNDATION), .direction = cld_VERTICAL ) )
             {
-                RIPPLE( LABEL(4), FORM (.height = DEPTH(3.0f/4.0f, FOUNDATION ) ) );
+                RIPPLE( LINE_UNIQUE_HASH, FORM (.height = DEPTH(3.0f/4.0f, FOUNDATION ) ) );
 
-                RIPPLE( LABEL(5), FORM ( .width = DEPTH(.25f, FOUNDATION)), RECTANGLE ( .color = STATE().hovered ? 0xFFD5EE : 0xFFC1DA ) );
+                RIPPLE( LINE_UNIQUE_HASH, FORM ( .width = DEPTH(.25f, FOUNDATION)), RECTANGLE ( .color = STATE().hovered ? 0xFFD5EE : 0xFFC1DA ) );
 
-                RIPPLE( LABEL(6), RECTANGLE ( .color = STATE().hovered ? 0xFFA4CF : 0xFF90BB ) );
+                RIPPLE( LINE_UNIQUE_HASH, RECTANGLE ( .color = STATE().hovered ? 0xFFA4CF : 0xFF90BB ) );
             }
 
             CENTERED(
-                RIPPLE( LABEL(7), FORM( .width = FIXED(150), .height = FIXED(150) ), RECTANGLE ( .color = STATE().hovered ? 0x4D525A : 0x393E46 ) );
+                RIPPLE( LINE_UNIQUE_HASH, FORM( .width = FIXED(150), .height = FIXED(150) ), RECTANGLE ( .color = STATE().hovered ? 0x4D525A : 0x393E46 ) );
             );
         }
 
-        RIPPLE( 8, RECTANGLE ( .color = STATE().hovered ? 0x9EE0E9 : 0x8ACCD5 ), FORM( .direction = cld_VERTICAL ) )
+        RIPPLE( UNNAMED, RECTANGLE ( .color = 0x8ACCD5 ), FORM( .direction = cld_VERTICAL ) )
         {
-            RIPPLE( 9, DISTURBANCE );
+            RIPPLE( UNNAMED, FORM( .height = DEPTH(.1f, FOUNDATION) ) );
 
-            RIPPLE( 10, DISTURBANCE )
+            RIPPLE( UNNAMED, DISTURBANCE )
             {
                 for(u32 i = 0; i < 50; i++)
                 {
-                    if (i) RIPPLE( LABEL(11 + i * 2), RECTANGLE( .color = STATE().hovered ? 0xBAF9FF : 0xA6E5ED ));
-                    RIPPLE( LABEL(12 + i * 2), FORM( .width = FIXED(4) ) );
+                    if (i) RIPPLE( LINE_UNIQUE_HASH + i * 2, RECTANGLE( .color = STATE().hovered ? 0xBAF9FF : 0x8ACCD5 ));
+                    RIPPLE( UNNAMED, FORM( .width = FIXED(4) ) );
                 }
             }
 
-            RIPPLE( LABEL(113), FORM( .height = DEPTH(.1f, FOUNDATION) ) );
+            RIPPLE( UNNAMED, FORM( .height = DEPTH(.1f, FOUNDATION) ) );
         }
     }
 }
@@ -52,7 +52,7 @@ void number_test()
     {
         for (int i = 0; i < 200; i++)
         {
-            RIPPLE( LABEL(i), RECTANGLE( .color = 0x0 ) );
+            RIPPLE( UNNAMED, RECTANGLE( .color = 0x0 ) );
             RIPPLE( UNNAMED, DISTURBANCE );
         }
     }
