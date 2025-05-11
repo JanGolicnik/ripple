@@ -79,6 +79,7 @@ _Thread_local struct {
     double: printccy_print_double,\
     long long: printccy_print_long_long,\
     unsigned long long: printccy_print_long_long,\
+    char: printccy_print_char,\
     const char*: printccy_print_char_ptr,\
     char*: printccy_print_char_ptr,\
     _PRINTCCY_BOOL: printccy_print_bool
@@ -227,6 +228,11 @@ int printccy_print_double(char* output, size_t output_len, va_list* list, const 
 
 int printccy_print_float(char* output, size_t output_len, va_list* list, const char* args, size_t args_len) {
     return printccy_print_double(output, output_len, list, args, args_len);
+}
+
+int printccy_print_char(char* output, size_t output_len, va_list* list, const char* args, size_t args_len) {
+    int val = va_arg(*list, int);
+    return snprintf(output, output_len, "%c", val);
 }
 
 int printccy_print_char_ptr(char* output, size_t output_len, va_list* list, const char* args, size_t args_len) {

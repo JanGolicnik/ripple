@@ -5,18 +5,17 @@
 #define RIPPLE_WIDGETS
 #include "ripple.h"
 
-// heirarchy or growing elements, some fixed some not
-void flex_test(void)
+void full_test(void)
 {
     RIPPLE( UNNAMED,
             FORM ( .direction = cld_VERTICAL ),
             RECTANGLE ( .color = 0xF8F8E1 )
     ){
-        RIPPLE( LINE_UNIQUE_HASH, FORM ( .height = DEPTH(3.0f/4.0f, FOUNDATION) ) )
+        RIPPLE( 123, FORM ( .height = DEPTH(3.0f/4.0f, FOUNDATION) ) )
         {
-            RIPPLE( LINE_UNIQUE_HASH, FORM (.width = DEPTH(1.0f/3.0f, FOUNDATION), .direction = cld_VERTICAL ) )
+            RIPPLE( 10002, FORM (.width = DEPTH(1.0f/3.0f, FOUNDATION), .direction = cld_VERTICAL ) )
             {
-                RIPPLE( LINE_UNIQUE_HASH, FORM (.height = DEPTH(3.0f/4.0f, FOUNDATION ) ) );
+                RIPPLE( 1231, FORM (.height = DEPTH(3.0f/4.0f, FOUNDATION ) ) );
 
                 RIPPLE( LINE_UNIQUE_HASH, FORM ( .width = DEPTH(.25f, FOUNDATION)), RECTANGLE ( .color = STATE().hovered ? 0xFFD5EE : 0xFFC1DA ) );
 
@@ -36,7 +35,7 @@ void flex_test(void)
             {
                 for(u32 i = 0; i < 50; i++)
                 {
-                    if (i) RIPPLE( LINE_UNIQUE_HASH + i * 2, RECTANGLE( .color = STATE().hovered ? 0xBAF9FF : 0x8ACCD5 ));
+                    if (i) RIPPLE( LABEL(LINE_UNIQUE_HASH + i), RECTANGLE( .color = STATE().hovered ? 0xBAF9FF : 0x8ACCD5 ));
                     RIPPLE( UNNAMED, FORM( .width = FIXED(4) ) );
                 }
             }
@@ -48,7 +47,7 @@ void flex_test(void)
 
 void number_test()
 {
-    RIPPLE( LABEL(0), RECTANGLE( .color = 0xffffff ) )
+    RIPPLE( UNNAMED, RECTANGLE( .color = 0xffffff ) )
     {
         for (int i = 0; i < 200; i++)
         {
@@ -60,21 +59,38 @@ void number_test()
 
 void rgb_test()
 {
-    RIPPLE( LABEL(1), RECTANGLE( .color = STATE().hovered ? 0xff0000 : 0x000000 ) );
-    RIPPLE( LABEL(2), RECTANGLE( .color = STATE().hovered ? 0x00ff00 : 0x000000 ) );
-    RIPPLE( LABEL(3), RECTANGLE( .color = STATE().hovered ? 0x0000ff : 0x000000 ) );
+    RIPPLE( LABEL("red"), RECTANGLE( .color = STATE().hovered ? 0xff0000 : 0x000000 ) );
+    RIPPLE( LABEL("green"), RECTANGLE( .color = STATE().hovered ? 0x00ff00 : 0x000000 ) );
+    RIPPLE( LABEL("blue"), RECTANGLE( .color = STATE().hovered ? 0x0000ff : 0x000000 ) );
 }
+
+typedef void (test_func)();
+test_func* test_funcs[] = { &full_test, &number_test, &rgb_test };
 
 int main(int argc, char* argv[])
 {
-    u32 height = 650;
+    u32 test_index = 0;
+
     while( !SURFACE_SHOULD_CLOSE() )
     {
-        SURFACE( .title = "surface", .width = 800, .height = height )
+        SURFACE( .title = "surface", .width = 800, .height = 800 + 45 )
         {
-            flex_test();
-        }
+            RIPPLE( UNNAMED, FORM( .direction = cld_VERTICAL ) )
+            {
+                RIPPLE( UNNAMED, FORM( .height = FIXED(45) ) )
+                {
+                    RIPPLE( LABEL("full_test"), FORM( .width = FIXED(45) ), RECTANGLE( .color = STATE().hovered ? 0x0 : 0xff0000 ) ) { if (STATE().hovered) test_index = 0; }
+                    RIPPLE( LABEL("number_test"), FORM( .width = FIXED(45) ), RECTANGLE( .color = STATE().hovered ? 0x0 : 0x00ff00 ) ) { if (STATE().hovered) test_index = 1; }
+                    RIPPLE( LABEL("rgb_test"), FORM( .width = FIXED(45) ), RECTANGLE( .color = STATE().hovered ? 0x0 : 0x0000ff ) ) { if (STATE().hovered) test_index = 2; }
+                }
 
+                RIPPLE( UNNAMED, DISTURBANCE )
+                {
+                    test_index = min(test_index, sizeof(test_funcs));
+                    test_funcs[test_index]();
+                }
+            }
+        }
         //height += 2;
         //if (height > 800) height = 1;
     }

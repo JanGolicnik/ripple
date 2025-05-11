@@ -127,29 +127,48 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 
 #define thread_local _Thread_local
 
-u64 hash_str(const char *str, u32 len) {
-    unsigned long hash = 2166136261u;
-    while (len--) {
-        hash ^= (unsigned char)(*str++);
-        hash *= 16777619;
+u64 hash_buf(const u8* buf, size_t buf_size)
+{
+    u64 hash = 0xcbf29ce484222325ULL;
+    while (buf_size--) {
+        hash ^= (u8)(*buf++);
+        hash *= 0x100000001b3ULL;
     }
     return hash;
 }
 
-u64 hash_u32(u32 key) {
-    key = ~key + (key << 15);  // key = (key << 15) - key - 1;
-    key = key ^ (key >> 12);
-    key = key + (key << 2);
-    key = key ^ (key >> 4);
-    key = key * 2057;
-    key = key ^ (key >> 16);
-    return key;
+// expects a null terminated string
+u64 hash_str(const char *str)
+{
+    u64 hash = 0xcbf29ce484222325ULL;
+    while (*str) {
+        hash ^= (u8)(*str++);
+        hash *= 0x100000001b3ULL;
+    }
+    return hash;
 }
 
-u64 hash_combine(u64 a, u64 b) {
-    return a ^ (b + 0x9e3779b97f4a7c15ULL + (a << 6) + (a >> 2));
+u64 hash_u32(u64 val)
+{
+    val ^= val >> 33;
+    val *= 0xff51afd7ed558ccdULL;
+    val ^= val >> 33;
+    val *= 0xc4ceb9fe1a85ec53ULL;
+    val ^= val >> 33;
+    return val;
 }
 
-#define LINE_UNIQUE_HASH hash_combine(hash_str(__FILE__, strlen(__FILE__)), hash_u32(__LINE__))
+u64 hash_combine(u64 a, u64 b)
+{
+    u64 x = a ^ b;
+    x ^= x >> 33;
+    x *= 0xff51afd7ed558ccdULL;
+    x ^= x >> 33;
+    x *= 0xc4ceb9fe1a85ec53ULL;
+    x ^= x >> 33;
+    return x;
+}
+
+#define LINE_UNIQUE_HASH hash_combine(hash_str(__FILE__), hash_u32(__LINE__))
 
 #endif // MARROW_H

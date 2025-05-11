@@ -113,13 +113,13 @@ MapaItem* mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* d
   mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
   while(true)
   {
-    if (mapa->entries[index].key == nullptr)
+    MapaEntry* entry = &mapa->entries[index];
+    if (entry->key == nullptr)
     {
       mapa->size += 1; // only update the size if inserting a completely new element
       break;
     }
 
-    MapaEntry* entry = &mapa->entries[index];
     if(mapa->cmp_func(entry->key, entry->key_size, key, key_size) == 0)
     {
       allocator_free(mapa->allocator, entry->item.data, entry->item.size);
@@ -151,12 +151,12 @@ MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_size)
     for(u32 i = 0; i < mapa->capacity; i++)
     {
         MapaEntry *entry = &mapa->entries[index];
-        if (mapa->cmp_func(entry->key, entry->key_size, key, key_size) == 0)
+        if (entry->key && mapa->cmp_func(entry->key, entry->key_size, key, key_size) == 0)
         {
             return &entry->item;
         }
 
-        index = (index + 1) % mapa->size;
+        index = (index + 1) % mapa->capacity;
     }
 
     return nullptr;

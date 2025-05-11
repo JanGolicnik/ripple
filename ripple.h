@@ -120,6 +120,7 @@ typedef struct RippleElementConfig {
 
 static Mapa* open_windows = nullptr;
 
+#define LABEL(var) (_Generic(var, u32: hash_u32((u32)(u64)var), char*: hash_str((const char*)var), default: hash_u32((u32)(u64)var)))
 void ripple_render_window_begin(RippleWindowConfig config)
 {
     if (!open_windows)
@@ -468,6 +469,7 @@ static void submit_element(ElementData* element)
     {
         child->calculated_layout = calculate_layout(child->config.layout, child->calculated_layout, element);
     }
+
     grow_children(element);
 
     _for_each_child(element)
@@ -582,9 +584,7 @@ static void update_element_state(u64 element_id)
 void Ripple_push_id(u64 id)
 {
     current_window.current_element.id = id;
-
     if (id == 0) return;
-
     update_element_state(current_window.current_element.id);
 }
 
@@ -646,8 +646,8 @@ static RippleElementState _get_element_state(u64 id)
 #define FIXED(value) { ._signed_value = value, ._type = SVT_FIXED }
 #define GROW { ._type = SVT_GROW }
 
-#define _HASH_LABEL(var) _Generic((var), char*: (u64)var, default: var)
-#define LABEL(var) (_HASH_LABEL(var))
+#undef LABEL
+#define LABEL(var) (_Generic(var, u32: hash_u32((u32)(u64)var), char*: hash_str((const char*)var), default: hash_u32((u32)(u64)var)))
 #define UNNAMED 0
 
 #define SURFACE(...) \
