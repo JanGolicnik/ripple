@@ -148,7 +148,7 @@ u64 hash_str(const char *str)
     return hash;
 }
 
-u64 hash_u32(u64 val)
+u64 hash_u64(u64 val)
 {
     val ^= val >> 33;
     val *= 0xff51afd7ed558ccdULL;
@@ -169,6 +169,6 @@ u64 hash_combine(u64 a, u64 b)
     return x;
 }
 
-#define LINE_UNIQUE_HASH hash_combine(hash_str(__FILE__), hash_u32(__LINE__))
+#define LINE_UNIQUE_HASH hash_combine(hash_str(__FILE__), hash_u64(__LINE__))
 
 #endif // MARROW_H

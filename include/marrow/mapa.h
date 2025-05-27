@@ -60,8 +60,14 @@ bool mapa_destroy(Mapa* mapa);
 MapaItem* mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, mapa_size_t data_size);
 MapaItem* mapa_insert_str(Mapa* mapa, char const* key, char* data); //expects null terminated string
 
+mapa_size_t mapa_capacity(Mapa* mapa);
+mapa_size_t mapa_size(Mapa* mapa);
+
+mapa_size_t mapa_get_index(Mapa* mapa, void const* key, mapa_size_t key_size);
+MapaItem* mapa_get_at_index(Mapa* mapa, mapa_size_t index);
 MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_size);
 MapaItem* mapa_get_str(Mapa* mapa, void const* key); // expects null terminated string
+void mapa_remove_at_index(Mapa* mapa, mapa_size_t index);
 bool mapa_remove(Mapa* mapa, void const* key, mapa_size_t key_size);
 bool mapa_remove_str(Mapa* mapa, void const* key); // expect null terminated string
 
@@ -142,24 +148,44 @@ MapaItem* mapa_insert_str(Mapa* mapa, char const* key, char* data)
   return mapa_insert(mapa, key, strlen(key) + 1, data, strlen(data) + 1);
 }
 
-MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_size)
+mapa_size_t mapa_capacity(Mapa* mapa)
+{
+  return mapa->capacity;
+}
+
+mapa_size_t mapa_size(Mapa* mapa)
+{
+  return mapa->size;
+}
+
+mapa_size_t mapa_get_index(Mapa* mapa, void const* key, mapa_size_t key_size)
 {
     if (mapa->size == 0)
-        return nullptr;
+        return -1;
 
     mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
-    for(u32 i = 0; i < mapa->capacity; i++)
+    for (u32 i = 0; i < mapa->capacity; i++)
     {
         MapaEntry *entry = &mapa->entries[index];
         if (entry->key && mapa->cmp_func(entry->key, entry->key_size, key, key_size) == 0)
         {
-            return &entry->item;
+            return index;
         }
 
         index = (index + 1) % mapa->capacity;
     }
 
-    return nullptr;
+    return -1;
+}
+
+MapaItem* mapa_get_at_index(Mapa* mapa, mapa_size_t index)
+{
+  return index <= mapa->capacity ? &mapa->entries[index].item : nullptr;
+}
+
+MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_size)
+{
+    return mapa_get_at_index(mapa, mapa_get_index(mapa, key, key_size));
 }
 
 MapaItem* mapa_get_str(Mapa* mapa, void const* key)
@@ -167,42 +193,46 @@ MapaItem* mapa_get_str(Mapa* mapa, void const* key)
   return mapa_get(mapa, key, strlen(key) + 1);
 }
 
+void mapa_remove_at_index(Mapa* mapa, mapa_size_t index)
+{
+    MapaEntry* entry = &mapa->entries[index];
+
+    allocator_free(mapa->allocator, entry->item.data, entry->item.size);
+    allocator_free(mapa->allocator, entry->key, entry->key_size);
+    *entry = (MapaEntry){ 0 };
+    mapa->size -= 1;
+
+    // move remaining entries down
+    for (mapa_size_t i = 0; i < mapa->capacity; i++)
+    {
+        mapa_size_t next_index = (index + i + 1) % mapa->capacity;
+        MapaEntry *next_entry = &mapa->entries[next_index];
+        if (next_entry->key == nullptr || next_index == mapa->hash_func(next_entry->key, next_entry->key_size) % mapa->capacity)
+            break; // if entry is where it should be or if slot is empty
+
+        *entry = *next_entry;
+        *next_entry = (MapaEntry){ 0 };
+    }
+}
+
 bool mapa_remove(Mapa* mapa, void const* key, mapa_size_t key_size)
 {
   mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
   for (mapa_size_t i = 0; i < mapa->capacity; i++)
   {
-    MapaEntry *entry = &mapa->entries[index];
-    if (entry->key == nullptr)
-      return true; // item doesnt exist
-
-    if (mapa->cmp_func(entry->key, entry->key_size, key, key_size) != 0)
-    {
-      index = (index + 1) % mapa->capacity;
-      continue;
-    }
-
-    allocator_free(mapa->allocator, entry->item.data, entry->item.size);
-    allocator_free(mapa->allocator, entry->key, entry->key_size);
-    memset(entry, 0, sizeof(*entry));
-    mapa->size -= 1;
-
-    // move remaining entries down
-    for(mapa_size_t i = 0; i < mapa->capacity; i++)
-    {
-      mapa_size_t index = mapa->hash_func(key, key_size) % mapa->capacity;
       MapaEntry *entry = &mapa->entries[index];
-      mapa_size_t next_index = (index + i + 1) % mapa->capacity;
-      MapaEntry *next_entry = &mapa->entries[next_index];
-      if(next_entry->key == nullptr ||
-         next_index == mapa->hash_func(next_entry->key, next_entry->key_size))
-        break; // if entry is where it should be or if slot is empty
+      if (entry->key == nullptr)
+          return true; // item doesnt exist
 
-      memcpy(entry, next_entry, sizeof(*entry));
-      memset(next_entry, 0, sizeof(*entry));
-    }
+      if (mapa->cmp_func(entry->key, entry->key_size, key, key_size) != 0)
+      {
+          index = (index + 1) % mapa->capacity;
+          continue;
+      }
 
-    return true;
+      mapa_remove_at_index(mapa, index);
+
+      return true;
   }
 
   return false;

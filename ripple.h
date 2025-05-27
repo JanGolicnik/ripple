@@ -193,91 +193,7 @@ void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
     DrawRectangle(x, y, w, h, (Color) {.a = 0xff, .r = (color >> 16) & 0xff, .g = (color >> 8) & 0xff, .b = color & 0xff});
 }
 
-#else //RIPPLE_RENDERING_CUSTOM
-
-#include <windows.h>
-
-thread_local FILE* ripple_current_window_file = nullptr;
-
-void ripple_render_window_begin(RippleWindowConfig config)
-{
-    if (ripple_current_window_file)
-        fclose(ripple_current_window_file);
-
-    char file_name[255];
-    u32 len = print(file_name, 254, "{}_tmp.svg", config.title);
-    file_name[len] = 0;
-    ripple_current_window_file = fopen(file_name, "w");
-    printfb(ripple_current_window_file, "<svg xmlns='http://www.w3.org/2000/svg' width='{}' height='{}' style='background:#ffffff'>\n", config.width, config.height);
-    printfb(ripple_current_window_file, "    <rect x='0' y='0' width='{}' height='{}' fill='#eeeeee'/>\n", config.width, config.height);
-}
-
-void ripple_render_window_end(RippleWindowConfig config)
-{
-    printfb(ripple_current_window_file, "</svg>\n");
-    if (ripple_current_window_file)
-    {
-        fclose(ripple_current_window_file);
-        char old_file_name[255]; old_file_name[print(old_file_name, 254, "{}_tmp.svg", config.title)] = 0;
-        char new_file_name[255]; new_file_name[print(new_file_name, 254, "{}.svg", config.title)] = 0;
-        MoveFileExA(old_file_name, new_file_name, MOVEFILE_REPLACE_EXISTING);
-    }
-    ripple_current_window_file = nullptr;
-    Sleep(16);
-}
-
-RippleWindowState ripple_update_window_state(RippleWindowConfig config)
-{
-    return (RippleWindowState){ .initialized = 1 };
-}
-
-void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
-{
-    char color_str[7] = { [6] = 0 };
-    for(i32 i = 0; i < 6; i++) color_str[5 - i] = "0123456789abcdef"[(color >> (i*4)) & 0xf];
-    printfb(ripple_current_window_file, "    <rect x='{}' y='{}' width='{}' height='{}' fill='#{}'/>\n", x, y, w, h, color_str);
-}
-
-#endif
-
-#undef PRINTCCY_TYPES
-#define PRINTCCY_TYPES PRINTCCY_BASE_TYPES, RippleElementConfig: print_element_config, RenderedLayout: print_calculated_layout
-
-int print_element_config(char* output, size_t output_len, va_list* list, const char* args, size_t args_len);
-int print_calculated_layout(char* output, size_t output_len, va_list* list, const char* args, size_t args_len);
-
-int print_element_config(char* output, size_t output_len, va_list* list, const char* args, size_t args_len) {
-    RippleElementConfig config = va_arg(*list, RippleElementConfig);
-    #define PRINT_VALUE(name) (i32)config.name._type, config.name._type == SVT_FIXED ? \
-                (i64)config.name._signed_value : \
-                (f64)config.name._unsigned_value / (f64)(2<<14)
-    return print(output, output_len,
-           "ElementConfig %{"
-                " id: {},"
-                " ElementLayout"
-                    " fixed: {},"
-                    " x: ({}, {.2f}),"
-                    " y: ({}, {.2f}),"
-                    " width: ({}, {.2f}),"
-                    " height: ({}, {.2f}),"
-                    " min_width: ({}, {.2f}),"
-                    " min_height: ({}, {.2f}),"
-                    " max_width: ({}, {.2f}),"
-                    " max_width: ({}, {.2f}),"
-                "},"
-            "} ",
-            config.layout.fixed,
-            PRINT_VALUE(layout.x),
-            PRINT_VALUE(layout.y),
-            PRINT_VALUE(layout.width),
-            PRINT_VALUE(layout.height),
-            PRINT_VALUE(layout.min_width),
-            PRINT_VALUE(layout.min_height),
-            PRINT_VALUE(layout.max_width),
-            PRINT_VALUE(layout.max_height)
-    );
-    #undef PRINT_VALUE
-}
+#endif // RIPPLE_RENDERING_CUSTOM
 
 void Ripple_start_window(RippleWindowConfig config);
 void Ripple_finish_window(void);
@@ -286,10 +202,14 @@ void Ripple_push_id(u64);
 void Ripple_submit_element(RippleElementConfig config); // copies render data if its size is non zero
 void Ripple_pop_id(void);
 
+void Ripple_begin(Allocator* allocator);
+void Ripple_end(void);
+
 #ifdef RIPPLE_IMPLEMENTATION
 #undef RIPPLE_IMPLEMENTATION
 
 typedef struct {
+    u32 frame_color;
     RippleElementState state;
     RenderedLayout layout;
 } ElementState;
@@ -309,6 +229,8 @@ typedef struct {
     RippleWindowState state;
 
     RippleCursorState cursor_state;
+
+    u32 frame_color;
 
     Vektor* elements;
     struct {
@@ -394,6 +316,8 @@ void Ripple_start_window(RippleWindowConfig config)
     current_window.current_element.index = 0;
     current_window.current_element.id = 0;
 
+    current_window.frame_color++;
+
     debug("started window {}", config.title);
 }
 
@@ -406,6 +330,19 @@ void Ripple_finish_window(void)
     submit_element(vektor_get(current_window.elements, 0));
 
     ripple_render_window_end(current_window.config);
+
+    // remove dead elements
+    {
+        u32 n_elements = mapa_capacity(current_window.elements_states);
+        for (mapa_size_t element_i = 0; element_i < n_elements; element_i++)
+        {
+            MapaItem* item = mapa_get_at_index(current_window.elements_states, element_i);
+            ElementState* state = (ElementState*)item->data;
+
+            if (state && state->frame_color != current_window.frame_color)
+                mapa_remove_at_index(current_window.elements_states, element_i);
+        }
+    }
 
     MapaItem* window_item = mapa_get(windows, current_window.config.title, sizeof(current_window.config.title));
     if (window_item) *(Window*)window_item->data = current_window;
@@ -452,6 +389,23 @@ static RenderedLayout calculate_layout(RippleElementLayoutConfig layout, Rendere
     return this_layout;
 }
 
+static void update_element_state(u64 element_id)
+{
+    MapaItem* element_state_item = mapa_get(current_window.elements_states, &element_id, sizeof(element_id));
+    if (!element_state_item) // we dont update new elements yet, they get added in their finish function
+        return;
+
+    ElementState *state = (ElementState*)element_state_item->data;
+
+    state->frame_color = current_window.frame_color;
+
+    state->state.hovered =
+        current_window.cursor_state.x >= state->layout.x && current_window.cursor_state.x < state->layout.x + state->layout.w &&
+        current_window.cursor_state.y >= state->layout.y && current_window.cursor_state.y < state->layout.y + state->layout.h;
+
+    state->state.clicked = state->state.hovered && current_window.cursor_state.left_pressed;
+}
+
 // submits element for rendering and calculates its input state
 static void submit_element(ElementData* element)
 {
@@ -463,6 +417,8 @@ static void submit_element(ElementData* element)
         ((ElementState*)state_item->data)->layout = element->calculated_layout;
     else
         mapa_insert(current_window.elements_states, &element->id, sizeof(element->id), &(ElementState) { .layout = element->calculated_layout }, sizeof(ElementState));
+
+    update_element_state(element->id);
 
     // our layout is done and we can calculate children
     _for_each_child(element)
@@ -567,25 +523,18 @@ static void grow_children(ElementData* data)
     #undef LAYOUT_DIM
 }
 
-static void update_element_state(u64 element_id)
+static u64 generate_element_id(u64 base, u64 parent_id, u32 index)
 {
-    MapaItem* element_state_item = mapa_get(current_window.elements_states, &element_id, sizeof(element_id));
-    if (!element_state_item) // we dont update new elements yet, they get added in their finish function
-        return;
-
-    ElementState *state = (ElementState*)element_state_item->data;
-    state->state.hovered =
-        current_window.cursor_state.x >= state->layout.x && current_window.cursor_state.x < state->layout.x + state->layout.w &&
-        current_window.cursor_state.y >= state->layout.y && current_window.cursor_state.y < state->layout.y + state->layout.h;
-    state->state.clicked = state->state.hovered && current_window.cursor_state.left_pressed;
+    return hash_u64(hash_combine(base, hash_u64(parent_id + (u64)index * 1000)));
 }
 
-// should be called before start element
+// should be called before submit element
 void Ripple_push_id(u64 id)
 {
-    current_window.current_element.id = id;
-    if (id == 0) return;
-    update_element_state(current_window.current_element.id);
+    ElementData* parent = vektor_get(current_window.elements, current_window.current_element.index);
+
+    current_window.current_element.id = id == 0 ? id :
+        generate_element_id(id, current_window.current_element.id, parent->n_children);
 }
 
 void Ripple_submit_element(RippleElementConfig config)
@@ -627,6 +576,15 @@ void Ripple_pop_id(void)
     current_window.current_element.id = parent->id;
 }
 
+void Ripple_begin(Allocator* allocator)
+{
+}
+
+void Ripple_end(void)
+{
+
+}
+
 #endif // RIPPLE_IMPLEMENTATION
 
 #ifdef RIPPLE_WIDGETS
@@ -635,6 +593,14 @@ static RippleElementState _get_element_state(u64 id)
 {
     MapaItem* item = mapa_get(current_window.elements_states, &id, sizeof(id));
     return item ? ((ElementState*)item->data)->state : (RippleElementState){ 0 };
+}
+
+static RippleElementState _get_current_element_state()
+{
+    u64 this_id = current_window.current_element.id;
+    ElementData* element = vektor_get(current_window.elements, current_window.current_element.index);
+    ElementData* parent = vektor_get(current_window.elements, element->parent_element);
+    return _get_element_state(generate_element_id(this_id, parent->id, parent->n_children));
 }
 
 #define STATE() (_get_element_state(current_window.current_element.id))
@@ -647,7 +613,7 @@ static RippleElementState _get_element_state(u64 id)
 #define GROW { ._type = SVT_GROW }
 
 #undef LABEL
-#define LABEL(var) (_Generic(var, u32: hash_u32((u32)(u64)var), char*: hash_str((const char*)var), default: hash_u32((u32)(u64)var)))
+#define LABEL(var) (_Generic(var, u32: hash_uu64((u64)var), char*: hash_str((const char*)var), default: hash_u64((u64)var)))
 #define UNNAMED 0
 
 #define SURFACE(...) \
@@ -655,10 +621,13 @@ static RippleElementState _get_element_state(u64 id)
 
 #define SURFACE_SHOULD_CLOSE(...) ( current_window.state.should_close )
 
-#define RIPPLE(id, ...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_push_id(id), Ripple_submit_element((RippleElementConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_pop_id(), LINE_UNIQUE_VAR(_rippleiter)++)
+#define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_push_id(LINE_UNIQUE_HASH), Ripple_submit_element((RippleElementConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_pop_id(), LINE_UNIQUE_VAR(_rippleiter)++)
 
 #define DISTURBANCE 0
 #define FORM(...) .layout = { __VA_ARGS__ }
+
+#define OPEN_THE_VOID(allocator) Ripple_begin(allocator)
+#define CLOSE_THE_VOID() Ripple_end()
 
 typedef struct {
     RippleColor color;
@@ -680,15 +649,15 @@ void render_rectangle(RippleElementConfig config, RenderedLayout layout)
 #define IS_TREMBLING(name) ( STATE_OF(name).hovered ? true : false )
 
 #define CENTERED_HORIZONTAL(...) do {\
-        RIPPLE( UNNAMED, DISTURBANCE );\
+        RIPPLE( DISTURBANCE );\
         { __VA_ARGS__ }\
-        RIPPLE( UNNAMED, DISTURBANCE );\
+        RIPPLE( DISTURBANCE );\
 } while (false)
 #define CENTERED_VERTICAL(...) do {\
-        RIPPLE( UNNAMED, FORM( .direction = cld_VERTICAL ) ) {\
-            RIPPLE( UNNAMED, DISTURBANCE );\
+        RIPPLE( FORM( .direction = cld_VERTICAL ) ) {\
+            RIPPLE( DISTURBANCE );\
             { __VA_ARGS__ }\
-            RIPPLE( UNNAMED, DISTURBANCE );\
+            RIPPLE( DISTURBANCE );\
         }\
 } while (false)
 #define CENTERED(...) CENTERED_HORIZONTAL(CENTERED_VERTICAL(__VA_ARGS__);)
