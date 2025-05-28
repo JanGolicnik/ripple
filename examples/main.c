@@ -1,9 +1,8 @@
-#define debug(...) (void)0
-
 #define RIPPLE_RENDERING_RAYLIB
 #define RIPPLE_IMPLEMENTATION
 #define RIPPLE_WIDGETS
-#include "ripple.h"
+#include "backends/ripple_raylib.h"
+
 
 void full_test(void)
 {
@@ -29,13 +28,15 @@ void full_test(void)
         {
             RIPPLE( FORM( .height = DEPTH(.1f, FOUNDATION) ) );
 
-            RIPPLE( DISTURBANCE )
+            RIPPLE()
             {
+                RippleElementLayoutConfig small_guys_form = { .width = FIXED(4) };
                 for(u32 i = 0; i < 50; i++)
                 {
-                    if (i) RIPPLE( RECTANGLE( .color = STATE().hovered ? 0xBAF9FF : 0x8ACCD5 ));
-                    RIPPLE( FORM( .width = FIXED(4) ) );
+                    RIPPLE( .layout = small_guys_form );
+                    RIPPLE( RECTANGLE( .color = STATE().hovered ? 0xBAF9FF : 0x8ACCD5 ));
                 }
+                RIPPLE( .layout = small_guys_form );
             }
 
             RIPPLE( FORM( .height = DEPTH(.1f, FOUNDATION) ) );
@@ -50,7 +51,7 @@ void number_test()
         for (int i = 0; i < 200; i++)
         {
             RIPPLE( RECTANGLE( .color = 0x0 ) );
-            RIPPLE( DISTURBANCE );
+            RIPPLE();
         }
     }
 }
@@ -80,7 +81,7 @@ test_func* test_funcs[] = { &full_test, &number_test, &rgb_test, &element_func_t
 int main(int argc, char* argv[])
 {
     u32 test_index = 0;
-    while( !SURFACE_SHOULD_CLOSE() )
+    while( SURFACE_IS_STABLE() )
     {
         SURFACE( .title = "surface", .width = 800, .height = 800 + 45 )
         {
@@ -94,7 +95,7 @@ int main(int argc, char* argv[])
                     RIPPLE( FORM( .width = FIXED(45) ), RECTANGLE( .color = STATE().hovered ? 0x0 : 0x00ffaa ) ) { if (STATE().hovered) test_index = 3; }
                 }
 
-                RIPPLE( DISTURBANCE )
+                RIPPLE()
                 {
                     test_index = min(test_index, sizeof(test_funcs));
                     test_funcs[test_index]();
