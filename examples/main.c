@@ -1,18 +1,23 @@
+#include <math.h>
+
 #define RIPPLE_RENDERING_RAYLIB
 #define RIPPLE_IMPLEMENTATION
 #define RIPPLE_WIDGETS
 #include "backends/ripple_raylib.h"
 
-
-void full_test(void)
+void full_test(f32 dt)
 {
+    static f32 time = 0.0f;
+    time += dt;
+
     RIPPLE( FORM ( .direction = cld_VERTICAL ), RECTANGLE ( .color = 0xF8F8E1 ) )
     {
         RIPPLE( FORM ( .height = DEPTH(3.0f/4.0f, FOUNDATION) ) )
         {
             RIPPLE( FORM (.width = DEPTH(1.0f/3.0f, FOUNDATION), .direction = cld_VERTICAL ) )
             {
-                RIPPLE( FORM (.height = DEPTH(3.0f/4.0f, FOUNDATION ) ) );
+                f32 t = (sinf(time) + 1.0f) * 0.5f;
+                RIPPLE( FORM (.height = DEPTH(t * (3.0f/4.0f), FOUNDATION ) ) );
 
                 RIPPLE( FORM ( .width = DEPTH(.25f, FOUNDATION)), RECTANGLE ( .color = STATE().hovered ? 0xFFD5EE : 0xFFC1DA ) );
 
@@ -44,7 +49,7 @@ void full_test(void)
     }
 }
 
-void number_test()
+void number_test(f32 _)
 {
     RIPPLE( RECTANGLE( .color = 0xffffff ) )
     {
@@ -56,7 +61,7 @@ void number_test()
     }
 }
 
-void rgb_test()
+void rgb_test(f32 _)
 {
     RIPPLE( RECTANGLE( .color = STATE().hovered ? 0xff0000 : 0x000000 ) );
     RIPPLE( RECTANGLE( .color = STATE().hovered ? 0x00ff00 : 0x000000 ) );
@@ -68,21 +73,34 @@ void element_func_helper( u32 color, u32 hovered_color )
     RIPPLE( RECTANGLE( .color = STATE().hovered ? hovered_color : color ) );
 }
 
-void element_func_test()
+void element_func_test(f32 _)
 {
     element_func_helper(0xaa0000, 0xff0000);
     element_func_helper(0x00aa00, 0x00ff00);
     element_func_helper(0x0000aa, 0x0000ff);
 }
 
-typedef void (test_func)();
+typedef void (test_func)(f32);
 test_func* test_funcs[] = { &full_test, &number_test, &rgb_test, &element_func_test };
 
 int main(int argc, char* argv[])
 {
-    u32 test_index = 0;
+    u32 test_index = 1;
+    f32 accum_dt = 0.0f;
+    u32 n_dt_samples = 0;
     while( SURFACE_IS_STABLE() )
     {
+        f32 dt = GetFrameTime();
+
+        n_dt_samples += 1;
+        accum_dt += dt;
+        if (accum_dt > 1.0f)
+        {
+            debug("Running at {} fps", 1.0 / (f64)(accum_dt / (f32)n_dt_samples));
+            accum_dt = 0.0f;
+            n_dt_samples = 0;
+        }
+
         SURFACE( .title = "surface", .width = 800, .height = 800 + 45 )
         {
             RIPPLE( FORM( .direction = cld_VERTICAL ) )
@@ -98,12 +116,10 @@ int main(int argc, char* argv[])
                 RIPPLE()
                 {
                     test_index = min(test_index, sizeof(test_funcs));
-                    test_funcs[test_index]();
+                    test_funcs[test_index](dt);
                 }
             }
         }
-        //height += 2;
-        //if (height > 800) height = 1;
     }
 
     return 0;

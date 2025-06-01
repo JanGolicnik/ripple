@@ -153,8 +153,13 @@ typedef struct {
     RippleElementConfig config;
     RenderedLayout calculated_layout;
 
+    RenderedLayout children_bounds;
+
+    bool update_state;
+
     u32 parent_element;
     u32 n_children;
+    u32 last_child;
     u32 next_sibling;
 } ElementData;
 
@@ -254,58 +259,42 @@ static i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 
 // returns or if value is SVT_GROW
 #define CALCULATE_SIZING_OR(value, relative_member, or) \
     value._type == SVT_GROW ? or : \
-    apply_relative_sizing(value, parent->calculated_layout.relative_member, children_layout.relative_member)
+    apply_relative_sizing(value, parent->calculated_layout.relative_member, element->children_bounds.relative_member)
 
-static RenderedLayout sum_up_current_element_children(void)
+static RenderedLayout calculate_layout(ElementData* element, ElementData* parent)
 {
-    RenderedLayout out_layout = {0};
-    for (u32 i = current_window.current_element.index + 1; i < vektor_size(current_window.elements); i++) {
-        RenderedLayout child_layout = ((ElementData*)vektor_get(current_window.elements, i))->calculated_layout;
-        out_layout.x = min(out_layout.x, child_layout.x);
-        out_layout.y = min(out_layout.y, child_layout.y);
-        out_layout.w = max(out_layout.w, child_layout.w);
-        out_layout.h = max(out_layout.h, child_layout.h);
+    RippleElementLayoutConfig config = element->config.layout;
+    RenderedLayout layout = element->calculated_layout;
+
+    layout.w = CALCULATE_SIZING_OR(config.width, w, parent->config.layout.direction == cld_HORIZONTAL ? layout.w : parent->calculated_layout.w);
+    layout.max_w = CALCULATE_SIZING_OR(config.max_width, w, I32_MAX);
+    i32 min_width = CALCULATE_SIZING_OR(config.min_width, w, 0);
+    layout.w = clamp(layout.w, min_width, layout.max_w);
+
+    if (config.x._type != SVT_GROW )
+    {
+        i32 x = CALCULATE_SIZING_OR(config.x, w, 0);
+        layout.x = parent->calculated_layout.x + x;
     }
-    return out_layout;
+
+    layout.h = CALCULATE_SIZING_OR(config.height, h, parent->config.layout.direction == cld_VERTICAL ? layout.h : parent->calculated_layout.h);
+    layout.max_h = CALCULATE_SIZING_OR(config.max_height, h, I32_MAX);
+    i32 min_height = CALCULATE_SIZING_OR(config.min_height, h, 0);
+    layout.h = clamp(layout.h, min_height, layout.max_h);
+
+    if (config.y._type != SVT_GROW )
+    {
+        i32 y = CALCULATE_SIZING_OR(config.y, h, 0);
+        layout.y = parent->calculated_layout.y + y;
+    }
+
+    return layout;
 }
 
-static RenderedLayout calculate_layout(RippleElementLayoutConfig layout, RenderedLayout this_layout, ElementData* parent)
+#undef CALCULATE_SIZING_OR
+
+static void update_element_state(ElementState* state)
 {
-    RenderedLayout children_layout = sum_up_current_element_children();
-
-    this_layout.w = CALCULATE_SIZING_OR(layout.width, w, parent->config.layout.direction == cld_HORIZONTAL ? this_layout.w : parent->calculated_layout.w);
-    this_layout.max_w = CALCULATE_SIZING_OR(layout.max_width, w, I32_MAX);
-    i32 min_width = CALCULATE_SIZING_OR(layout.min_width, w, 0);
-    this_layout.w = clamp(this_layout.w, min_width, this_layout.max_w);
-
-    if (layout.x._type != SVT_GROW )
-    {
-        i32 x = CALCULATE_SIZING_OR(layout.x, w, 0);
-        this_layout.x = parent->calculated_layout.x + x;
-    }
-
-    this_layout.h = CALCULATE_SIZING_OR(layout.height, h, parent->config.layout.direction == cld_VERTICAL ? this_layout.h : parent->calculated_layout.h);
-    this_layout.max_h = CALCULATE_SIZING_OR(layout.max_height, h, I32_MAX);
-    i32 min_height = CALCULATE_SIZING_OR(layout.min_height, h, 0);
-    this_layout.h = clamp(this_layout.h, min_height, this_layout.max_h);
-
-    if (layout.y._type != SVT_GROW )
-    {
-        i32 y = CALCULATE_SIZING_OR(layout.y, h, 0);
-        this_layout.y = parent->calculated_layout.y + y;
-    }
-
-    return this_layout;
-}
-
-static void update_element_state(u64 element_id)
-{
-    MapaItem* element_state_item = mapa_get(current_window.elements_states, &element_id, sizeof(element_id));
-    if (!element_state_item) // we dont update new elements yet, they get added in their finish function
-        return;
-
-    ElementState *state = (ElementState*)element_state_item->data;
-
     state->frame_color = current_window.frame_color;
 
     state->state.hovered =
@@ -413,22 +402,25 @@ static void submit_element(ElementData* element)
     if (element->config.render_func) element->config.render_func(element->config, element->calculated_layout);
     allocator_free(current_window.config.allocator, element->config.render_data, element->config.render_data_size);
 
-    MapaItem* state_item = mapa_get(current_window.elements_states, &element->id, sizeof(element->id));
-    if (state_item)
+    if (element->update_state)
     {
-        ((ElementState*)state_item->data)->layout = element->calculated_layout;
-    }
-    else
-    {
-        mapa_insert(current_window.elements_states, &element->id, sizeof(element->id), &(ElementState){ .layout = element->calculated_layout }, sizeof(ElementState));
-    }
+        MapaItem* state_item = mapa_get(current_window.elements_states, &element->id, sizeof(element->id));
+        if (state_item)
+        {
+            ((ElementState*)state_item->data)->layout = element->calculated_layout;
+        }
+        else
+        {
+            state_item = mapa_insert(current_window.elements_states, &element->id, sizeof(element->id), &(ElementState){ .layout = element->calculated_layout }, sizeof(ElementState));
+        }
 
-    update_element_state(element->id);
+        update_element_state((ElementState*)state_item->data);
+    }
 
     // our layout is done and we can calculate children
     _for_each_child(element)
     {
-        child->calculated_layout = calculate_layout(child->config.layout, child->calculated_layout, element);
+        child->calculated_layout = calculate_layout(child, element);
     }
 
     grow_children(element);
@@ -451,33 +443,42 @@ void Ripple_push_id(u64 id)
 {
     ElementData* parent = vektor_get(current_window.elements, current_window.current_element.index);
     current_window.current_element.id = id ? generate_element_id(id, current_window.current_element.id, parent->n_children) : id;
+
+    vektor_add(current_window.elements, &(ElementData){
+        .parent_element = current_window.current_element.index,
+        .id = current_window.current_element.id
+    });
+    current_window.current_element.index = vektor_size(current_window.elements) - 1;
+}
+
+static RenderedLayout sum_layouts(RenderedLayout a, RenderedLayout b)
+{
+    return (RenderedLayout){
+        .x = min(a.x, b.x), .y = min(a.y, b.y),
+        .w = max(a.w, b.w), .h = max(a.h, b.h)
+    };
 }
 
 void Ripple_submit_element(RippleElementConfig config)
 {
-    u32 parent_element_index = current_window.current_element.index;
-    current_window.current_element.index = vektor_size(current_window.elements);
+    ElementData* element = vektor_get(current_window.elements, current_window.current_element.index);
 
-    ElementData* parent = vektor_get(current_window.elements, parent_element_index);
+    ElementData* parent = vektor_get(current_window.elements, element->parent_element);
     if (parent->n_children++ > 0)
     {
-        ElementData* child = parent + 1;
-        while (child->next_sibling) { child = vektor_get(current_window.elements, child->next_sibling); }
+        ElementData* child = vektor_get(current_window.elements, parent->last_child);
         child->next_sibling = current_window.current_element.index;
     }
-
-    RenderedLayout calculated_layout = calculate_layout(config.layout, (RenderedLayout){0}, parent);
+    parent->last_child = current_window.current_element.index;
 
     // render_data is supposed to be set if render_data_size is also
     if (config.render_data_size)
         config.render_data = allocator_make_copy(current_window.config.allocator, config.render_data, config.render_data_size);
 
-    vektor_add(current_window.elements, &(ElementData){
-        .calculated_layout = calculated_layout,
-        .config = config,
-        .parent_element = parent_element_index,
-        .id = current_window.current_element.id
-    });
+    element->config = config;
+
+    element->calculated_layout = calculate_layout(element, parent);
+    parent->children_bounds = sum_layouts(parent->calculated_layout, element->calculated_layout);
 }
 
 void Ripple_pop_id(void)
@@ -502,13 +503,15 @@ void Ripple_end(void)
 
 #ifdef RIPPLE_WIDGETS
 
-static RippleElementState _get_element_state(u64 id)
+static RippleElementState _get_current_element_state()
 {
-    MapaItem* item = mapa_get(current_window.elements_states, &id, sizeof(id));
+    ElementData* element = vektor_get(current_window.elements, current_window.current_element.index);
+    element->update_state = true;
+    MapaItem* item = mapa_get(current_window.elements_states, &current_window.current_element.id, sizeof(current_window.current_element.id));
     return item ? ((ElementState*)item->data)->state : (RippleElementState){ 0 };
 }
 
-#define STATE() (_get_element_state(current_window.current_element.id))
+#define STATE() (_get_current_element_state())
 
 #define FOUNDATION ._type = SVT_RELATIVE_PARENT
 #define REFINEMENT ._type = SVT_RELATIVE_CHILD
