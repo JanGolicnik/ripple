@@ -110,6 +110,32 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 
 #endif // MARROW_NO_PRINTCCY
 
+u32 str_len(const char* str)
+{
+    const char* iter = str;
+    while (*iter) iter++;
+    return iter - str;
+}
+
+void buf_copy(void* dst, const void* source, usize len)
+{
+    while(len--) ((u8*)dst)[len] = ((u8*)source)[len];
+}
+
+int buf_cmp(const void* a, const void* b, usize len)
+{
+    for (usize i = 0; i < len; i++) {
+        if (((u8*)a)[i] != ((u8*)b)[i])
+            return (i32)((u8*)a)[i] - (i32)((u8*)b)[i];
+    }
+    return 0;
+}
+
+void buf_set(void* dst, u8 value, usize len)
+{
+    while (len--) ((u8*)dst)[len] = value;
+}
+
 #ifndef LINE_UNIQUE_VAR
 #define LINE_UNIQUE_VAR_CONCAT(a, b) a##b
 #define LINE_UNIQUE_VAR_PASS(a, b) LINE_UNIQUE_VAR_CONCAT(a, b)

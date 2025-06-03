@@ -3,8 +3,6 @@
 
 #include "marrow.h"
 
-#include <string.h>
-
 typedef void* (allocator_alloc_func)(void* ctx, usize size);
 typedef void* (allocator_realloc_func)(void* ctx, void* ptr, usize old_size, usize new_size);
 typedef void (allocator_free_func)(void* ctx, void* ptr, usize size);
@@ -33,7 +31,7 @@ void* allocator_alloc(Allocator* allocator, usize size)
 void* allocator_make_copy(Allocator* allocator, void* ptr, usize size)
 {
     void* new_ptr = allocator_alloc(allocator, size);
-    memcpy(new_ptr, ptr, size);
+    buf_copy(new_ptr, ptr, size);
     return new_ptr;
 }
 

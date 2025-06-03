@@ -13,11 +13,11 @@ void ripple_render_window_begin(RippleWindowConfig config)
 
     bool just_opened = false;
 
-    MapaItem* entry = mapa_get(open_windows, config.title, strlen(config.title));
+    MapaItem* entry = mapa_get(open_windows, config.title, str_len(config.title));
     if (!entry)
     {
         InitWindow(config.width, config.height, config.title);
-        entry = mapa_insert(open_windows, config.title, strlen(config.title), &config, sizeof(config));
+        entry = mapa_insert(open_windows, config.title, str_len(config.title), &config, sizeof(config));
         just_opened = true;
     }
 

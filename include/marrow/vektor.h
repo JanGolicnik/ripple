@@ -4,8 +4,6 @@
 #include "marrow.h"
 #include "allocator.h"
 
-#include <string.h>
-
 typedef size_t vektor_size_t;
 
 #ifdef MARROW_VEKTOR_IMPLEMENTATION
@@ -114,7 +112,7 @@ void* vektor_add(Vektor* vektor, const void* data)
     if (vektor->size >= vektor->capacity)
         internal_vektor_grow(vektor);
 
-    memcpy((u8*)vektor->data + vektor->size * vektor->element_size, data, vektor->element_size);
+    buf_copy((u8*)vektor->data + vektor->size * vektor->element_size, data, vektor->element_size);
     vektor->size++;
     return vektor_last(vektor);
 }
@@ -142,11 +140,11 @@ void* vektor_insert(Vektor* vektor, vektor_size_t location, const void* data)
     location *= vektor->element_size;
     u8* destination = (u8*)vektor->data + location;
 
-    memcpy(destination,
+    buf_copy(destination,
            destination + vektor->element_size,
            vektor->size * vektor->element_size - location);
 
-    memcpy(destination, data, vektor->element_size);
+    buf_copy(destination, data, vektor->element_size);
 
     return destination;
 }
@@ -182,7 +180,7 @@ bool vektor_remove(Vektor* vektor, vektor_size_t index)
         return true;
 
     index *= vektor->element_size;
-    memcpy((u8*)vektor->data + index,
+    buf_copy((u8*)vektor->data + index,
            (u8*)vektor->data + index + vektor->element_size,
             n * vektor->element_size);
     return true;

@@ -3,8 +3,6 @@
 
 #include "marrow.h"
 
-#include <string.h>
-
 typedef u64 mapa_size_t;
 typedef u64 mapa_hash_t;
 typedef mapa_hash_t (*mapa_hash_func)(void const*, mapa_size_t);
@@ -80,7 +78,7 @@ void internal_mapa_grow(Mapa* mapa, mapa_size_t new_capacity)
 {
   u32 alloc_size = new_capacity * sizeof(MapaEntry);
   MapaEntry *new_entries = allocator_alloc(mapa->allocator, alloc_size);
-  memset( new_entries, 0, alloc_size);
+  buf_set( new_entries, 0, alloc_size);
 
   for (mapa_size_t i = 0; i < mapa->capacity; i++)
   {
@@ -103,7 +101,7 @@ void internal_mapa_grow(Mapa* mapa, mapa_size_t new_capacity)
 MapaItem* mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, mapa_size_t data_size)
 {
   MapaItem new_item = (MapaItem){ .data = allocator_alloc(mapa->allocator, data_size), .size = data_size};
-  memcpy(new_item.data, data, data_size);
+  buf_copy(new_item.data, data, data_size);
 
   MapaItem *item = mapa_get(mapa, key, key_size);
   if(item)
@@ -137,7 +135,7 @@ MapaItem* mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* d
   }
 
   MapaEntry entry = (MapaEntry){.key = allocator_alloc(mapa->allocator, key_size), .key_size = key_size, .item = new_item };
-  memcpy(entry.key, key, key_size);
+  buf_copy(entry.key, key, key_size);
 
   mapa->entries[index] = entry;
   return &mapa->entries[index].item;
@@ -145,7 +143,7 @@ MapaItem* mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* d
 
 MapaItem* mapa_insert_str(Mapa* mapa, char const* key, char* data)
 {
-  return mapa_insert(mapa, key, strlen(key) + 1, data, strlen(data) + 1);
+  return mapa_insert(mapa, key, str_len(key) + 1, data, str_len(data) + 1);
 }
 
 mapa_size_t mapa_capacity(Mapa* mapa)
@@ -190,7 +188,7 @@ MapaItem* mapa_get(Mapa* mapa, void const* key, mapa_size_t key_size)
 
 MapaItem* mapa_get_str(Mapa* mapa, void const* key)
 {
-  return mapa_get(mapa, key, strlen(key) + 1);
+  return mapa_get(mapa, key, str_len(key) + 1);
 }
 
 void mapa_remove_at_index(Mapa* mapa, mapa_size_t index)
@@ -240,7 +238,7 @@ bool mapa_remove(Mapa* mapa, void const* key, mapa_size_t key_size)
 
 bool mapa_remove_str(Mapa* mapa, void const* key)
 {
-  return mapa_remove(mapa, key, strlen(key) + 1);
+  return mapa_remove(mapa, key, str_len(key) + 1);
 }
 
 
@@ -329,7 +327,7 @@ mapa_hash_t mapa_hash_MurmurOAAT_32(void const* key, mapa_size_t key_size)
 
 u8 mapa_cmp_bytes(void const* a, mapa_size_t a_size, void const* b, mapa_size_t b_size)
 {
-  return a_size == b_size ? memcmp(a, b, a_size) : -1;
+  return a_size == b_size ? buf_cmp(a, b, a_size) : -1;
 }
 
 #endif // MARROW_MAPA_IMPLEMENTATION

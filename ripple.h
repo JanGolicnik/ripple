@@ -19,8 +19,6 @@
 #include <marrow/allocator.h>
 #include <marrow/mapa.h>
 
-#include <string.h>
-
 typedef struct {
     struct {
         u8 initialized : 1;
