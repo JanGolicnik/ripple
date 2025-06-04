@@ -1,26 +1,28 @@
 #ifndef MARROW_H
 #define MARROW_H
 
+#include <stdint.h>
+
 #ifndef MARROW_NO_PRINTCCY
 #include <printccy/printccy.h>
 #endif // MARROW_NO_PRINTCCY
 
-typedef unsigned char       u8;
-typedef unsigned short      u16;
-typedef unsigned int        u32;
-typedef unsigned long long  u64;
+typedef uint8_t       u8;
+typedef uint16_t      u16;
+typedef uint32_t      u32;
+typedef uint64_t      u64;
 
-typedef signed char         i8;
-typedef signed short        i16;
-typedef signed int          i32;
-typedef signed long long    i64;
+typedef int8_t        i8;
+typedef int16_t       i16;
+typedef int32_t       i32;
+typedef int64_t       i64;
 
-typedef u64 usize;
+typedef uintmax_t     usize;
 
-typedef float               f32;
-typedef double              f64;
+typedef float         f32;
+typedef double        f64;
 
-typedef _Bool               bool;
+typedef _Bool         bool;
 
 const u8  U8_MAX  = ~(u8) 0;
 const u16 U16_MAX = ~(u16)0;
