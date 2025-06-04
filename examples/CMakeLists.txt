@@ -17,6 +17,9 @@ target_include_directories(ripple PUBLIC
     ${CMAKE_SOURCE_DIR}/..
 )
 
-link_directories(${CMAKE_SOURCE_DIR}/../include/raylib/lib)
-
-target_link_libraries(ripple C:/dev/c/ripple/include/raylib/lib/libraylibdll.a -lopengl32 -lgdi32 -lwinmm)
+target_link_libraries(ripple
+    ${CMAKE_SOURCE_DIR}/../include/raylib/lib/libraylibdll.a
+    -lopengl32
+    -lgdi32
+    -lwinmm
+)
