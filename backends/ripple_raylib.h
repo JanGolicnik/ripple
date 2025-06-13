@@ -47,7 +47,7 @@ void ripple_get_window_size(u32* width, u32* height)
 
 RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWindowConfig config)
 {
-    // for some reason the first frame reports WinbdowShouldClose() as true
+    // for some reason the first frame reports WindowShouldClose() as true
     if ( !state.initialized )
     {
         state.initialized = 1;
@@ -62,9 +62,12 @@ RippleCursorState ripple_update_cursor_state(RippleCursorState state)
 {
     state.x = GetMousePosition().x;
     state.y = GetMousePosition().y;
-    state.left_pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
-    state.right_pressed = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
-    state.middle_pressed = IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE);
+    state.left.pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    state.right.pressed = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
+    state.middle.pressed = IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE);
+    state.left.released = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+    state.right.released = IsMouseButtonReleased(MOUSE_BUTTON_RIGHT);
+    state.middle.released = IsMouseButtonReleased(MOUSE_BUTTON_MIDDLE);
     return state;
 }
 

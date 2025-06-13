@@ -27,12 +27,15 @@ typedef struct {
 } RippleWindowState;
 
 typedef struct {
-    struct {
-        u32 left_pressed : 1;
-        u32 right_pressed : 1;
-        u32 middle_pressed : 1;
-    };
+    u8 pressed : 1;
+    u8 released : 1;
+    u8 held: 1;
+} MouseButtonState;
 
+typedef struct {
+    MouseButtonState left;
+    MouseButtonState right;
+    MouseButtonState middle;
     i32 x;
     i32 y;
 } RippleCursorState;
@@ -112,7 +115,7 @@ typedef struct RippleElementConfig {
 typedef struct {
     u32 clicked : 1;
     u32 hovered : 1;
-    u32 held : 1;
+    u32 is_held : 1;
 } RippleElementState;
 
 typedef u32 RippleColor;
@@ -199,7 +202,16 @@ void Ripple_start_window(RippleWindowConfig config)
     ripple_render_window_begin(current_window.config);
 
     ripple_get_window_size(&current_window.config.width, &current_window.config.height);
+
+    current_window.cursor_state.left.held |= current_window.cursor_state.left.pressed;
+    current_window.cursor_state.right.held |= current_window.cursor_state.right.pressed;
+    current_window.cursor_state.middle.held |= current_window.cursor_state.middle.pressed;
+
     current_window.cursor_state = ripple_update_cursor_state(current_window.cursor_state);
+
+    if (current_window.cursor_state.left.released) current_window.cursor_state.left.held = 0;
+    if (current_window.cursor_state.right.released) current_window.cursor_state.right.held = 0;
+    if (current_window.cursor_state.middle.released) current_window.cursor_state.middle.held = 0;
 
     vektor_add(current_window.elements, &(ElementData) {
             .calculated_layout = {
@@ -299,7 +311,8 @@ static void update_element_state(ElementState* state)
         current_window.cursor_state.x >= state->layout.x && current_window.cursor_state.x < state->layout.x + state->layout.w &&
         current_window.cursor_state.y >= state->layout.y && current_window.cursor_state.y < state->layout.y + state->layout.h;
 
-    state->state.clicked = state->state.hovered && current_window.cursor_state.left_pressed;
+    state->state.is_held = current_window.cursor_state.left.held && (state->state.clicked || (state->state.is_held && state->state.hovered));
+    state->state.clicked = state->state.hovered && current_window.cursor_state.left.pressed;
 }
 
 #define _I1 LINE_UNIQUE_VAR(_i)
@@ -451,10 +464,11 @@ void Ripple_push_id(u64 id)
 
 static RenderedLayout sum_layouts(RenderedLayout a, RenderedLayout b)
 {
-    return (RenderedLayout){
-        .x = min(a.x, b.x), .y = min(a.y, b.y),
-        .w = max(a.w, b.w), .h = max(a.h, b.h)
-    };
+    i32 x = min(a.x, b.x);
+    i32 y = min(a.y, b.y);
+    i32 w = max(a.x + a.w, b.x + b.w) - x;
+    i32 h = max(a.y + a.h, b.y + b.h) - y;
+    return (RenderedLayout){ .x = x, .y = y, .w = w, .h = h };
 }
 
 void Ripple_submit_element(RippleElementConfig config)
@@ -475,15 +489,18 @@ void Ripple_submit_element(RippleElementConfig config)
 
     element->config = config;
 
-    element->calculated_layout = calculate_layout(element, parent);
-    parent->children_bounds = sum_layouts(parent->calculated_layout, element->calculated_layout);
+    //RippleElementLayoutConfig config = element->config.layout;
+    //RenderedLayout layout = element->calculated_layout;
+    element->children_bounds = element->calculated_layout = calculate_layout(element, parent);
+    parent->children_bounds = sum_layouts(parent->children_bounds, element->calculated_layout);
 }
 
 void Ripple_pop_id(void)
 {
-    ElementData *data = (ElementData*)vektor_get(current_window.elements, current_window.current_element.index);
-    ElementData *parent = (ElementData*)vektor_get(current_window.elements, data->parent_element);
-    current_window.current_element.index = data->parent_element;
+    ElementData *element = (ElementData*)vektor_get(current_window.elements, current_window.current_element.index);
+    ElementData *parent = (ElementData*)vektor_get(current_window.elements, element->parent_element);
+    element->calculated_layout = calculate_layout(element, parent);
+    current_window.current_element.index = element->parent_element;
     current_window.current_element.id = parent->id;
 }
 
@@ -503,13 +520,25 @@ void Ripple_end(void)
 
 static RippleElementState _get_current_element_state()
 {
+    // TODO: cache this somewhere cause i know we can
     ElementData* element = vektor_get(current_window.elements, current_window.current_element.index);
     element->update_state = true;
     MapaItem* item = mapa_get(current_window.elements_states, &current_window.current_element.id, sizeof(current_window.current_element.id));
     return item ? ((ElementState*)item->data)->state : (RippleElementState){ 0 };
 }
 
+static RenderedLayout _get_current_element_rendered_layout()
+{
+    // TODO: cache this somewhere cause i know we can
+    ElementData* element = vektor_get(current_window.elements, current_window.current_element.index);
+    element->update_state = true;
+    MapaItem* item = mapa_get(current_window.elements_states, &current_window.current_element.id, sizeof(current_window.current_element.id));
+    return item ? ((ElementState*)item->data)->layout : (RenderedLayout){ 0 };
+}
+
 #define STATE() (_get_current_element_state())
+
+#define SHAPE() (_get_current_element_rendered_layout())
 
 #define FOUNDATION ._type = SVT_RELATIVE_PARENT
 #define REFINEMENT ._type = SVT_RELATIVE_CHILD
@@ -549,7 +578,7 @@ void render_rectangle(RippleElementConfig config, RenderedLayout layout)
         RIPPLE();\
 } while (false)
 #define CENTERED_VERTICAL(...) do {\
-        RIPPLE( FORM( .direction = cld_VERTICAL ) ) {\
+        RIPPLE( FORM( .width = DEPTH(1.0f, REFINEMENT), .direction = cld_VERTICAL ) ) {\
             RIPPLE();\
             { __VA_ARGS__ }\
             RIPPLE();\

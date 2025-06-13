@@ -24,9 +24,21 @@ void full_test(f32 dt)
                 RIPPLE( RECTANGLE ( .color = STATE().hovered ? 0xFFA4CF : 0xFF90BB ) );
             }
 
-            CENTERED(
-                RIPPLE( FORM( .width = FIXED(150), .height = FIXED(150) ), RECTANGLE ( .color = STATE().hovered ? 0x4D525A : 0x393E46 ) );
-            );
+            RIPPLE()
+            {
+                u32 w = SHAPE().w;
+                u32 h = SHAPE().h;
+
+                CENTERED(
+                    float t_target = h ? 150.0f / (float)h : 0.0f;
+                    static float t = -1.0f; if (t < 0.0f) t = t_target;
+                    RIPPLE( FORM( .width = FIXED((i32)((float)w * t)), .height = FIXED((i32)((float)h * t)), .min_width = FIXED(150), .min_height = FIXED(150) ), RECTANGLE ( .color = STATE().hovered ? 0x4D525A : 0x393E46 ) ){
+                        if (STATE().is_held)
+                            t_target = 1.0f;
+                    }
+                    t += (t_target - t) * (1.0f - expf(-dt * 20.0f));
+                );
+            }
         }
 
         RIPPLE( RECTANGLE ( .color = 0x8ACCD5 ), FORM( .direction = cld_VERTICAL ) )
@@ -85,7 +97,7 @@ test_func* test_funcs[] = { &full_test, &number_test, &rgb_test, &element_func_t
 
 int main(int argc, char* argv[])
 {
-    u32 test_index = 1;
+    u32 test_index = 0;
     f32 accum_dt = 0.0f;
     u32 n_dt_samples = 0;
     while( SURFACE_IS_STABLE() )
@@ -107,13 +119,13 @@ int main(int argc, char* argv[])
             {
                 RIPPLE( FORM( .height = FIXED(45) ) )
                 {
-                    RIPPLE( FORM( .width = FIXED(45) ), RECTANGLE( .color = STATE().hovered ? 0x0 : 0xff0000 ) ) { if (STATE().hovered) test_index = 0; }
-                    RIPPLE( FORM( .width = FIXED(45) ), RECTANGLE( .color = STATE().hovered ? 0x0 : 0x00ff00 ) ) { if (STATE().hovered) test_index = 1; }
-                    RIPPLE( FORM( .width = FIXED(45) ), RECTANGLE( .color = STATE().hovered ? 0x0 : 0x0000ff ) ) { if (STATE().hovered) test_index = 2; }
-                    RIPPLE( FORM( .width = FIXED(45) ), RECTANGLE( .color = STATE().hovered ? 0x0 : 0x00ffaa ) ) { if (STATE().hovered) test_index = 3; }
+                    RIPPLE( FORM( .width = FIXED(45) ), RECTANGLE( .color = (STATE().hovered || test_index == 0) ? 0xff0000 : 0xaa0000 ) ) { if (STATE().clicked) test_index = 0; }
+                    RIPPLE( FORM( .width = FIXED(45) ), RECTANGLE( .color = (STATE().hovered || test_index == 1) ? 0x00ff00 : 0x00aa00 ) ) { if (STATE().clicked) test_index = 1; }
+                    RIPPLE( FORM( .width = FIXED(45) ), RECTANGLE( .color = (STATE().hovered || test_index == 2) ? 0x0000ff : 0x0000aa ) ) { if (STATE().clicked) test_index = 2; }
+                    RIPPLE( FORM( .width = FIXED(45) ), RECTANGLE( .color = (STATE().hovered || test_index == 3) ? 0x00ffaa : 0x00aa55 ) ) { if (STATE().clicked) test_index = 3; }
                 }
 
-                RIPPLE()
+                RIPPLE( )
                 {
                     test_index = min(test_index, sizeof(test_funcs));
                     test_funcs[test_index](dt);
