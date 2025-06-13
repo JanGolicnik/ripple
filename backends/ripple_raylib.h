@@ -5,11 +5,14 @@
 #include <raylib/raylib.h>
 
 static Mapa* open_windows = nullptr;
+Font font;
 
 void ripple_render_window_begin(RippleWindowConfig config)
 {
     if (!open_windows)
+    {
         open_windows = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes, config.allocator);
+    }
 
     bool just_opened = false;
 
@@ -19,6 +22,7 @@ void ripple_render_window_begin(RippleWindowConfig config)
         InitWindow(config.width, config.height, config.title);
         entry = mapa_insert(open_windows, config.title, str_len(config.title), &config, sizeof(config));
         just_opened = true;
+        font = LoadFontEx("roboto.ttf", 256, nullptr, 92);
     }
 
     RippleWindowConfig old_config = *(RippleWindowConfig*)entry->data;
@@ -76,9 +80,28 @@ void ripple_render_window_end(RippleWindowConfig config)
     EndDrawing();
 }
 
+static Color _u32_to_raylib_color(u32 color)
+{
+    return (Color) {.a = 0xff, .r = (color >> 16) & 0xff, .g = (color >> 8) & 0xff, .b = color & 0xff};
+}
+
 void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
 {
-    DrawRectangle(x, y, w, h, (Color) {.a = 0xff, .r = (color >> 16) & 0xff, .g = (color >> 8) & 0xff, .b = color & 0xff});
+    DrawRectangle(x, y, w, h, _u32_to_raylib_color(color));
+}
+
+static f32 font_spacing = 10.0f;
+
+void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h)
+{
+    Vector2 size = MeasureTextEx(font, text, font_size, font_spacing);
+    *out_w = size.x;
+    *out_h = size.y;
+}
+
+void ripple_render_text(i32 x, i32 y, const char* text, f32 font_size, u32 color)
+{
+    DrawTextEx(font, text, (Vector2){ x, y }, (i32)font_size, font_spacing, _u32_to_raylib_color(color));
 }
 
 #endif // RIPPLE_RAYLIB_H

@@ -137,6 +137,8 @@ RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWind
 RippleCursorState ripple_update_cursor_state(RippleCursorState state);
 void ripple_render_window_end(RippleWindowConfig config);
 void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color);
+void ripple_render_text(i32 x, i32 y, const char* text, f32 font_size, u32 color);
+void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h);
 
 #ifdef RIPPLE_IMPLEMENTATION
 #undef RIPPLE_IMPLEMENTATION
@@ -571,6 +573,23 @@ void render_rectangle(RippleElementConfig config, RenderedLayout layout)
   .render_func = render_rectangle,\
   .render_data = &(RippleRectangleConfig){__VA_ARGS__},\
   .render_data_size = sizeof(RippleRectangleConfig)
+
+typedef struct {
+    RippleColor color;
+    const char* text;
+    f32 font_size;
+} RippleTextConfig;
+
+void render_text(RippleElementConfig config, RenderedLayout layout)
+{
+    RippleTextConfig text_data = *(RippleTextConfig*)config.render_data;
+    ripple_render_text(layout.x, layout.y, text_data.text, text_data.font_size, text_data.color);
+}
+
+#define TEXT(...)\
+  .render_func = render_text,\
+  .render_data = &(RippleTextConfig){__VA_ARGS__},\
+  .render_data_size = sizeof(RippleTextConfig)
 
 #define CENTERED_HORIZONTAL(...) do {\
         RIPPLE();\

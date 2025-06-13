@@ -20,3 +20,4 @@ mkdir %build_dir%
 cmake -B %build_dir% -G "MinGW Makefiles" -D CMAKE_BUILD_TYPE=%BUILD_TYPE%
 
 copy /Y "..\include\raylib\lib\raylib.dll" %build_dir%
+copy /Y "roboto.ttf" %build_dir%
