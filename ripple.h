@@ -116,6 +116,7 @@ typedef struct {
     u32 clicked : 1;
     u32 hovered : 1;
     u32 is_held : 1;
+    u32 is_weak_held : 1;
 } RippleElementState;
 
 typedef u32 RippleColor;
@@ -314,6 +315,7 @@ static void update_element_state(ElementState* state)
         current_window.cursor_state.y >= state->layout.y && current_window.cursor_state.y < state->layout.y + state->layout.h;
 
     state->state.is_held = current_window.cursor_state.left.held && (state->state.clicked || (state->state.is_held && state->state.hovered));
+    state->state.is_weak_held = current_window.cursor_state.left.held && (state->state.clicked || state->state.is_weak_held);
     state->state.clicked = state->state.hovered && current_window.cursor_state.left.pressed;
 }
 
@@ -558,6 +560,8 @@ static RenderedLayout _get_current_element_rendered_layout()
 
 #define OPEN_THE_VOID(allocator) Ripple_begin(allocator)
 #define CLOSE_THE_VOID() Ripple_end()
+
+#define CURSOR() current_window.cursor_state
 
 typedef struct {
     RippleColor color;

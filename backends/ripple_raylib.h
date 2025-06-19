@@ -90,7 +90,7 @@ void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
     DrawRectangle(x, y, w, h, _u32_to_raylib_color(color));
 }
 
-static f32 font_spacing = 10.0f;
+static f32 font_spacing = 0.0f;
 
 void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h)
 {
