@@ -13,3 +13,5 @@ CMakeUserPresets.json
 build
 .cache
 .cache
+include/raylib
+examples/raylib/raylib

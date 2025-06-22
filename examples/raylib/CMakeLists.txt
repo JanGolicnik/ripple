@@ -13,12 +13,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_executable(ripple ${SOURCES})
 
 target_include_directories(ripple PUBLIC
-    ${CMAKE_SOURCE_DIR}/../include
-    ${CMAKE_SOURCE_DIR}/..
+    ${CMAKE_SOURCE_DIR}/../../include
+    ${CMAKE_SOURCE_DIR}/../..
+    ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(ripple
-    ${CMAKE_SOURCE_DIR}/../include/raylib/lib/libraylibdll.a
+    ${CMAKE_SOURCE_DIR}/raylib/lib/libraylibdll.a
     -lopengl32
     -lgdi32
     -lwinmm

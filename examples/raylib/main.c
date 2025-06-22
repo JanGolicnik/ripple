@@ -171,7 +171,6 @@ test_func* test_funcs[] = { &full_test, &number_test, &rgb_test, &element_func_t
 const char* test_func_labels[] = { "big", "n", "rgb", "func", "text", "widget" };
 u32 light_colors_funcs[] = { 0xff0000, 0x00ff00, 0x0000ff, 0x00ffaa, 0xffffaa, 0xffaaff };
 u32  dark_colors_funcs[] = { 0xaa0000, 0x00aa00, 0x0000aa, 0x00aa55, 0xaaaa55, 0xaa55aa };
-
 int main(int argc, char* argv[])
 {
     u32 test_index = 5;
