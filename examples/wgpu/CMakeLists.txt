@@ -4,6 +4,8 @@ project(ripple)
 set(CMAKE_C_STANDARD 23)
 
 add_subdirectory(./webgpu)
+add_subdirectory(./glfw)
+add_subdirectory(./glfw3webgpu)
 
 set(SOURCES main.c)
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -pedantic -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -Wdouble-promotion -Wno-bitfield-constant-conversion")
@@ -18,9 +20,8 @@ target_include_directories(ripple PUBLIC
 
 target_link_libraries(ripple
     webgpu
-    -lopengl32
-    -lgdi32
-    -lwinmm
+    glfw
+    glfw3webgpu
 )
 
 target_copy_webgpu_binaries(${PROJECT_NAME})
