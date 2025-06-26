@@ -69,16 +69,8 @@ void queue_on_submitted_work_done(WGPUQueueWorkDoneStatus status, void* _)
 
 const char* shader = "\
 @vertex \
-fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4f {\
-    var p = vec2f(0.0, 0.0);\
-    if (in_vertex_index == 0u){\
-        p = vec2f(-0.5, -0.5);\
-    } else if (in_vertex_index == 1u){\
-        p = vec2f(0.5, -0.5);\
-    } else {\
-        p = vec2f(0.0, 0.5);\
-    }\
-    return vec4f(p, 0.0, 1.0);\
+fn vs_main(@location(0) in_vertex_position: vec2f) -> @builtin(position) vec4f {\
+    return vec4f(in_vertex_position, 0.0, 1.0);\
 }\
 \
 @fragment \
@@ -86,6 +78,50 @@ fn fs_main() -> @location(0) vec4f {\
     return vec4f(0.0, 0.4, 1.0, 1.0);\
 }\
 ";
+
+f32 vertex_data[] = {
+    // Left lobe
+    -0.25f,  0.0f,
+    -0.5f,   0.4f,
+     0.0f,   0.6f,
+
+    // Right lobe
+     0.25f,  0.0f,
+     0.0f,   0.6f,
+     0.5f,   0.4f,
+
+    // Top center to left indent
+    -0.25f,  0.0f,
+     0.0f,   -0.1f,
+     0.25f,  0.0f,
+
+    // Left bottom curve
+    -0.25f,  0.0f,
+     0.0f,   -0.5f,
+     0.0f,   -0.1f,
+
+    // Right bottom curve
+     0.25f,  0.0f,
+     0.0f,   -0.1f,
+     0.0f,   -0.5f,
+
+    // Extra fill left
+    -0.25f,  0.0f,
+    -0.4f,   0.2f,
+    -0.1f,   0.15f,
+
+    // Extra fill right
+     0.25f,  0.0f,
+     0.1f,   0.15f,
+     0.4f,   0.2f,
+
+    // Center top point
+    -0.1f,   0.15f,
+     0.1f,   0.15f,
+     0.0f,   0.3f,
+};
+const u32 vertex_data_size = sizeof(vertex_data);
+const u32 vertex_count = (vertex_data_size / sizeof(vertex_data[0])) / 2;
 
 int main(int argc, char* argv[])
 {
@@ -139,6 +175,12 @@ int main(int argc, char* argv[])
     WGPUQueue queue = wgpuDeviceGetQueue(device);
     wgpuQueueOnSubmittedWorkDone(queue, &queue_on_submitted_work_done, nullptr);
 
+    WGPUBuffer vertex_buffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor) {
+           .size = vertex_data_size,
+           .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
+        });
+    wgpuQueueWriteBuffer(queue, vertex_buffer, 0, vertex_data, vertex_data_size);
+
     WGPUShaderModule shader_module = wgpuDeviceCreateShaderModule(device, &(WGPUShaderModuleDescriptor){
             .label = "Shdader descriptor",
             .hintCount = 0,
@@ -152,7 +194,18 @@ int main(int argc, char* argv[])
     WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device, &(WGPURenderPipelineDescriptor){
             .vertex = {
                 .module = shader_module,
-                .entryPoint = "vs_main"
+                .entryPoint = "vs_main",
+                .bufferCount = 1,
+                .buffers = &(WGPUVertexBufferLayout) {
+                    .attributeCount = 1,
+                    .attributes = &(WGPUVertexAttribute) {
+                        .shaderLocation = 0,
+                        .format = WGPUVertexFormat_Float32x2,
+                        .offset = 0
+                    },
+                    .arrayStride = 2 * sizeof(f32),
+                    .stepMode = WGPUVertexStepMode_Vertex,
+                }
             },
             .primitive = {
                 .topology = WGPUPrimitiveTopology_TriangleList,
@@ -228,7 +281,8 @@ int main(int argc, char* argv[])
             });
 
         wgpuRenderPassEncoderSetPipeline(render_pass, pipeline);
-        wgpuRenderPassEncoderDraw(render_pass, 3, 1, 0, 0);
+        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer, 0, wgpuBufferGetSize(vertex_buffer));
+        wgpuRenderPassEncoderDraw(render_pass, vertex_count, 1, 0, 0);
 
         wgpuRenderPassEncoderEnd(render_pass);
 
@@ -245,6 +299,8 @@ int main(int argc, char* argv[])
 
 
     // CLEAN UP WGPU
+
+    wgpuBufferRelease(vertex_buffer);
 
     wgpuRenderPipelineRelease(pipeline);
 
