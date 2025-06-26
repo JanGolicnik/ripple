@@ -67,6 +67,26 @@ void queue_on_submitted_work_done(WGPUQueueWorkDoneStatus status, void* _)
     debug("Queued work finished with status: {}", (u32)status);
 }
 
+const char* shader = "\
+@vertex \
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4f {\
+    var p = vec2f(0.0, 0.0);\
+    if (in_vertex_index == 0u){\
+        p = vec2f(-0.5, -0.5);\
+    } else if (in_vertex_index == 1u){\
+        p = vec2f(0.5, -0.5);\
+    } else {\
+        p = vec2f(0.0, 0.5);\
+    }\
+    return vec4f(p, 0.0, 1.0);\
+}\
+\
+@fragment \
+fn fs_main() -> @location(0) vec4f {\
+    return vec4f(0.0, 0.4, 1.0, 1.0);\
+}\
+";
+
 int main(int argc, char* argv[])
 {
     // SET UP GLFW
@@ -102,10 +122,12 @@ int main(int argc, char* argv[])
 
     debug("Succesfully got the device!");
 
+    WGPUTextureFormat surface_format = wgpuSurfaceGetPreferredFormat(surface, adapter);
+
     wgpuSurfaceConfigure(surface, &(WGPUSurfaceConfiguration){
             .width = 800,
             .height = 800,
-            .format = wgpuSurfaceGetPreferredFormat(surface, adapter),
+            .format = surface_format,
             .usage = WGPUTextureUsage_RenderAttachment,
             .device = device,
             .presentMode = WGPUPresentMode_Fifo,
@@ -116,6 +138,57 @@ int main(int argc, char* argv[])
 
     WGPUQueue queue = wgpuDeviceGetQueue(device);
     wgpuQueueOnSubmittedWorkDone(queue, &queue_on_submitted_work_done, nullptr);
+
+    WGPUShaderModule shader_module = wgpuDeviceCreateShaderModule(device, &(WGPUShaderModuleDescriptor){
+            .label = "Shdader descriptor",
+            .hintCount = 0,
+            .hints = nullptr,
+            .nextInChain = (WGPUChainedStruct*)&(WGPUShaderModuleWGSLDescriptor) {
+                .chain.sType = WGPUSType_ShaderModuleWGSLDescriptor,
+                .code = shader
+            }
+        });
+
+    WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device, &(WGPURenderPipelineDescriptor){
+            .vertex = {
+                .module = shader_module,
+                .entryPoint = "vs_main"
+            },
+            .primitive = {
+                .topology = WGPUPrimitiveTopology_TriangleList,
+                .stripIndexFormat = WGPUIndexFormat_Undefined,
+                .frontFace = WGPUFrontFace_CCW,
+                .cullMode = WGPUCullMode_None
+            },
+            .fragment = &(WGPUFragmentState) {
+                .module = shader_module,
+                .entryPoint = "fs_main",
+                .targetCount = 1,
+                .targets = &(WGPUColorTargetState) {
+                    .format = surface_format,
+                    .writeMask = WGPUColorWriteMask_All,
+                    .blend = &(WGPUBlendState) {
+                        .color =  {
+                            .srcFactor = WGPUBlendFactor_SrcAlpha,
+                            .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha,
+                            .operation = WGPUBlendOperation_Add,
+                        },
+                        .alpha =  {
+                            .srcFactor = WGPUBlendFactor_Zero,
+                            .dstFactor = WGPUBlendFactor_One,
+                            .operation = WGPUBlendOperation_Add,
+                        }
+                    },
+                }
+            },
+            .multisample = {
+                .count = 1,
+                .mask = ~0u,
+            },
+            .layout = nullptr
+        });
+
+    wgpuShaderModuleRelease(shader_module);
 
     // MAIN LOOP
     while (!glfwWindowShouldClose(window))
@@ -140,8 +213,7 @@ int main(int argc, char* argv[])
         wgpuCommandEncoderInsertDebugMarker(encoder, "First thing");
         wgpuCommandEncoderInsertDebugMarker(encoder, "Second thing");
 
-        wgpuRenderPassEncoderEnd(
-            wgpuCommandEncoderBeginRenderPass(encoder, &(WGPURenderPassDescriptor){
+        WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass(encoder, &(WGPURenderPassDescriptor){
                 .colorAttachmentCount = 1,
                 .colorAttachments = &(WGPURenderPassColorAttachment){
                     .view = surface_texture_view,
@@ -153,15 +225,18 @@ int main(int argc, char* argv[])
                     #endif //WEBGPU_BACKEND_WGPU
                 },
                 .depthStencilAttachment = nullptr
-            })
-        );
+            });
+
+        wgpuRenderPassEncoderSetPipeline(render_pass, pipeline);
+        wgpuRenderPassEncoderDraw(render_pass, 3, 1, 0, 0);
+
+        wgpuRenderPassEncoderEnd(render_pass);
 
         WGPUCommandBuffer command = wgpuCommandEncoderFinish(encoder, &(WGPUCommandBufferDescriptor){ .label = "Command buffer" });
         wgpuCommandEncoderRelease(encoder);
-        debug("Submitting command");
+
         wgpuQueueSubmit(queue, 1, &command);
         wgpuCommandBufferRelease(command);
-        debug("Command submitted");
 
         wgpuSurfacePresent(surface);
         wgpuTextureRelease(surface_texture.texture);
@@ -170,6 +245,8 @@ int main(int argc, char* argv[])
 
 
     // CLEAN UP WGPU
+
+    wgpuRenderPipelineRelease(pipeline);
 
     wgpuQueueRelease(queue);
 
