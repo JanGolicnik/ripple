@@ -68,60 +68,42 @@ void queue_on_submitted_work_done(WGPUQueueWorkDoneStatus status, void* _)
 }
 
 const char* shader = "\
+struct VertexInput {\
+    @location(0) position: vec2f,\
+    @location(1) color: vec3f,\
+};\
+\
+struct VertexOutput{\
+    @builtin(position) position: vec4f,\
+    @location(0) color: vec3f\
+};\
+\
 @vertex \
-fn vs_main(@location(0) in_vertex_position: vec2f) -> @builtin(position) vec4f {\
-    return vec4f(in_vertex_position, 0.0, 1.0);\
+fn vs_main(v: VertexInput) -> VertexOutput {\
+    var out: VertexOutput;\
+    out.position = vec4f(v.position, 0.0, 1.0);\
+    out.color = v.color;\
+    return out;\
 }\
 \
 @fragment \
-fn fs_main() -> @location(0) vec4f {\
-    return vec4f(0.0, 0.4, 1.0, 1.0);\
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {\
+    return vec4f(in.color, 1.0);\
 }\
 ";
 
 f32 vertex_data[] = {
-    // Left lobe
-    -0.25f,  0.0f,
-    -0.5f,   0.4f,
-     0.0f,   0.6f,
+    -0.5, -0.5, 1.0, 0.0, 0.0,
 
-    // Right lobe
-     0.25f,  0.0f,
-     0.0f,   0.6f,
-     0.5f,   0.4f,
+    +0.5, -0.5, 0.0, 1.0, 0.0,
 
-    // Top center to left indent
-    -0.25f,  0.0f,
-     0.0f,   -0.1f,
-     0.25f,  0.0f,
-
-    // Left bottom curve
-    -0.25f,  0.0f,
-     0.0f,   -0.5f,
-     0.0f,   -0.1f,
-
-    // Right bottom curve
-     0.25f,  0.0f,
-     0.0f,   -0.1f,
-     0.0f,   -0.5f,
-
-    // Extra fill left
-    -0.25f,  0.0f,
-    -0.4f,   0.2f,
-    -0.1f,   0.15f,
-
-    // Extra fill right
-     0.25f,  0.0f,
-     0.1f,   0.15f,
-     0.4f,   0.2f,
-
-    // Center top point
-    -0.1f,   0.15f,
-     0.1f,   0.15f,
-     0.0f,   0.3f,
+    +0.0,   +0.5, 0.0, 0.0, 1.0,
+    -0.55f, -0.5, 1.0, 1.0, 0.0,
+    -0.05f, +0.5, 1.0, 0.0, 1.0,
+    -0.55f, +0.5, 0.0, 1.0, 1.0
 };
-const u32 vertex_data_size = sizeof(vertex_data);
-const u32 vertex_count = (vertex_data_size / sizeof(vertex_data[0])) / 2;
+const u32 vertex_data_size = 5 * sizeof(vertex_data[0]);
+const u32 vertex_count = sizeof(vertex_data) / vertex_data_size;
 
 int main(int argc, char* argv[])
 {
@@ -176,10 +158,10 @@ int main(int argc, char* argv[])
     wgpuQueueOnSubmittedWorkDone(queue, &queue_on_submitted_work_done, nullptr);
 
     WGPUBuffer vertex_buffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor) {
-           .size = vertex_data_size,
+           .size = sizeof(vertex_data),
            .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
         });
-    wgpuQueueWriteBuffer(queue, vertex_buffer, 0, vertex_data, vertex_data_size);
+    wgpuQueueWriteBuffer(queue, vertex_buffer, 0, vertex_data, sizeof(vertex_data));
 
     WGPUShaderModule shader_module = wgpuDeviceCreateShaderModule(device, &(WGPUShaderModuleDescriptor){
             .label = "Shdader descriptor",
@@ -197,13 +179,20 @@ int main(int argc, char* argv[])
                 .entryPoint = "vs_main",
                 .bufferCount = 1,
                 .buffers = &(WGPUVertexBufferLayout) {
-                    .attributeCount = 1,
-                    .attributes = &(WGPUVertexAttribute) {
-                        .shaderLocation = 0,
-                        .format = WGPUVertexFormat_Float32x2,
-                        .offset = 0
+                    .attributeCount = 2,
+                    .attributes = (WGPUVertexAttribute[]) {
+                        [0] = {
+                            .shaderLocation = 0,
+                            .format = WGPUVertexFormat_Float32x2,
+                            .offset = 0
+                        },
+                        [1] = {
+                            .shaderLocation = 1,
+                            .format = WGPUVertexFormat_Float32x3,
+                            .offset = 2 * sizeof(f32),
+                        }
                     },
-                    .arrayStride = 2 * sizeof(f32),
+                    .arrayStride = vertex_data_size,
                     .stepMode = WGPUVertexStepMode_Vertex,
                 }
             },
