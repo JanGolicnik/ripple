@@ -2,6 +2,8 @@
 #include <glfw/glfw3.h>
 #include <glfw3webgpu.h>
 
+#include <math.h>
+
 #include <stdio.h>
 #include <marrow/marrow.h>
 
@@ -13,9 +15,7 @@ typedef struct {
 void request_adapter_callback(WGPURequestAdapterStatus status, WGPUAdapter adapter, char const* message, void* userdata)
 {
     if (status != WGPURequestAdapterStatus_Success)
-    {
         abort("Failed to get WebGPU adapter");
-    }
 
     RequestAdapterUserData* callback_user_data = userdata;
     callback_user_data->adapter = adapter;
@@ -67,7 +67,33 @@ void queue_on_submitted_work_done(WGPUQueueWorkDoneStatus status, void* _)
     debug("Queued work finished with status: {}", (u32)status);
 }
 
+bool window_resized = true;
+void on_window_resized(GLFWwindow* window, i32 w, i32 h)
+{
+    (void) w; (void) h;
+    window_resized = true;
+}
+
+void configure_surface(WGPUDevice device, WGPUSurface surface, WGPUTextureFormat format, u32 width, u32 height)
+{
+    wgpuSurfaceConfigure(surface, &(WGPUSurfaceConfiguration){
+            .width = width,
+            .height = height,
+            .format = format,
+            .usage = WGPUTextureUsage_RenderAttachment,
+            .device = device,
+            .presentMode = WGPUPresentMode_Fifo,
+            .alphaMode = WGPUCompositeAlphaMode_Auto
+        });
+}
+
 const char* shader = "\
+struct ShaderData {\
+    color: vec4f,\
+    resolution: vec2i,\
+    time: f32,\
+};\
+@group(0) @binding(0) var<uniform> shader_data: ShaderData;\
 struct VertexInput {\
     @location(0) position: vec2f,\
     @location(1) color: vec3f,\
@@ -80,30 +106,44 @@ struct VertexOutput{\
 \
 @vertex \
 fn vs_main(v: VertexInput) -> VertexOutput {\
+    let position = v.position + vec2f(sin(shader_data.time) * 0.4f, 0.0);\
+    let aspect = f32(shader_data.resolution.x) / f32(shader_data.resolution.y);\
     var out: VertexOutput;\
-    out.position = vec4f(v.position, 0.0, 1.0);\
-    out.color = v.color;\
+    out.position = vec4f(position.x / aspect, position.y, 0.0, 1.0);\
+    out.color = v.color;                                            \
     return out;\
 }\
 \
 @fragment \
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {\
-    return vec4f(in.color, 1.0);\
+    let color = in.color * shader_data.color.rgb;\
+    let linear_color = pow(color, vec3f(2.2));\
+    return vec4f(linear_color, 1.0);\
 }\
 ";
 
 f32 vertex_data[] = {
-    -0.5, -0.5, 1.0, 0.0, 0.0,
-
-    +0.5, -0.5, 0.0, 1.0, 0.0,
-
-    +0.0,   +0.5, 0.0, 0.0, 1.0,
-    -0.55f, -0.5, 1.0, 1.0, 0.0,
-    -0.05f, +0.5, 1.0, 0.0, 1.0,
-    -0.55f, +0.5, 0.0, 1.0, 1.0
+    -0.5, -0.5,   1.0, 0.0, 0.0,
+    +0.5, -0.5,   0.0, 1.0, 0.0,
+    +0.5, +0.5,   0.0, 0.0, 1.0,
+    -0.5, +0.5,   1.0, 1.0, 0.0
 };
 const u32 vertex_data_size = 5 * sizeof(vertex_data[0]);
 const u32 vertex_count = sizeof(vertex_data) / vertex_data_size;
+
+uint16_t index_data[] = {
+    0, 1, 2,
+    0, 2, 3
+};
+const u32 index_data_size = 1 * sizeof(index_data[0]);
+const u32 index_count = sizeof(index_data) / index_data_size;
+
+typedef struct {
+    f32 color[4];
+    i32 resolution[2];
+    f32 time;
+    f32 _padding[1];
+} ShaderData;
 
 int main(int argc, char* argv[])
 {
@@ -112,56 +152,64 @@ int main(int argc, char* argv[])
         abort("Could not intialize GLFW!");
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     GLFWwindow* window = glfwCreateWindow(800, 800, "HIIII HIII HIII!!!H IIIII HIH IHI HII!!!I HIIIII", nullptr, nullptr);
     if (!window)
         abort("Couldnt no open window!");
 
+    glfwSetFramebufferSizeCallback(window, &on_window_resized);
+
     // SET UP WGPU
     WGPUInstanceDescriptor desc = { 0 };
     WGPUInstance instance = wgpuCreateInstance(&desc);
-
-    if (!instance) {
+    if (!instance)
         abort("Failed to create WebGPU instance.");
-        return 1;
-    }
 
     WGPUSurface surface = glfwGetWGPUSurface(instance, window);
     WGPUAdapter adapter = get_adapter(instance, (WGPURequestAdapterOptions){ .compatibleSurface = surface });
     if (!adapter)
         abort("Failed to get the adapter!");
-
     debug("Successfully got the adapter!");
-
-    WGPUDevice device = get_device(adapter);
-
-    if (!device)
-        abort("Failed to get the device!");
-
-    debug("Succesfully got the device!");
 
     WGPUTextureFormat surface_format = wgpuSurfaceGetPreferredFormat(surface, adapter);
 
-    wgpuSurfaceConfigure(surface, &(WGPUSurfaceConfiguration){
-            .width = 800,
-            .height = 800,
-            .format = surface_format,
-            .usage = WGPUTextureUsage_RenderAttachment,
-            .device = device,
-            .presentMode = WGPUPresentMode_Fifo,
-            .alphaMode = WGPUCompositeAlphaMode_Auto
-        });
+    WGPUDevice device = get_device(adapter);
+    if (!device)
+        abort("Failed to get the device!");
+    debug("Succesfully got the device!");
 
     wgpuAdapterRelease(adapter);
 
     WGPUQueue queue = wgpuDeviceGetQueue(device);
     wgpuQueueOnSubmittedWorkDone(queue, &queue_on_submitted_work_done, nullptr);
 
-    WGPUBuffer vertex_buffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor) {
-           .size = sizeof(vertex_data),
-           .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
+    // SET UP PIPELINES
+    WGPUBuffer uniform_buffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor){
+            .size = sizeof(ShaderData),
+            .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
         });
-    wgpuQueueWriteBuffer(queue, vertex_buffer, 0, vertex_data, sizeof(vertex_data));
+
+    WGPUBindGroupLayout bind_group_layout = wgpuDeviceCreateBindGroupLayout(device, &(WGPUBindGroupLayoutDescriptor){
+            .entryCount = 1,
+            .entries = &(WGPUBindGroupLayoutEntry) {
+                .binding = 0,
+                .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment,
+                .buffer = {
+                    .type = WGPUBufferBindingType_Uniform,
+                    .minBindingSize = sizeof(ShaderData)
+                }
+            }
+        });
+    WGPUBindGroup bind_group = wgpuDeviceCreateBindGroup(device, &(WGPUBindGroupDescriptor){
+            .layout = bind_group_layout,
+            .entryCount = 1,
+            .entries = &(WGPUBindGroupEntry){
+                .binding = 0,
+                .buffer = uniform_buffer,
+                .offset = 0,
+                .size = sizeof(ShaderData)
+            }
+        });
 
     WGPUShaderModule shader_module = wgpuDeviceCreateShaderModule(device, &(WGPUShaderModuleDescriptor){
             .label = "Shdader descriptor",
@@ -171,6 +219,11 @@ int main(int argc, char* argv[])
                 .chain.sType = WGPUSType_ShaderModuleWGSLDescriptor,
                 .code = shader
             }
+        });
+
+    WGPUPipelineLayout pipeline_layout = wgpuDeviceCreatePipelineLayout(device, &(WGPUPipelineLayoutDescriptor){
+            .bindGroupLayoutCount = 1,
+            .bindGroupLayouts = &bind_group_layout
         });
 
     WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device, &(WGPURenderPipelineDescriptor){
@@ -227,15 +280,45 @@ int main(int argc, char* argv[])
                 .count = 1,
                 .mask = ~0u,
             },
-            .layout = nullptr
+            .layout = pipeline_layout
         });
 
     wgpuShaderModuleRelease(shader_module);
 
+    WGPUBuffer vertex_buffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor) {
+           .size = sizeof(vertex_data),
+           .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
+        });
+    wgpuQueueWriteBuffer(queue, vertex_buffer, 0, vertex_data, sizeof(vertex_data));
+
+    WGPUBuffer index_buffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor) {
+           .size = sizeof(index_data),
+           .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Index,
+        });
+    wgpuQueueWriteBuffer(queue, index_buffer, 0, index_data, sizeof(index_data));
+
+
+    ShaderData shader_data = { .time = 0.0f, .color = { 0.3f, 0.3f, 1.0f } };
+
     // MAIN LOOP
     while (!glfwWindowShouldClose(window))
     {
+        if (window_resized)
+        {
+            glfwGetFramebufferSize(window, &shader_data.resolution[0], &shader_data.resolution[1]);
+            configure_surface(device, surface, surface_format, shader_data.resolution[0], shader_data.resolution[1]);
+            window_resized = false;
+        }
+
         glfwPollEvents();
+        f32 prev_time = shader_data.time;
+        shader_data.time = (f32)glfwGetTime();
+        f32 dt = shader_data.time - prev_time;
+
+        (void)dt;
+
+        shader_data.color[0] = sinf(shader_data.time) * 0.5f + 0.5f;
+        wgpuQueueWriteBuffer(queue, uniform_buffer, 0, &shader_data, sizeof(shader_data));
 
         WGPUSurfaceTexture surface_texture;
         wgpuSurfaceGetCurrentTexture(surface, &surface_texture);
@@ -271,7 +354,9 @@ int main(int argc, char* argv[])
 
         wgpuRenderPassEncoderSetPipeline(render_pass, pipeline);
         wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer, 0, wgpuBufferGetSize(vertex_buffer));
-        wgpuRenderPassEncoderDraw(render_pass, vertex_count, 1, 0, 0);
+        wgpuRenderPassEncoderSetIndexBuffer(render_pass, index_buffer, WGPUIndexFormat_Uint16, 0, wgpuBufferGetSize(index_buffer));
+        wgpuRenderPassEncoderSetBindGroup(render_pass, 0, bind_group, 0, nullptr);
+        wgpuRenderPassEncoderDrawIndexed(render_pass, index_count, 1, 0, 0, 0);
 
         wgpuRenderPassEncoderEnd(render_pass);
 
@@ -289,7 +374,13 @@ int main(int argc, char* argv[])
 
     // CLEAN UP WGPU
 
+    wgpuPipelineLayoutRelease(pipeline_layout);
+    wgpuBindGroupLayoutRelease(bind_group_layout);
+    wgpuBindGroupRelease(bind_group);
+
     wgpuBufferRelease(vertex_buffer);
+    wgpuBufferRelease(index_buffer);
+    wgpuBufferRelease(uniform_buffer);
 
     wgpuRenderPipelineRelease(pipeline);
 
