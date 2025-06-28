@@ -219,6 +219,8 @@ int main(int argc, char* argv[])
                 }
             }
         }
+
+        RIPPLE_RENDER(nullptr);
     }
 
     return 0;

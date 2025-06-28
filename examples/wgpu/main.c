@@ -363,8 +363,6 @@ int main(int argc, char* argv[])
         // Render stuff
 
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, &(WGPUCommandEncoderDescriptor){ .label = "Command encoder"});
-        wgpuCommandEncoderInsertDebugMarker(encoder, "First thing");
-        wgpuCommandEncoderInsertDebugMarker(encoder, "Second thing");
 
         WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass(encoder, &(WGPURenderPassDescriptor){
                 .colorAttachmentCount = 1,
