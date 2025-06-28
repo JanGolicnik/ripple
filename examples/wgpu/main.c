@@ -94,10 +94,14 @@ struct ShaderData {\
     time: f32,\
 };\
 @group(0) @binding(0) var<uniform> shader_data: ShaderData;\
+\
 struct VertexInput {\
     @location(0) position: vec2f,\
-    @location(1) color: vec3f,\
 };\
+\
+struct InstanceInput {\
+    @location(1) position: vec2f,\
+}\
 \
 struct VertexOutput{\
     @builtin(position) position: vec4f,\
@@ -105,12 +109,13 @@ struct VertexOutput{\
 };\
 \
 @vertex \
-fn vs_main(v: VertexInput) -> VertexOutput {\
-    let position = v.position + vec2f(sin(shader_data.time) * 0.4f, 0.0);\
+fn vs_main(v: VertexInput, i: InstanceInput) -> VertexOutput {\
+    let position = v.position + vec2f(sin(shader_data.time) * 0.4f, 0.0) + i.position;\
     let aspect = f32(shader_data.resolution.x) / f32(shader_data.resolution.y);\
+    let color = min(vec3f(1.0f, 0.3f, 0.003f) * length(position), vec3f(1.0f));\
     var out: VertexOutput;\
     out.position = vec4f(position.x / aspect, position.y, 0.0, 1.0);\
-    out.color = v.color;                                            \
+    out.color = color;\
     return out;\
 }\
 \
@@ -123,12 +128,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {\
 ";
 
 f32 vertex_data[] = {
-    -0.5, -0.5,   1.0, 0.0, 0.0,
-    +0.5, -0.5,   0.0, 1.0, 0.0,
-    +0.5, +0.5,   0.0, 0.0, 1.0,
-    -0.5, +0.5,   1.0, 1.0, 0.0
+    -0.5, -0.5,
+    +0.5, -0.5,
+    +0.5, +0.5,
+    -0.5, +0.5,
 };
-const u32 vertex_data_size = 5 * sizeof(vertex_data[0]);
+const u32 vertex_data_size = 2 * sizeof(vertex_data[0]);
 const u32 vertex_count = sizeof(vertex_data) / vertex_data_size;
 
 uint16_t index_data[] = {
@@ -137,6 +142,14 @@ uint16_t index_data[] = {
 };
 const u32 index_data_size = 1 * sizeof(index_data[0]);
 const u32 index_count = sizeof(index_data) / index_data_size;
+
+typedef struct {
+    f32 x;
+    f32 y;
+} Instance;
+Instance instance_data[] = { {0.0f, 0.0f}, { 0.5f, 0.0f }, { 0.0f, 0.4f }};
+const u32 instance_data_size = sizeof(instance_data[0]);
+const u32 instance_count = sizeof(instance_data) / instance_data_size;
 
 typedef struct {
     f32 color[4];
@@ -230,23 +243,32 @@ int main(int argc, char* argv[])
             .vertex = {
                 .module = shader_module,
                 .entryPoint = "vs_main",
-                .bufferCount = 1,
-                .buffers = &(WGPUVertexBufferLayout) {
-                    .attributeCount = 2,
-                    .attributes = (WGPUVertexAttribute[]) {
-                        [0] = {
-                            .shaderLocation = 0,
-                            .format = WGPUVertexFormat_Float32x2,
-                            .offset = 0
+                .bufferCount = 2,
+                .buffers = (WGPUVertexBufferLayout[]) {
+                    [0] = {
+                        .attributeCount = 1,
+                        .attributes = (WGPUVertexAttribute[]) {
+                            [0] = {
+                                .shaderLocation = 0,
+                                .format = WGPUVertexFormat_Float32x2,
+                                .offset = 0
+                            }
                         },
-                        [1] = {
-                            .shaderLocation = 1,
-                            .format = WGPUVertexFormat_Float32x3,
-                            .offset = 2 * sizeof(f32),
-                        }
+                        .arrayStride = vertex_data_size,
+                        .stepMode = WGPUVertexStepMode_Vertex,
                     },
-                    .arrayStride = vertex_data_size,
-                    .stepMode = WGPUVertexStepMode_Vertex,
+                    [1] = {
+                        .attributeCount = 1,
+                        .attributes = (WGPUVertexAttribute[]) {
+                            [0] = {
+                                .shaderLocation = 1,
+                                .format = WGPUVertexFormat_Float32x2,
+                                .offset = 0
+                            }
+                        },
+                        .arrayStride = instance_data_size,
+                        .stepMode = WGPUVertexStepMode_Instance,
+                    }
                 }
             },
             .primitive = {
@@ -296,6 +318,12 @@ int main(int argc, char* argv[])
            .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Index,
         });
     wgpuQueueWriteBuffer(queue, index_buffer, 0, index_data, sizeof(index_data));
+
+    WGPUBuffer instance_buffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor) {
+           .size = sizeof(instance_data),
+           .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
+        });
+    wgpuQueueWriteBuffer(queue, instance_buffer, 0, instance_data, sizeof(instance_data));
 
 
     ShaderData shader_data = { .time = 0.0f, .color = { 0.3f, 0.3f, 1.0f } };
@@ -354,9 +382,10 @@ int main(int argc, char* argv[])
 
         wgpuRenderPassEncoderSetPipeline(render_pass, pipeline);
         wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer, 0, wgpuBufferGetSize(vertex_buffer));
+        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, instance_buffer, 0, wgpuBufferGetSize(instance_buffer));
         wgpuRenderPassEncoderSetIndexBuffer(render_pass, index_buffer, WGPUIndexFormat_Uint16, 0, wgpuBufferGetSize(index_buffer));
         wgpuRenderPassEncoderSetBindGroup(render_pass, 0, bind_group, 0, nullptr);
-        wgpuRenderPassEncoderDrawIndexed(render_pass, index_count, 1, 0, 0, 0);
+        wgpuRenderPassEncoderDrawIndexed(render_pass, index_count, instance_count, 0, 0, 0);
 
         wgpuRenderPassEncoderEnd(render_pass);
 
