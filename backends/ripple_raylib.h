@@ -7,7 +7,7 @@
 static Mapa* open_windows = nullptr;
 Font font;
 
-void ripple_render_window_begin(RippleWindowConfig config)
+void ripple_window_begin(RippleWindowConfig config)
 {
     if (!open_windows)
     {
@@ -38,9 +38,6 @@ void ripple_render_window_begin(RippleWindowConfig config)
         SetWindowSize(config.width, GetScreenHeight());
     if (just_opened || old_config.height != config.height)
         SetWindowSize(GetScreenWidth(), config.height);
-
-    BeginDrawing();
-    ClearBackground(RAYWHITE);
 }
 
 void ripple_get_window_size(u32* width, u32* height)
@@ -75,7 +72,13 @@ RippleCursorState ripple_update_cursor_state(RippleCursorState state)
     return state;
 }
 
-void ripple_render_window_end(RippleWindowConfig config)
+void ripple_render_window_begin()
+{
+    BeginDrawing();
+    ClearBackground(RAYWHITE);
+}
+
+void ripple_render_window_end()
 {
     EndDrawing();
 }

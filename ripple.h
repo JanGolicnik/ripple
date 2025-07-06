@@ -131,17 +131,22 @@ void Ripple_pop_id(void);
 void Ripple_begin(Allocator* allocator);
 void Ripple_end(void);
 
-void Ripple_render(void* user_data);
+void *Ripple_render_begin();
+void Ripple_render_end(void* user_data);
 
 // backend functions
-void ripple_render_window_begin(RippleWindowConfig config);
+void ripple_window_begin(RippleWindowConfig config);
 void ripple_get_window_size(u32* width, u32* height);
 RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWindowConfig config);
 RippleCursorState ripple_update_cursor_state(RippleCursorState state);
-void ripple_render_window_end(RippleWindowConfig config);
-void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color);
-void ripple_render_text(i32 x, i32 y, const char* text, f32 font_size, u32 color);
-void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h);
+
+void* ripple_render_begin();
+    void ripple_render_window_begin(void*);
+        void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color);
+        void ripple_render_text(i32 x, i32 y, const char* text, f32 font_size, u32 color);
+        void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h);
+    void ripple_render_window_end(void*);
+void ripple_render_end(void*);
 
 #ifdef RIPPLE_IMPLEMENTATION
 #undef RIPPLE_IMPLEMENTATION
@@ -206,7 +211,7 @@ void Ripple_start_window(RippleWindowConfig config)
     if (!current_window.elements_states)
         current_window.elements_states = mapa_create(mapa_hash_u64, mapa_cmp_bytes, config.allocator);
 
-    ripple_render_window_begin(current_window.config);
+    ripple_window_begin(current_window.config);
 
     ripple_get_window_size(&current_window.config.width, &current_window.config.height);
 
@@ -243,8 +248,6 @@ void Ripple_finish_window(void)
 
     finalize_element(vektor_get(current_window.elements, 0));
 
-    ripple_render_window_end(current_window.config);
-
     // remove dead elements
     u32 n_elements = mapa_capacity(current_window.elements_states);
     for (u32 element_i = 0; element_i < n_elements; element_i++)
@@ -269,7 +272,12 @@ void Ripple_finish_window(void)
 
 static void render_element(ElementData* element, void* window_user_data, void* user_data);
 
-void Ripple_render(void* user_data)
+void* Ripple_render_begin()
+{
+    return ripple_render_begin();
+}
+
+void Ripple_render_end(void* user_data)
 {
     u32 n_windows = mapa_capacity(windows);
     for (u32 window_i = 0; window_i < n_windows; window_i++)
@@ -277,7 +285,9 @@ void Ripple_render(void* user_data)
         MapaItem* item = mapa_get_at_index(windows, window_i);
         Window* window = (Window*)item->data;
         if (!window) continue;
+        ripple_render_window_begin(user_data);
         render_element(vektor_get(window->elements, 0), window->user_data, user_data);
+        ripple_render_window_end(user_data);
     }
 }
 
@@ -638,7 +648,8 @@ void render_text(RippleElementConfig config, RenderedLayout layout, void* window
 } while (false)
 #define CENTERED(...) CENTERED_HORIZONTAL(CENTERED_VERTICAL(__VA_ARGS__);)
 
-#define RIPPLE_RENDER(data) Ripple_render(data)
+#define RIPPLE_RENDER_BEGIN() Ripple_render_begin()
+#define RIPPLE_RENDER_END(context) Ripple_render_end(context)
 
 #endif // RIPPLE_WIDGETS
 
