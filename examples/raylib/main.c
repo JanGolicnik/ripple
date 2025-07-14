@@ -189,9 +189,9 @@ int main(int argc, char* argv[])
             n_dt_samples = 0;
         }
 
-        float font_size = 45.0f;
+        f32 font_size = 45.0f;
 
-        SURFACE( .title = "surface", .width = 800, .height = 800 + 45 )
+        SURFACE( .title = "surface", .width = 800, .height = 800 + (i32)font_size )
         {
             RIPPLE( FORM( .direction = cld_VERTICAL ) )
             {

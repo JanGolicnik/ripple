@@ -181,9 +181,43 @@ static struct {
         f32 _padding[1];
     } shader_data;
 
+    struct {
+        bool left_pressed;
+        bool right_pressed;
+        bool middle_pressed;
+        bool left_released;
+        bool right_released;
+        bool middle_released;
+    };
+
     bool initialized;
     bool render_begin;
 } _context;
+
+static void mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods)
+{
+    if (action == GLFW_PRESS)
+    {
+        if (button == GLFW_MOUSE_BUTTON_LEFT)
+            _context.left_pressed = true;
+        if (button == GLFW_MOUSE_BUTTON_RIGHT)
+            _context.right_pressed = true;
+        if (button == GLFW_MOUSE_BUTTON_MIDDLE)
+            _context.middle_pressed = true;
+        return;
+    }
+
+    if (action == GLFW_RELEASE)
+    {
+        if (button == GLFW_MOUSE_BUTTON_LEFT)
+            _context.left_released = true;
+        if (button == GLFW_MOUSE_BUTTON_RIGHT)
+            _context.right_released = true;
+        if (button == GLFW_MOUSE_BUTTON_MIDDLE)
+            _context.middle_released = true;
+        return;
+    }
+}
 
 static void _initialize(RippleWindowConfig config)
 {
@@ -198,6 +232,7 @@ static void _initialize(RippleWindowConfig config)
         abort("Couldnt no open window!");
 
     glfwSetFramebufferSizeCallback(_context.window, &on_window_resized);
+    glfwSetMouseButtonCallback(_context.window, &mouse_button_callback);
 
     // WGPU
     WGPUInstanceDescriptor desc = { 0 };
@@ -406,6 +441,23 @@ RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWind
 
 RippleCursorState ripple_update_cursor_state(RippleCursorState state)
 {
+    double x, y; glfwGetCursorPos(_context.window, &x, &y);
+    state.x = (i32)x;
+    state.y = (i32)y;
+    state.left.pressed = _context.left_pressed;
+    state.right.pressed = _context.right_pressed;
+    state.middle.pressed = _context.middle_pressed;
+    state.left.released = _context.left_released;
+    state.right.released = _context.right_released;
+    state.middle.released = _context.middle_released;
+
+    _context.left_pressed = false;
+    _context.right_pressed = false;
+    _context.middle_pressed = false;
+    _context.left_released = false;
+    _context.right_released = false;
+    _context.middle_released = false;
+
     return state;
 }
 
@@ -503,7 +555,8 @@ void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
 
 void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h)
 {
-    // monospace
+    *out_w = (str_len(text) * font_size) / 2;
+    *out_h = font_size;
 }
 
 void ripple_render_text(i32 x, i32 y, const char* text, f32 font_size, u32 color)
