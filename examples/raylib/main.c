@@ -220,7 +220,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        RIPPLE_RENDER(nullptr);
+        RIPPLE_RENDER_END(RIPPLE_RENDER_BEGIN());
     }
 
     return 0;

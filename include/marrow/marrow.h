@@ -54,6 +54,10 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #define loop while(true)
 #endif // loop
 
+#ifndef unused
+#define unused (void)
+#endif //unused
+
 #ifndef max
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 #endif // max

@@ -72,14 +72,21 @@ RippleCursorState ripple_update_cursor_state(RippleCursorState state)
     return state;
 }
 
-void ripple_render_window_begin()
+void *ripple_render_begin()
 {
+    return nullptr;
+}
+
+void ripple_render_window_begin(void* render_context)
+{
+    unused render_context;
     BeginDrawing();
     ClearBackground(RAYWHITE);
 }
 
-void ripple_render_window_end()
+void ripple_render_window_end(void* render_context)
 {
+    unused render_context;
     EndDrawing();
 }
 
