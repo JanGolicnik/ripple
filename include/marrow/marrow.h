@@ -128,7 +128,7 @@ void buf_copy(void* dst, const void* source, usize len)
     while(len--) ((u8*)dst)[len] = ((u8*)source)[len];
 }
 
-int buf_cmp(const void* a, const void* b, usize len)
+i32 buf_cmp(const void* a, const void* b, usize len)
 {
     for (usize i = 0; i < len; i++) {
         if (((u8*)a)[i] != ((u8*)b)[i])

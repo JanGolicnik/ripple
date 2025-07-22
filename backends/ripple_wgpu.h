@@ -5,9 +5,17 @@
 #include <glfw/glfw3.h>
 #include <glfw3webgpu.h>
 
+#ifndef STB_TRUETYPE_IMPLEMENTATION
+#define STB_TRUETYPE_IMPLEMENTATION
+#endif
+#include <stb/stb_truetype.h>
+
 #include <math.h>
 
 #include "../ripple.h"
+
+const f32 FONT_SIZE = 128.0f;
+const u32 BITMAP_SIZE = 1024;
 
 typedef struct {
     WGPUAdapter adapter;
@@ -108,6 +116,7 @@ static const u32 index_count = sizeof(index_data) / index_data_size;
 typedef struct {
     f32 pos[2];
     f32 size[2];
+    f32 font_texture_coords[4];
     f32 color[3];
     f32 _padding[1];
 } Instance;
@@ -119,6 +128,8 @@ struct ShaderData {\
     time: f32,\
 };\
 @group(0) @binding(0) var<uniform> shader_data: ShaderData;\
+@group(0) @binding(1) var font_texture: texture_2d<f32>;\
+@group(0) @binding(2) var font_texture_sampler: sampler;\
 \
 struct VertexInput {\
     @location(0) position: vec2f,\
@@ -127,23 +138,32 @@ struct VertexInput {\
 struct InstanceInput {\
     @location(1) position: vec2f,\
     @location(2) size: vec2f,\
-    @location(3) color: vec3f,\
+    @location(3) font_texture_coords: vec4f,\
+    @location(4) color: vec3f,\
 }\
 \
 struct VertexOutput{\
     @builtin(position) position: vec4f,\
-    @location(0) color: vec3f\
+    @location(0) color: vec3f,\
+    @location(1) font_texture_coords: vec2f\
 };\
 \
 @vertex \
-fn vs_main(v: VertexInput, i: InstanceInput) -> VertexOutput {\
+fn vs_main(v: VertexInput, i: InstanceInput, @builtin(vertex_index) index: u32) -> VertexOutput {\
     let resolution = vec2f(f32(shader_data.resolution.x), f32(shader_data.resolution.y));\
     var position = i.position + v.position * i.size;\
     position = position / resolution;\
     position = vec2f(position.x, 1.0f - position.y) * 2.0f - vec2f(1.0f, 1.0f);\
+    var color = i.color;\
+    var font_texture_coords = i.font_texture_coords.xy;\
+    if (index == 1) { font_texture_coords = i.font_texture_coords.zy; }\
+    else if (index == 2) { font_texture_coords = i.font_texture_coords.zw; }\
+    else if (index == 3) { font_texture_coords = i.font_texture_coords.xw; }\
+    \
     var out: VertexOutput;\
     out.position = vec4f(position.x, position.y, 0.0, 1.0);\
-    out.color = i.color;\
+    out.color = color;\
+    out.font_texture_coords = font_texture_coords;\
     return out;\
 }\
 \
@@ -151,7 +171,12 @@ fn vs_main(v: VertexInput, i: InstanceInput) -> VertexOutput {\
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {\
     let color = in.color;\
     let linear_color = pow(color, vec3f(2.2));\
-    return vec4f(linear_color, 1.0);\
+    let alpha = select(\
+        1.0,\
+        textureSample(font_texture, font_texture_sampler, in.font_texture_coords).x,\
+        any(in.font_texture_coords != vec2f(0.0))\
+    );\
+    return vec4f(linear_color, alpha);\
 }\
 ";
 
@@ -170,6 +195,13 @@ static struct {
     WGPUBuffer vertex_buffer;
     WGPUBuffer index_buffer;
     WGPUBuffer instance_buffer;
+
+    struct {
+        WGPUTexture texture;
+        WGPUTextureView view;
+        WGPUSampler sampler;
+        stbtt_bakedchar glyphs[96];
+    } font;
 
     Instance instances[1024];
     u32 n_instances;
@@ -264,25 +296,121 @@ static void _initialize(RippleWindowConfig config)
             .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
         });
 
+    // create font
+    {
+        // load data
+        FILE* file = fopen("./roboto.ttf", "rb");
+        if ( !file )
+            abort("Could not load font file :(");
+        fseek(file, 0, SEEK_END);
+        const usize file_size = ftell(file);
+        rewind(file);
+        u8 file_buffer[file_size];
+        buf_set(file_buffer, 0, file_size);
+        fread(file_buffer, 1, file_size, file);
+        fclose(file);
+
+        // bake bitmap
+        u8 bitmap_buffer[BITMAP_SIZE * BITMAP_SIZE];
+        if (stbtt_BakeFontBitmap(file_buffer, 0, FONT_SIZE, bitmap_buffer, BITMAP_SIZE, BITMAP_SIZE, 32, 96, _context.font.glyphs) == 0)
+        {
+            abort("failed baking bitmap");
+        }
+
+        _context.font.texture = wgpuDeviceCreateTexture(_context.device, &(WGPUTextureDescriptor){
+                .label = "fontAtlas",
+                .size = (WGPUExtent3D){ .width = BITMAP_SIZE, .height = BITMAP_SIZE, .depthOrArrayLayers = 1 },
+                .format = WGPUTextureFormat_R8Unorm,
+                .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
+                .dimension = WGPUTextureDimension_2D,
+                .mipLevelCount = 1,
+                .sampleCount = 1
+            });
+
+        wgpuQueueWriteTexture(_context.queue, &(WGPUImageCopyTexture){
+                .texture = _context.font.texture,
+                .aspect = WGPUTextureAspect_All
+            },
+            bitmap_buffer,
+            BITMAP_SIZE * BITMAP_SIZE,
+            &(WGPUTextureDataLayout){
+                .bytesPerRow = BITMAP_SIZE,
+                .rowsPerImage = BITMAP_SIZE
+            },
+            &(WGPUExtent3D){
+                .width = BITMAP_SIZE,
+                .height = BITMAP_SIZE,
+                .depthOrArrayLayers = 1
+            }
+        );
+
+        _context.font.view = wgpuTextureCreateView(_context.font.texture, &(WGPUTextureViewDescriptor){
+                .format = WGPUTextureFormat_R8Unorm,
+                .dimension = WGPUTextureViewDimension_2D,
+                .mipLevelCount = 1,
+                .arrayLayerCount = 1,
+                .aspect = WGPUTextureAspect_All,
+            });
+
+        _context.font.sampler = wgpuDeviceCreateSampler(_context.device, &(WGPUSamplerDescriptor){
+              .addressModeU = WGPUAddressMode_ClampToEdge,
+              .addressModeV = WGPUAddressMode_ClampToEdge,
+              .addressModeW = WGPUAddressMode_ClampToEdge,
+              .magFilter = WGPUFilterMode_Linear,
+              .minFilter = WGPUFilterMode_Linear,
+              .mipmapFilter = WGPUMipmapFilterMode_Nearest,
+              .maxAnisotropy = 1
+            });
+    }
+
     _context.bind_group_layout = wgpuDeviceCreateBindGroupLayout(_context.device, &(WGPUBindGroupLayoutDescriptor){
-            .entryCount = 1,
-            .entries = &(WGPUBindGroupLayoutEntry) {
-                .binding = 0,
-                .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment,
-                .buffer = {
-                    .type = WGPUBufferBindingType_Uniform,
-                    .minBindingSize = sizeof(_context.shader_data)
+            .entryCount = 3,
+            .entries = (WGPUBindGroupLayoutEntry[]) {
+                [0] = {
+                    .binding = 0,
+                    .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment,
+                    .buffer = {
+                        .type = WGPUBufferBindingType_Uniform,
+                        .minBindingSize = sizeof(_context.shader_data)
+                    }
+                },
+                [1] = {
+                    .binding = 1,
+                    .visibility = WGPUShaderStage_Fragment,
+                    .texture = {
+                        .sampleType = WGPUTextureSampleType_Float,
+                        .viewDimension = WGPUTextureViewDimension_2D,
+                    }
+                },
+                [2] = {
+                    .binding = 2,
+                    .visibility = WGPUShaderStage_Fragment,
+                    .sampler = {
+                        .type = WGPUSamplerBindingType_Filtering
+                    }
                 }
+
             }
         });
+
     _context.bind_group = wgpuDeviceCreateBindGroup(_context.device, &(WGPUBindGroupDescriptor){
             .layout = _context.bind_group_layout,
-            .entryCount = 1,
-            .entries = &(WGPUBindGroupEntry){
-                .binding = 0,
-                .buffer = _context.uniform_buffer,
-                .offset = 0,
-                .size = sizeof(_context.shader_data)
+            .entryCount = 3,
+            .entries = (WGPUBindGroupEntry[]){
+                [0] = {
+                    .binding = 0,
+                    .buffer = _context.uniform_buffer,
+                    .offset = 0,
+                    .size = sizeof(_context.shader_data)
+                },
+                [1] = {
+                    .binding = 1,
+                    .textureView = _context.font.view,
+                },
+                [2] = {
+                    .binding = 2,
+                    .sampler = _context.font.sampler
+                }
             }
         });
 
@@ -320,7 +448,7 @@ static void _initialize(RippleWindowConfig config)
                         .stepMode = WGPUVertexStepMode_Vertex,
                     },
                     [1] = {
-                        .attributeCount = 3,
+                        .attributeCount = 4,
                         .attributes = (WGPUVertexAttribute[]) {
                             [0] = {
                                 .shaderLocation = 1,
@@ -334,6 +462,11 @@ static void _initialize(RippleWindowConfig config)
                             },
                             [2] = {
                                 .shaderLocation = 3,
+                                .format = WGPUVertexFormat_Float32x4,
+                                .offset = offsetof(Instance, font_texture_coords)
+                            },
+                            [3] = {
+                                .shaderLocation = 4,
                                 .format = WGPUVertexFormat_Float32x3,
                                 .offset = offsetof(Instance, color)
                             }
@@ -555,13 +688,39 @@ void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
 
 void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h)
 {
-    *out_w = (str_len(text) * font_size) / 2;
-    *out_h = font_size;
+    f32 scale = font_size / FONT_SIZE;
+    f32 x = 0.0f, y = 0.0f;
+
+    for (const char* iter = text; *iter; iter++) {
+        i32 c = *iter;
+        if (c < 32 || c >= 128) continue;
+        stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, c - 32, &x, &y, &(stbtt_aligned_quad){ 0 }, 1);
+    }
+
+    *out_w = (i32)(x * scale);
+    *out_h = (i32)(font_size);
 }
 
-void ripple_render_text(i32 x, i32 y, const char* text, f32 font_size, u32 color)
+void ripple_render_text(i32 pos_x, i32 pos_y, const char* text, f32 font_size, u32 color)
 {
-    // add to instance q
+    f32 scale = font_size / FONT_SIZE;
+    f32 color_arr[3]; _u32_to_color(color, color_arr);
+    pos_y += font_size * 0.75f;
+    f32 x = 0.0f;
+    f32 y = 0.0f;
+    for (const char* iter = text; *iter; iter++)
+    {
+        char c = *iter;
+
+        stbtt_aligned_quad quad;
+        stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, c - 32, &x, &y, &quad, 1);
+
+        _context.instances[_context.n_instances++] = (Instance){
+            .pos = { pos_x + quad.x0 * scale, pos_y + quad.y0 * scale },
+            .size = { (quad.x1 - quad.x0) * scale, (quad.y1 - quad.y0) * scale },
+            .font_texture_coords = { quad.s0, quad.t0, quad.s1, quad.t1 },
+            .color = { color_arr[0], color_arr[1], color_arr[2] } };
+    }
 }
 
 #endif // RIPPLE_WGPU_H

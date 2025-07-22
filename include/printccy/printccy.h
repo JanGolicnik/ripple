@@ -79,6 +79,7 @@ _Thread_local struct {
     double: printccy_print_double,\
     long long: printccy_print_long_long,\
     unsigned long long: printccy_print_long_long,\
+    unsigned char: printccy_print_char,\
     char: printccy_print_char,\
     const char*: printccy_print_char_ptr,\
     char*: printccy_print_char_ptr,\

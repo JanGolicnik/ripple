@@ -8,7 +8,7 @@ add_subdirectory(./glfw)
 add_subdirectory(./glfw3webgpu)
 
 set(SOURCES main.c)
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -pedantic -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -Wdouble-promotion -Wno-bitfield-constant-conversion")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -pedantic -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -Wno-bitfield-constant-conversion")
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
