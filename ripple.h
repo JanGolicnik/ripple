@@ -20,10 +20,8 @@
 #include <marrow/mapa.h>
 
 typedef struct {
-    struct {
-        u8 initialized : 1;
-        u8 should_close : 1;
-    };
+    u8 initialized : 1;
+    u8 is_open : 1;
 } RippleWindowState;
 
 typedef struct {
@@ -46,8 +44,10 @@ typedef struct {
     u32 width;
     u32 height;
 
+    bool* is_open;
+
     struct {
-        u32 not_resizable : 1;
+        bool not_resizable : 1;
     };
 
     Allocator* allocator;
@@ -83,10 +83,6 @@ typedef enum {
 } RippleChildLayoutDirection;
 
 typedef struct {
-    struct {
-        bool fixed : 1;
-        RippleChildLayoutDirection direction : 1;
-    };
     RippleSizingValue x;
     RippleSizingValue y;
     RippleSizingValue width;
@@ -95,6 +91,10 @@ typedef struct {
     RippleSizingValue min_height;
     RippleSizingValue max_width;
     RippleSizingValue max_height;
+    struct {
+        bool fixed : 1;
+        RippleChildLayoutDirection direction : 1;
+    };
 } RippleElementLayoutConfig;
 
 struct RippleElementConfig;
@@ -102,26 +102,27 @@ typedef void (render_func_t)(struct RippleElementConfig, RenderedLayout, void*, 
 
 typedef struct RippleElementConfig {
     RippleElementLayoutConfig layout;
-    struct{
-        bool accept_input : 1;
-        bool _dummy : 1;
-    };
 
     render_func_t* render_func;
     void* render_data;
     usize render_data_size;
+
+    struct{
+        bool accept_input : 1;
+        bool _dummy : 1;
+    };
 } RippleElementConfig;
 
 typedef struct {
-    u32 clicked : 1;
-    u32 hovered : 1;
-    u32 is_held : 1;
-    u32 is_weak_held : 1;
+    u8 clicked : 1;
+    u8 hovered : 1;
+    u8 is_held : 1;
+    u8 is_weak_held : 1;
 } RippleElementState;
 
 typedef u32 RippleColor;
 
-void Ripple_start_window(RippleWindowConfig config);
+bool Ripple_start_window(RippleWindowConfig config);
 void Ripple_finish_window(void);
 
 void Ripple_push_id(u64);
@@ -135,13 +136,15 @@ void *Ripple_render_begin();
 void Ripple_render_end(void* user_data);
 
 // backend functions
-void ripple_window_begin(RippleWindowConfig config);
+void ripple_window_begin(u64 id, RippleWindowConfig config);
+void ripple_window_end();
+void ripple_window_close(u64 id);
 void ripple_get_window_size(u32* width, u32* height);
 RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWindowConfig config);
 RippleCursorState ripple_update_cursor_state(RippleCursorState state);
 
 void* ripple_render_begin();
-    void ripple_render_window_begin(void*);
+    void ripple_render_window_begin(u64, void*);
         void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color);
         void ripple_render_text(i32 x, i32 y, const char* text, f32 font_size, u32 color);
         void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h);
@@ -152,11 +155,11 @@ void ripple_render_end(void*);
 #undef RIPPLE_IMPLEMENTATION
 
 typedef struct {
-    struct {
-        u32 frame_color : 1;
-    };
-    RippleElementState state;
     RenderedLayout layout;
+    RippleElementState state;
+    struct {
+        u8 frame_color : 1;
+    };
 } ElementState;
 
 typedef struct {
@@ -175,105 +178,157 @@ typedef struct {
 } ElementData;
 
 typedef struct {
+    u64 id;
+    u64 parent_id;
     RippleWindowConfig config;
     RippleWindowState state;
     RippleCursorState cursor_state;
-    Vektor* elements;
-    Mapa* elements_states;
-
-    void* user_data;
 
     struct {
-        u32 frame_color : 1;
+        u8 frame_color : 1;
     };
 
+    Vektor* elements;
+    Mapa* elements_states;
     struct {
         u64 id;
         u32 index;
     } current_element;
+
+    void* user_data;
 } Window;
-Mapa* windows;
 
-static thread_local Window current_window;
+static thread_local Mapa* windows = nullptr;
+static thread_local Window* current_window = nullptr;
+static thread_local u32 current_frame_color = 0;
 
-void Ripple_start_window(RippleWindowConfig config)
+bool Ripple_start_window(RippleWindowConfig config)
 {
-    if (!windows) windows = mapa_create(mapa_hash_MurmurOAAT_32, mapa_cmp_bytes, config.allocator);
+    if (!windows) windows = mapa_create(mapa_hash_u64, mapa_cmp_bytes, config.allocator);
 
-    MapaItem* window = mapa_get(windows, config.title, sizeof(config.title));
-    current_window = window ? *(Window*)window->data : (Window) { 0 };
+    u64 parent_id = current_window ? current_window->id : 0;
 
-    current_window.config = config;
-
-    if (current_window.elements) vektor_empty(current_window.elements);
-    else current_window.elements = vektor_create(0, sizeof(ElementData), nullptr);
-
-    if (!current_window.elements_states)
-        current_window.elements_states = mapa_create(mapa_hash_u64, mapa_cmp_bytes, config.allocator);
-
-    ripple_window_begin(current_window.config);
-
-    ripple_get_window_size(&current_window.config.width, &current_window.config.height);
-
-    current_window.cursor_state.left.held |= current_window.cursor_state.left.pressed;
-    current_window.cursor_state.right.held |= current_window.cursor_state.right.pressed;
-    current_window.cursor_state.middle.held |= current_window.cursor_state.middle.pressed;
-
-    current_window.cursor_state = ripple_update_cursor_state(current_window.cursor_state);
-
-    if (current_window.cursor_state.left.released) current_window.cursor_state.left.held = 0;
-    if (current_window.cursor_state.right.released) current_window.cursor_state.right.held = 0;
-    if (current_window.cursor_state.middle.released) current_window.cursor_state.middle.held = 0;
-
-    vektor_add(current_window.elements, &(ElementData) {
-            .calculated_layout = {
-                .x = 0,
-                .y = 0,
-                .w = current_window.config.width,
-                .h = current_window.config.height
-            },
-    });
-
-    current_window.current_element.index = 0;
-    current_window.current_element.id = 0;
-
-    current_window.frame_color++;
-}
-
-static void finalize_element(ElementData* element);
-
-void Ripple_finish_window(void)
-{
-    current_window.state = ripple_update_window_state(current_window.state, current_window.config);
-
-    finalize_element(vektor_get(current_window.elements, 0));
-
-    // remove dead elements
-    u32 n_elements = mapa_capacity(current_window.elements_states);
-    for (u32 element_i = 0; element_i < n_elements; element_i++)
+    u64 window_id = hash_str(config.title);
+    MapaItem* window_item = mapa_get(windows, &window_id, sizeof(window_id));
+    if (!window_item || !window_item->data)
     {
-        MapaItem* item = mapa_get_at_index(current_window.elements_states, element_i);
-        ElementState* state = (ElementState*)item->data;
-        if(!state)
-        {
-            continue;
-        }
-
-        if (state->frame_color != current_window.frame_color)
-        {
-            mapa_remove_at_index(current_window.elements_states, element_i);
-        }
+        window_item = mapa_insert(windows, &window_id, sizeof(window_id), &(Window){ .id = window_id }, sizeof(Window));
     }
 
-    MapaItem* window_item = mapa_get(windows, current_window.config.title, sizeof(current_window.config.title));
-    if (window_item) *(Window*)window_item->data = current_window;
-    else mapa_insert(windows, current_window.config.title, sizeof(current_window.config.title), &current_window, sizeof(current_window));
+    Window* window = window_item->data;
+    window->parent_id = parent_id;
+
+    current_window = window_item->data;
+
+    current_window->config = config;
+
+    // update backend and state
+    {
+        ripple_window_begin(window_id, config);
+
+        ripple_get_window_size(&current_window->config.width, &current_window->config.height);
+
+        current_window->state = ripple_update_window_state(current_window->state, current_window->config);
+
+        if (config.is_open) *config.is_open = current_window->state.is_open;
+
+        current_window->cursor_state.left.held |= current_window->cursor_state.left.pressed;
+        current_window->cursor_state.right.held |= current_window->cursor_state.right.pressed;
+        current_window->cursor_state.middle.held |= current_window->cursor_state.middle.pressed;
+
+        current_window->cursor_state = ripple_update_cursor_state(current_window->cursor_state);
+
+        if (current_window->cursor_state.left.released) current_window->cursor_state.left.held = 0;
+        if (current_window->cursor_state.right.released) current_window->cursor_state.right.held = 0;
+        if (current_window->cursor_state.middle.released) current_window->cursor_state.middle.held = 0;
+    }
+
+    // reset window elements
+    {
+        if (current_window->elements) vektor_empty(current_window->elements);
+        else current_window->elements = vektor_create(0, sizeof(ElementData), nullptr);
+
+        if (!current_window->elements_states)
+            current_window->elements_states = mapa_create(mapa_hash_u64, mapa_cmp_bytes, config.allocator);
+        vektor_add(current_window->elements, &(ElementData) {
+                .calculated_layout = {
+                    .x = 0,
+                    .y = 0,
+                    .w = current_window->config.width,
+                    .h = current_window->config.height
+                },
+        });
+        current_window->current_element.id = 0;
+        current_window->current_element.index = 0;
+
+        current_window->frame_color = current_frame_color;
+    }
+
+    return current_window->state.is_open;
 }
 
-static void render_element(ElementData* element, void* window_user_data, void* user_data);
+void Ripple_finish_window()
+{
+    ripple_window_end();
+    current_window = current_window->parent_id ?
+        mapa_get(windows, &current_window->parent_id, sizeof(current_window->parent_id))->data :
+        nullptr;
+}
+
+static void finalize_element(Window* window, ElementData* element);
+
+static void render_element(Window* window, ElementData* element, void* window_user_data, void* user_data);
+
+static void update_window(Window* window)
+{
+    finalize_element(window, vektor_get(window->elements, 0));
+
+    // remove dead elements
+    i32 n_elements = (i32)mapa_capacity(window->elements_states);
+    for (i32 element_i = 0; element_i < n_elements; element_i++)
+    {
+        MapaItem* item = mapa_get_at_index(window->elements_states, element_i);
+        ElementState* state = (ElementState*)item->data;
+        if(!state) continue;
+
+        if (state->frame_color != window->frame_color)
+        {
+            mapa_remove_at_index(window->elements_states, element_i);
+            element_i--;
+            continue;
+        }
+    }
+}
+
+static void close_window(Window* window)
+{
+    ripple_window_close(window->id);
+    vektor_destroy(&window->elements);
+    mapa_destroy(&window->elements_states);
+}
 
 void* Ripple_render_begin()
 {
+    i32 n_windows = (i32)mapa_capacity(windows);
+    for (i32 window_i = 0; window_i < n_windows; window_i++)
+    {
+        MapaItem* item = mapa_get_at_index(windows, window_i);
+        Window* window = (Window*)item->data;
+        if(!window) continue;
+
+        if (window->frame_color != current_frame_color)
+        {
+            close_window(window);
+            mapa_remove_at_index(windows, window_i);
+            window_i--;
+            continue;
+        }
+
+        update_window(window);
+    }
+
+    current_frame_color = current_frame_color ? 0 : 1;
+
     return ripple_render_begin();
 }
 
@@ -285,10 +340,14 @@ void Ripple_render_end(void* user_data)
         MapaItem* item = mapa_get_at_index(windows, window_i);
         Window* window = (Window*)item->data;
         if (!window) continue;
-        ripple_render_window_begin(user_data);
-        render_element(vektor_get(window->elements, 0), window->user_data, user_data);
+        ripple_render_window_begin(window->id, user_data);
+        if (vektor_size(window->elements)){
+            render_element(window, vektor_get(window->elements, 0), window->user_data, user_data);
+        }
         ripple_render_window_end(user_data);
     }
+
+    ripple_render_end(user_data);
 }
 
 static i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 children_value)
@@ -338,21 +397,21 @@ static RenderedLayout calculate_layout(ElementData* element, ElementData* parent
 
 #undef CALCULATE_SIZING_OR
 
-static void update_element_state(ElementState* state)
+static void update_element_state(Window* window, ElementState* state)
 {
     state->state.hovered =
-        current_window.cursor_state.x >= state->layout.x && current_window.cursor_state.x < state->layout.x + state->layout.w &&
-        current_window.cursor_state.y >= state->layout.y && current_window.cursor_state.y < state->layout.y + state->layout.h;
+        window->cursor_state.x >= state->layout.x && window->cursor_state.x < state->layout.x + state->layout.w &&
+        window->cursor_state.y >= state->layout.y && window->cursor_state.y < state->layout.y + state->layout.h;
 
-    state->state.is_held = current_window.cursor_state.left.held && (state->state.clicked || (state->state.is_held && state->state.hovered));
-    state->state.is_weak_held = current_window.cursor_state.left.held && (state->state.clicked || state->state.is_weak_held);
-    state->state.clicked = state->state.hovered && current_window.cursor_state.left.pressed;
+    state->state.is_held = window->cursor_state.left.held && (state->state.clicked || (state->state.is_held && state->state.hovered));
+    state->state.is_weak_held = window->cursor_state.left.held && (state->state.clicked || state->state.is_weak_held);
+    state->state.clicked = state->state.hovered && window->cursor_state.left.pressed;
 }
 
 #define _I1 LINE_UNIQUE_VAR(_i)
-#define _for_each_child(el) u32 _I1 = 0; for (ElementData* child = el + 1; _I1 < el->n_children; child = (ElementData*)vektor_get(current_window.elements, child->next_sibling), _I1++ )
+#define _for_each_child(el) u32 _I1 = 0; for (ElementData* child = el + 1; _I1 < el->n_children; child = (ElementData*)vektor_get(window->elements, child->next_sibling), _I1++ )
 
-static void grow_children(ElementData* data)
+static void grow_children(Window* window, ElementData* data)
 {
     if (data->n_children == 0)
         return;
@@ -442,28 +501,28 @@ static void grow_children(ElementData* data)
 }
 
 // recursively renderes elements
-static void render_element(ElementData* element, void* window_user_data, void* user_data)
+static void render_element(Window* window, ElementData* element, void* window_user_data, void* user_data)
 {
     if (element->config.render_func)
         element->config.render_func(element->config, element->calculated_layout, window_user_data, user_data);
 
-    allocator_free(current_window.config.allocator, element->config.render_data, element->config.render_data_size);
+    allocator_free(window->config.allocator, element->config.render_data, element->config.render_data_size);
 
     _for_each_child(element)
     {
-        render_element(child, window_user_data, user_data);
+        render_element(window, child, window_user_data, user_data);
     }
 }
 
 // recursively grows child elements, this is the last step in calculating element layouts
 // for convenience also updates element state with new layout
-static void finalize_element(ElementData* element)
+static void finalize_element(Window* window, ElementData* element)
 {
-    MapaItem* state_item = mapa_get(current_window.elements_states, &element->id, sizeof(element->id));
+    MapaItem* state_item = mapa_get(window->elements_states, &element->id, sizeof(element->id));
     if (state_item)
     {
         ((ElementState*)state_item->data)->layout = element->calculated_layout;
-        update_element_state((ElementState*)state_item->data);
+        update_element_state(window, (ElementState*)state_item->data);
     }
 
     // our layout is done and we can calculate children
@@ -472,11 +531,11 @@ static void finalize_element(ElementData* element)
         child->calculated_layout = calculate_layout(child, element);
     }
 
-    grow_children(element);
+    grow_children(window, element);
 
     _for_each_child(element)
     {
-        finalize_element(child);
+        finalize_element(window, child);
     }
 }
 
@@ -490,14 +549,14 @@ static u64 generate_element_id(u64 base, u64 parent_id, u32 index)
 // should be called before submit element
 void Ripple_push_id(u64 id)
 {
-    ElementData* parent = vektor_get(current_window.elements, current_window.current_element.index);
-    current_window.current_element.id = id ? generate_element_id(id, current_window.current_element.id, parent->n_children) : id;
+    ElementData* parent = vektor_get(current_window->elements, current_window->current_element.index);
+    current_window->current_element.id = id ? generate_element_id(id, current_window->current_element.id, parent->n_children) : id;
 
-    vektor_add(current_window.elements, &(ElementData){
-        .parent_element = current_window.current_element.index,
-        .id = current_window.current_element.id
+    vektor_add(current_window->elements, &(ElementData){
+        .parent_element = current_window->current_element.index,
+        .id = current_window->current_element.id
     });
-    current_window.current_element.index = vektor_size(current_window.elements) - 1;
+    current_window->current_element.index = vektor_size(current_window->elements) - 1;
 }
 
 static RenderedLayout sum_layouts(RenderedLayout a, RenderedLayout b)
@@ -511,19 +570,19 @@ static RenderedLayout sum_layouts(RenderedLayout a, RenderedLayout b)
 
 void Ripple_submit_element(RippleElementConfig config)
 {
-    ElementData* element = vektor_get(current_window.elements, current_window.current_element.index);
+    ElementData* element = vektor_get(current_window->elements, current_window->current_element.index);
 
-    ElementData* parent = vektor_get(current_window.elements, element->parent_element);
+    ElementData* parent = vektor_get(current_window->elements, element->parent_element);
     if (parent->n_children++ > 0)
     {
-        ElementData* child = vektor_get(current_window.elements, parent->last_child);
-        child->next_sibling = current_window.current_element.index;
+        ElementData* child = vektor_get(current_window->elements, parent->last_child);
+        child->next_sibling = current_window->current_element.index;
     }
-    parent->last_child = current_window.current_element.index;
+    parent->last_child = current_window->current_element.index;
 
     // render_data is supposed to be set if render_data_size is also
     if (config.render_data_size)
-        config.render_data = allocator_make_copy(current_window.config.allocator, config.render_data, config.render_data_size);
+        config.render_data = allocator_make_copy(current_window->config.allocator, config.render_data, config.render_data_size);
 
     element->config = config;
 
@@ -535,11 +594,11 @@ void Ripple_submit_element(RippleElementConfig config)
 
 void Ripple_pop_id(void)
 {
-    ElementData *element = (ElementData*)vektor_get(current_window.elements, current_window.current_element.index);
-    ElementData *parent = (ElementData*)vektor_get(current_window.elements, element->parent_element);
+    ElementData *element = (ElementData*)vektor_get(current_window->elements, current_window->current_element.index);
+    ElementData *parent = (ElementData*)vektor_get(current_window->elements, element->parent_element);
     element->calculated_layout = calculate_layout(element, parent);
-    current_window.current_element.index = element->parent_element;
-    current_window.current_element.id = parent->id;
+    current_window->current_element.index = element->parent_element;
+    current_window->current_element.id = parent->id;
 }
 
 void Ripple_begin(Allocator* allocator)
@@ -558,12 +617,12 @@ void Ripple_end(void)
 
 static ElementState* _get_or_insert_current_element_state()
 {
-    MapaItem* item = mapa_get(current_window.elements_states, &current_window.current_element.id, sizeof(current_window.current_element.id));
+    MapaItem* item = mapa_get(current_window->elements_states, &current_window->current_element.id, sizeof(current_window->current_element.id));
     if (!item)
-        item = mapa_insert(current_window.elements_states, &current_window.current_element.id, sizeof(current_window.current_element.id), &(ElementState){ 0 }, sizeof(ElementState));
+        item = mapa_insert(current_window->elements_states, &current_window->current_element.id, sizeof(current_window->current_element.id), &(ElementState){ 0 }, sizeof(ElementState));
 
     ElementState* state = (ElementState*)item->data;
-    state->frame_color = current_window.frame_color;
+    state->frame_color = current_window->frame_color;
     return state;
 }
 
@@ -589,9 +648,7 @@ static RenderedLayout _get_current_element_rendered_layout()
 #define FIXED(value) { ._signed_value = value, ._type = SVT_FIXED }
 #define GROW { ._type = SVT_GROW }
 
-#define SURFACE(...) for (u8 LINE_UNIQUE_I = (Ripple_start_window((RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_I < 1; Ripple_finish_window(), LINE_UNIQUE_I++)
-
-#define SURFACE_IS_STABLE(...) ( !current_window.state.should_close )
+#define SURFACE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_start_window((RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_finish_window(), LINE_UNIQUE_VAR(_rippleiter)++)
 
 #define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_push_id(LINE_UNIQUE_HASH), Ripple_submit_element((RippleElementConfig) { ._dummy = 0, __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_pop_id(), LINE_UNIQUE_VAR(_rippleiter)++)
 
@@ -600,7 +657,7 @@ static RenderedLayout _get_current_element_rendered_layout()
 #define OPEN_THE_VOID(allocator) Ripple_begin(allocator)
 #define CLOSE_THE_VOID() Ripple_end()
 
-#define CURSOR() current_window.cursor_state
+#define CURSOR() current_window->cursor_state
 
 typedef struct {
     RippleColor color;

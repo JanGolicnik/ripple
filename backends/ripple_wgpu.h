@@ -77,13 +77,6 @@ static void queue_on_submitted_work_done(WGPUQueueWorkDoneStatus status, void* _
     debug("Queued work finished with status: {}", (u32)status);
 }
 
-static bool window_resized = true;
-static void on_window_resized(GLFWwindow* window, i32 w, i32 h)
-{
-    (void) w; (void) h;
-    window_resized = true;
-}
-
 static void configure_surface(WGPUDevice device, WGPUSurface surface, WGPUTextureFormat format, u32 width, u32 height)
 {
     wgpuSurfaceConfigure(surface, &(WGPUSurfaceConfiguration){
@@ -180,38 +173,28 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {\
 }\
 ";
 
-static struct {
+typedef struct {
+    f32 color[4];
+    i32 resolution[2];
+    f32 time;
+    f32 _padding[1];
+} ShaderData;
+
+typedef struct {
+    u64 id;
+    u64 parent_id;
+
     GLFWwindow* window;
-    WGPUInstance instance;
     WGPUSurface surface;
     WGPUTextureFormat surface_format;
-    WGPUDevice device;
-    WGPUQueue queue;
-    WGPUBuffer uniform_buffer;
-    WGPUBindGroupLayout bind_group_layout;
-    WGPUBindGroup bind_group;
-    WGPUPipelineLayout pipeline_layout;
-    WGPURenderPipeline pipeline;
-    WGPUBuffer vertex_buffer;
-    WGPUBuffer index_buffer;
+
+    // these two are only set inbetween render_window_end and render_end
+    WGPUSurfaceTexture surface_texture;
+    WGPUTextureView surface_texture_view;
+
     WGPUBuffer instance_buffer;
-
-    struct {
-        WGPUTexture texture;
-        WGPUTextureView view;
-        WGPUSampler sampler;
-        stbtt_bakedchar glyphs[96];
-    } font;
-
-    Instance instances[1024];
-    u32 n_instances;
-
-    struct {
-        f32 color[4];
-        i32 resolution[2];
-        f32 time;
-        f32 _padding[1];
-    } shader_data;
+    WGPUBuffer uniform_buffer;
+    WGPUBindGroup bind_group;
 
     struct {
         bool left_pressed;
@@ -222,49 +205,86 @@ static struct {
         bool middle_released;
     };
 
-    bool initialized;
+    ShaderData shader_data;
+
     bool render_begin;
+    bool should_configure_surface;
+
+    u32 n_instances;
+    Instance instances[1024];
+} _Window;
+
+static struct {
+    WGPUInstance instance;
+    WGPUAdapter adapter;
+    WGPUDevice device;
+    WGPUQueue queue;
+    WGPUBindGroupLayout bind_group_layout;
+    WGPUPipelineLayout pipeline_layout;
+    WGPURenderPipeline pipeline;
+    WGPUBuffer vertex_buffer;
+    WGPUBuffer index_buffer;
+
+    struct {
+        WGPUTexture texture;
+        WGPUTextureView view;
+        WGPUSampler sampler;
+        stbtt_bakedchar glyphs[96];
+    } font;
+
+    Mapa* windows;
+    _Window* current_window;
+
+    bool initialized;
 } _context;
 
-static void mouse_button_callback(GLFWwindow* window, i32 button, i32 action, i32 mods)
+static void mouse_button_callback(GLFWwindow* glfw_window, i32 button, i32 action, i32 mods)
 {
+    unused mods;
+
+    u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
+    _Window* window = mapa_get(_context.windows, &window_id, sizeof(window_id))->data;
+
     if (action == GLFW_PRESS)
     {
         if (button == GLFW_MOUSE_BUTTON_LEFT)
-            _context.left_pressed = true;
+            window->left_pressed = true;
         if (button == GLFW_MOUSE_BUTTON_RIGHT)
-            _context.right_pressed = true;
+            window->right_pressed = true;
         if (button == GLFW_MOUSE_BUTTON_MIDDLE)
-            _context.middle_pressed = true;
+            window->middle_pressed = true;
         return;
     }
 
     if (action == GLFW_RELEASE)
     {
         if (button == GLFW_MOUSE_BUTTON_LEFT)
-            _context.left_released = true;
+            window->left_released = true;
         if (button == GLFW_MOUSE_BUTTON_RIGHT)
-            _context.right_released = true;
+            window->right_released = true;
         if (button == GLFW_MOUSE_BUTTON_MIDDLE)
-            _context.middle_released = true;
+            window->middle_released = true;
         return;
     }
 }
 
+static void on_window_resized(GLFWwindow* glfw_window, i32 w, i32 h)
+{
+    unused w; unused h;
+
+    u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
+    _Window* window = mapa_get(_context.windows, &window_id, sizeof(window_id))->data;
+    window->should_configure_surface = true;
+}
+
 static void _initialize(RippleWindowConfig config)
 {
+    // GENERAL
+    _context.windows = mapa_create(mapa_hash_u64, mapa_cmp_bytes, 0);
+
     // GLFW
     if (!glfwInit())
         abort("Could not intialize GLFW!");
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, config.not_resizable ? GLFW_FALSE : GLFW_TRUE);
-    _context.window = glfwCreateWindow(config.width, config.height, config.title, nullptr, nullptr);
-    if (!_context.window)
-        abort("Couldnt no open window!");
-
-    glfwSetFramebufferSizeCallback(_context.window, &on_window_resized);
-    glfwSetMouseButtonCallback(_context.window, &mouse_button_callback);
 
     // WGPU
     WGPUInstanceDescriptor desc = { 0 };
@@ -272,29 +292,18 @@ static void _initialize(RippleWindowConfig config)
     if (!_context.instance)
         abort("Failed to create WebGPU instance.");
 
-    _context.surface = glfwGetWGPUSurface(_context.instance, _context.window);
-    WGPUAdapter adapter = get_adapter(_context.instance, (WGPURequestAdapterOptions){ .compatibleSurface = _context.surface });
-    if (!adapter)
+    _context.adapter = get_adapter(_context.instance, (WGPURequestAdapterOptions){ 0 });
+    if (!_context.adapter)
         abort("Failed to get the adapter!");
     debug("Successfully got the adapter!");
 
-    _context.surface_format = wgpuSurfaceGetPreferredFormat(_context.surface, adapter);
-
-    _context.device = get_device(adapter);
+    _context.device = get_device(_context.adapter);
     if (!_context.device)
         abort("Failed to get the device!");
     debug("Succesfully got the device!");
 
-    wgpuAdapterRelease(adapter);
-
     _context.queue = wgpuDeviceGetQueue(_context.device);
     wgpuQueueOnSubmittedWorkDone(_context.queue, &queue_on_submitted_work_done, nullptr);
-
-    // SHADERS
-    _context.uniform_buffer = wgpuDeviceCreateBuffer(_context.device, &(WGPUBufferDescriptor){
-            .size = sizeof(_context.shader_data),
-            .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
-        });
 
     // create font
     {
@@ -371,7 +380,7 @@ static void _initialize(RippleWindowConfig config)
                     .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment,
                     .buffer = {
                         .type = WGPUBufferBindingType_Uniform,
-                        .minBindingSize = sizeof(_context.shader_data)
+                        .minBindingSize = sizeof(ShaderData)
                     }
                 },
                 [1] = {
@@ -390,27 +399,6 @@ static void _initialize(RippleWindowConfig config)
                     }
                 }
 
-            }
-        });
-
-    _context.bind_group = wgpuDeviceCreateBindGroup(_context.device, &(WGPUBindGroupDescriptor){
-            .layout = _context.bind_group_layout,
-            .entryCount = 3,
-            .entries = (WGPUBindGroupEntry[]){
-                [0] = {
-                    .binding = 0,
-                    .buffer = _context.uniform_buffer,
-                    .offset = 0,
-                    .size = sizeof(_context.shader_data)
-                },
-                [1] = {
-                    .binding = 1,
-                    .textureView = _context.font.view,
-                },
-                [2] = {
-                    .binding = 2,
-                    .sampler = _context.font.sampler
-                }
             }
         });
 
@@ -487,7 +475,7 @@ static void _initialize(RippleWindowConfig config)
                 .entryPoint = "fs_main",
                 .targetCount = 1,
                 .targets = &(WGPUColorTargetState) {
-                    .format = _context.surface_format,
+                    .format = WGPUTextureFormat_BGRA8UnormSrgb,
                     .writeMask = WGPUColorWriteMask_All,
                     .blend = &(WGPUBlendState) {
                         .color =  {
@@ -524,72 +512,143 @@ static void _initialize(RippleWindowConfig config)
         });
     wgpuQueueWriteBuffer(_context.queue, _context.index_buffer, 0, index_data, sizeof(index_data));
 
-    _context.instance_buffer = wgpuDeviceCreateBuffer(_context.device, &(WGPUBufferDescriptor) {
-           .size = sizeof(_context.instances),
-           .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
-        });
-
     _context.initialized = true;
 }
 
-void ripple_window_begin(RippleWindowConfig config)
+_Window create_window(u64 id, RippleWindowConfig config)
+{
+    _Window window = (_Window){ .id = id, .should_configure_surface = true };
+
+    // GLFW
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_RESIZABLE, config.not_resizable ? GLFW_FALSE : GLFW_TRUE);
+    window.window = glfwCreateWindow(config.width, config.height, config.title, nullptr, nullptr);
+    if (!window.window)
+        abort("Couldnt no open window!");
+
+    glfwSetWindowUserPointer(window.window, (void*)id);
+    glfwSetFramebufferSizeCallback(window.window, &on_window_resized);
+    glfwSetMouseButtonCallback(window.window, &mouse_button_callback);
+
+    // WGPU
+    window.surface = glfwGetWGPUSurface(_context.instance, window.window);
+    window.surface_format = wgpuSurfaceGetPreferredFormat(window.surface, _context.adapter);
+
+    window.instance_buffer = wgpuDeviceCreateBuffer(_context.device, &(WGPUBufferDescriptor) {
+           .size = sizeof(window.instances),
+           .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
+        });
+
+    window.uniform_buffer = wgpuDeviceCreateBuffer(_context.device, &(WGPUBufferDescriptor){
+            .size = sizeof(window.shader_data),
+            .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
+        });
+
+    window.bind_group = wgpuDeviceCreateBindGroup(_context.device, &(WGPUBindGroupDescriptor){
+            .layout = _context.bind_group_layout,
+            .entryCount = 3,
+            .entries = (WGPUBindGroupEntry[]){
+                [0] = {
+                    .binding = 0,
+                    .buffer = window.uniform_buffer,
+                    .offset = 0,
+                    .size = sizeof(window.shader_data)
+                },
+                [1] = {
+                    .binding = 1,
+                    .textureView = _context.font.view,
+                },
+                [2] = {
+                    .binding = 2,
+                    .sampler = _context.font.sampler
+                }
+            }
+        });
+
+    return window;
+}
+
+void ripple_window_begin(u64 id, RippleWindowConfig config)
 {
     if (!_context.initialized)
-        _initialize(config);
+        _initialize( config);
 
-    // handle multiple windows
+    u64 parent_id = _context.current_window ? _context.current_window->id : 0;
 
-    // set window size
+    MapaItem* window_item = mapa_get(_context.windows, &id, sizeof(id));
+    if (!window_item)
+    {
+        _Window window = create_window(id, config);
+        window_item = mapa_insert(_context.windows, &id, sizeof(id), &window, sizeof(_Window));
+    }
+
+    _context.current_window = (_Window*)window_item->data;
+    _context.current_window->parent_id = parent_id;
+}
+
+void ripple_window_end()
+{
+    _context.current_window = _context.current_window->parent_id ?
+        mapa_get(_context.windows, &_context.current_window->parent_id, sizeof(_context.current_window->parent_id))->data :
+        nullptr;
+}
+
+void ripple_window_close(u64 id)
+{
+    _Window* window = mapa_get(_context.windows, &id, sizeof(id))->data;
+    glfwDestroyWindow(window->window);
+    mapa_remove(_context.windows, &id, sizeof(id));
 }
 
 void ripple_get_window_size(u32* width, u32* height)
 {
-    i32 w, h; glfwGetFramebufferSize(_context.window, &w, &h);
+    i32 w, h;
+    glfwGetFramebufferSize(_context.current_window->window, &w, &h);
     *width = w;
     *height = h;
 }
 
 RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWindowConfig config)
 {
-    if (window_resized)
+    _Window* window = _context.current_window;
+
+    if (window->should_configure_surface)
     {
-        glfwGetFramebufferSize(_context.window, &_context.shader_data.resolution[0], &_context.shader_data.resolution[1]);
-        configure_surface(_context.device, _context.surface, _context.surface_format, _context.shader_data.resolution[0], _context.shader_data.resolution[1]);
-        window_resized = false;
+        glfwGetFramebufferSize(window->window, &window->shader_data.resolution[0], &window->shader_data.resolution[1]);
+        configure_surface(_context.device, window->surface, window->surface_format, window->shader_data.resolution[0], window->shader_data.resolution[1]);
+        window->should_configure_surface = false;
     }
 
-    state.should_close = glfwWindowShouldClose(_context.window);
+    state.is_open = !glfwWindowShouldClose(_context.current_window->window);
 
     glfwPollEvents();
-//   f32 prev_time = shader_data.time;
-    _context.shader_data.time = (f32)glfwGetTime();
-//    f32 dt = shader_data.time - prev_time;
-    _context.shader_data.color[0] = sinf(_context.shader_data.time) * 0.5f + 0.5f;
-    _context.shader_data.color[1] = sinf(_context.shader_data.time * 2.5f) * 0.25f + 0.5f;
-    _context.shader_data.color[2] = sinf(_context.shader_data.time * 5.0f) * 0.1f + 0.5f;
-    wgpuQueueWriteBuffer(_context.queue, _context.uniform_buffer, 0, &_context.shader_data, sizeof(_context.shader_data));
+    window->shader_data.time = (f32)glfwGetTime();
+    window->shader_data.color[0] = sinf(window->shader_data.time) * 0.5f + 0.5f;
+    window->shader_data.color[1] = sinf(window->shader_data.time * 2.5f) * 0.25f + 0.5f;
+    window->shader_data.color[2] = sinf(window->shader_data.time * 5.0f) * 0.1f + 0.5f;
+    wgpuQueueWriteBuffer(_context.queue, window->uniform_buffer, 0, &window->shader_data, sizeof(window->shader_data));
 
     return state;
 }
 
 RippleCursorState ripple_update_cursor_state(RippleCursorState state)
 {
-    double x, y; glfwGetCursorPos(_context.window, &x, &y);
+    double x, y; glfwGetCursorPos(_context.current_window->window, &x, &y);
     state.x = (i32)x;
     state.y = (i32)y;
-    state.left.pressed = _context.left_pressed;
-    state.right.pressed = _context.right_pressed;
-    state.middle.pressed = _context.middle_pressed;
-    state.left.released = _context.left_released;
-    state.right.released = _context.right_released;
-    state.middle.released = _context.middle_released;
+    state.left.pressed = _context.current_window->left_pressed;
+    state.right.pressed = _context.current_window->right_pressed;
+    state.middle.pressed = _context.current_window->middle_pressed;
+    state.left.released = _context.current_window->left_released;
+    state.right.released = _context.current_window->right_released;
+    state.middle.released = _context.current_window->middle_released;
 
-    _context.left_pressed = false;
-    _context.right_pressed = false;
-    _context.middle_pressed = false;
-    _context.left_released = false;
-    _context.right_released = false;
-    _context.middle_released = false;
+    _context.current_window->left_pressed = false;
+    _context.current_window->right_pressed = false;
+    _context.current_window->middle_pressed = false;
+    _context.current_window->left_released = false;
+    _context.current_window->right_released = false;
+    _context.current_window->middle_released = false;
 
     return state;
 }
@@ -600,26 +659,29 @@ void *ripple_render_begin()
     return encoder;
 }
 
-void ripple_render_window_begin(void* render_context)
+void ripple_render_window_begin(u64 id, void* render_context)
 {
-    _context.n_instances = 0;
+    unused render_context;
 
-    WGPUCommandEncoder encoder = (WGPUCommandEncoder)render_context;
-    (void)encoder;
+    _context.current_window = mapa_get(_context.windows, &id, sizeof(id))->data;
+    _context.current_window->n_instances = 0;
 }
 
 void ripple_render_window_end(void* render_context)
 {
     WGPUCommandEncoder encoder = (WGPUCommandEncoder)render_context;
 
-    wgpuQueueWriteBuffer(_context.queue, _context.instance_buffer, 0, _context.instances, sizeof(_context.instances[0]) * _context.n_instances);
+    wgpuQueueWriteBuffer(_context.queue,
+                         _context.current_window->instance_buffer,
+                         0,
+                         _context.current_window->instances,
+                         sizeof(_context.current_window->instances[0]) * _context.current_window->n_instances);
 
-    WGPUSurfaceTexture surface_texture;
-    wgpuSurfaceGetCurrentTexture(_context.surface, &surface_texture);
+    wgpuSurfaceGetCurrentTexture(_context.current_window->surface, &_context.current_window->surface_texture);
 
-    WGPUTextureView surface_texture_view = wgpuTextureCreateView(surface_texture.texture, &(WGPUTextureViewDescriptor){
+    _context.current_window->surface_texture_view = wgpuTextureCreateView(_context.current_window->surface_texture.texture, &(WGPUTextureViewDescriptor){
             .label = "Surface texture view",
-            .format = wgpuTextureGetFormat(surface_texture.texture),
+            .format = wgpuTextureGetFormat(_context.current_window->surface_texture.texture),
             .dimension = WGPUTextureViewDimension_2D,
             .mipLevelCount = 1,
             .arrayLayerCount = 1,
@@ -629,7 +691,7 @@ void ripple_render_window_end(void* render_context)
     WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass(encoder, &(WGPURenderPassDescriptor){
             .colorAttachmentCount = 1,
             .colorAttachments = &(WGPURenderPassColorAttachment){
-                .view = surface_texture_view,
+                .view = _context.current_window->surface_texture_view,
                 .loadOp = WGPULoadOp_Clear,
                 .storeOp = WGPUStoreOp_Store,
                 .clearValue = (WGPUColor){ 1.0f, 0.7f, 0.4f, 1.0f },
@@ -642,27 +704,16 @@ void ripple_render_window_end(void* render_context)
 
     wgpuRenderPassEncoderSetPipeline(render_pass, _context.pipeline);
     wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0, _context.vertex_buffer, 0, wgpuBufferGetSize(_context.vertex_buffer));
-    wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, _context.instance_buffer, 0, wgpuBufferGetSize(_context.instance_buffer));
+    wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, _context.current_window->instance_buffer, 0, wgpuBufferGetSize(_context.current_window->instance_buffer));
     wgpuRenderPassEncoderSetIndexBuffer(render_pass, _context.index_buffer, WGPUIndexFormat_Uint16, 0, wgpuBufferGetSize(_context.index_buffer));
-    wgpuRenderPassEncoderSetBindGroup(render_pass, 0, _context.bind_group, 0, nullptr);
-    wgpuRenderPassEncoderDrawIndexed(render_pass, index_count, _context.n_instances, 0, 0, 0);
+    wgpuRenderPassEncoderSetBindGroup(render_pass, 0, _context.current_window->bind_group, 0, nullptr);
+    wgpuRenderPassEncoderDrawIndexed(render_pass, index_count, _context.current_window->n_instances, 0, 0, 0);
 
     wgpuRenderPassEncoderEnd(render_pass);
-
-    WGPUCommandBuffer command = wgpuCommandEncoderFinish(encoder, &(WGPUCommandBufferDescriptor){ .label = "Command buffer" });
-    wgpuCommandEncoderRelease(encoder);
-
-    wgpuQueueSubmit(_context.queue, 1, &command);
-    wgpuCommandBufferRelease(command);
-
-    wgpuSurfacePresent(_context.surface);
-    wgpuTextureViewRelease(surface_texture_view);
-    wgpuTextureRelease(surface_texture.texture);
 }
 
 void ripple_render_end(void* render_context)
 {
-    /*
     WGPUCommandEncoder encoder = (WGPUCommandEncoder)render_context;
 
     WGPUCommandBuffer command = wgpuCommandEncoderFinish(encoder, &(WGPUCommandBufferDescriptor){ .label = "Command buffer" });
@@ -670,7 +721,18 @@ void ripple_render_end(void* render_context)
 
     wgpuQueueSubmit(_context.queue, 1, &command);
     wgpuCommandBufferRelease(command);
-     */
+
+
+    u32 n_windows = mapa_capacity(_context.windows);
+    for (u32 window_i = 0; window_i < n_windows; window_i++)
+    {
+        MapaItem* item = mapa_get_at_index(_context.windows, window_i);
+        _Window* window = (_Window*)item->data;
+        if (!window) continue;
+        wgpuSurfacePresent(window->surface);
+        wgpuTextureViewRelease(window->surface_texture_view);
+        wgpuTextureRelease(window->surface_texture.texture);
+    }
 }
 
 static void _u32_to_color(u32 color, f32 out_color[3])
@@ -683,7 +745,7 @@ static void _u32_to_color(u32 color, f32 out_color[3])
 void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
 {
     f32 color_arr[3]; _u32_to_color(color, color_arr);
-    _context.instances[_context.n_instances++] = (Instance){ .pos = { (f32)x, (f32)y }, .size = { (f32)w, (f32)h }, .color = { color_arr[0], color_arr[1], color_arr[2] } };
+    _context.current_window->instances[_context.current_window->n_instances++] = (Instance){ .pos = { (f32)x, (f32)y }, .size = { (f32)w, (f32)h }, .color = { color_arr[0], color_arr[1], color_arr[2] } };
 }
 
 void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h)
@@ -715,7 +777,7 @@ void ripple_render_text(i32 pos_x, i32 pos_y, const char* text, f32 font_size, u
         stbtt_aligned_quad quad;
         stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, c - 32, &x, &y, &quad, 1);
 
-        _context.instances[_context.n_instances++] = (Instance){
+        _context.current_window->instances[_context.current_window->n_instances++] = (Instance){
             .pos = { pos_x + quad.x0 * scale, pos_y + quad.y0 * scale },
             .size = { (quad.x1 - quad.x0) * scale, (quad.y1 - quad.y0) * scale },
             .font_texture_coords = { quad.s0, quad.t0, quad.s1, quad.t1 },

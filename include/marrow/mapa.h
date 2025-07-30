@@ -53,7 +53,7 @@ mapa_hash_t mapa_hash_MurmurOAAT_32(void const* key, mapa_size_t key_size);
 u8 mapa_cmp_bytes(void const* a, mapa_size_t a_size, void const* b, mapa_size_t b_size);
 
 Mapa* mapa_create(mapa_hash_func hash_func, mapa_cmp_func cmp_func, Allocator* allocator);
-bool mapa_destroy(Mapa* mapa);
+bool mapa_destroy(Mapa** mapa);
 
 MapaItem* mapa_insert(Mapa* mapa, void const* key, mapa_size_t key_size, void* data, mapa_size_t data_size);
 MapaItem* mapa_insert_str(Mapa* mapa, char const* key, char* data); //expects null terminated string
@@ -250,8 +250,9 @@ Mapa* mapa_create(mapa_hash_func hash_func, mapa_cmp_func cmp_func, Allocator* a
   return mapa;
 }
 
-bool mapa_destroy(Mapa* mapa)
+bool mapa_destroy(Mapa** mapa_ptr)
 {
+  Mapa* mapa = *mapa_ptr;
   for (u32 i = 0; i < mapa->size; i++)
   {
     MapaEntry *entry = &mapa->entries[i];
@@ -260,6 +261,7 @@ bool mapa_destroy(Mapa* mapa)
   }
 
   allocator_free(mapa->allocator, mapa, sizeof(Mapa));
+  *mapa_ptr = nullptr;
   return true;
 }
 

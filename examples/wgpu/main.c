@@ -155,52 +155,46 @@ u32 light_colors_funcs[] = { 0xff0000, 0x00ff00, 0x0000ff, 0x00ffaa, 0xffffaa, 0
 u32  dark_colors_funcs[] = { 0xaa0000, 0x00aa00, 0x0000aa, 0x00aa55, 0xaaaa55, 0xaa55aa };
 int main(int argc, char* argv[])
 {
-    u32 test_index = 0;
-    f32 accum_dt = 0.0f;
-    u32 n_dt_samples = 0;
-    f32 prev_time = 0.0f;
-    while( SURFACE_IS_STABLE() )
-    {
-        f32 time = glfwGetTime();
-        f32 dt = time - prev_time;
-        prev_time = time;
+    bool main_is_open = true;
+    bool second_is_open = false;
+    bool third_is_open = false;
 
-        n_dt_samples += 1;
-        accum_dt += dt;
-        if (accum_dt > 1.0f)
+    while (main_is_open) {
+        SURFACE( .title = "surface", .width = 800, .height = 800, .is_open = &main_is_open )
         {
-            debug("Running at {} fps", 1.0 / (f64)(accum_dt / (f32)n_dt_samples));
-            accum_dt = 0.0f;
-            n_dt_samples = 0;
-        }
-
-        f32 font_size = 45.0f;
-
-        SURFACE( .title = "surface", .width = 800, .height = 800 + (i32)font_size )
-        {
-            RIPPLE( FORM( .direction = cld_VERTICAL ) )
+            RIPPLE( RECTANGLE( .color = 0x0000ff ))
             {
-                RIPPLE( FORM( .height = FIXED(font_size) ) )
+                if (STATE().clicked)
+                    second_is_open = !second_is_open;
+            }
+
+            RIPPLE( RECTANGLE( .color = 0x00ff00 ))
+            {
+                if (STATE().clicked)
+                    third_is_open = !third_is_open;
+            }
+
+            if (second_is_open)
+            {
+                SURFACE( .title = "HELLO!", .width = 300, .height = 300, .not_resizable = true, .is_open = &second_is_open )
                 {
-                    for (u32 i = 0; i < sizeof(test_funcs) / sizeof(test_funcs[0]); i++)
+                    RIPPLE( RECTANGLE( .color = 0x0000ff ))
                     {
-                        u32 color = light_colors_funcs[i];
-                        u32 dark_color = dark_colors_funcs[i];
-                        i32 text_w, text_h; ripple_measure_text((const char*)test_func_labels[i], font_size, &text_w, &text_h);
-                        RIPPLE( FORM( .width = FIXED(text_w) ),
-                                TEXT( .color = (STATE().hovered || test_index == i) ? color : dark_color,
-                                      .font_size = font_size,
-                                      .text = test_func_labels[i] )
-                        ) {
-                            if (STATE().clicked) test_index = i;
-                        }
-                        RIPPLE(FORM(.width = FIXED(20)));
+                        if (STATE().clicked)
+                            second_is_open = false;
                     }
                 }
+            }
 
-                RIPPLE( )
+            if (third_is_open)
+            {
+                SURFACE( .title = "hh", .width = 300, .height = 300, .not_resizable = true, .is_open = &third_is_open )
                 {
-                    test_funcs[test_index](dt);
+                    RIPPLE( RECTANGLE( .color = 0x00ff00 ))
+                    {
+                        if (STATE().clicked)
+                            third_is_open = false;
+                    }
                 }
             }
         }

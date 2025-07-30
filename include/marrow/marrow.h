@@ -50,6 +50,12 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #define NULL {}
 #endif // NULL
 
+#define BIT(n) (1ULL << (n))
+#define BIT_IS_SET(val,n)  (((val) >> (n)) & 1)
+#define BIT_SET(val, n)   ((val) |= BIT(n))
+#define BIT_CLEAR(val, n) ((val) &= ~BIT(n))
+#define BIT_TOGGLE(val,n) ((val) ^= BIT(n))
+
 #ifndef loop
 #define loop while(true)
 #endif // loop
@@ -69,6 +75,18 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #ifndef clamp
 #define clamp(val, low, high) min(max(val, low), high)
 #endif // clamp
+
+#ifndef is_between
+#define is_between(val, low, high) ((val) > (low) && (val) < (high))
+#endif // is_between
+
+#ifndef is_between_inclusive
+#define is_between_inclusive(val, low, high) ((val) >= (low) && (val) <= (high))
+#endif // is_between_inclusive
+
+#ifndef array_len
+#define array_len(arr) (sizeof(arr)/sizeof((arr)[0]))
+#endif // array_len
 
 #ifndef push_stream
 #define push_stream(stream) fflush(stream)
