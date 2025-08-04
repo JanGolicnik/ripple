@@ -1,3 +1,48 @@
+#include "marrow/mapa2.h"
+#include "printccy/printccy.h"
+
+i32 main()
+{
+    MAPA(i32, i32) ii_map;
+    mapa_init(ii_map, mapa_hash_u32, mapa_cmp_bytes, nullptr);
+
+    i32 keys[20] = {
+        0, 1, 1, 2, 3, 5, 8, 13, 21, 34,
+        55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181
+    };
+
+    i32 values[20] = {
+        0, 1, 1, 4, 9, 25, 64, 169, 441, 1156,
+        3025, 7921, 20736, 54289, 142129, 372100, 974169, 2550409, 6677056, 17480761
+    };
+
+    for (u32 i = 0; i < array_len(keys); i++)
+    {
+        mapa_insert(ii_map, &keys[i], values[i]);
+    }
+
+    for (u32 i = 0; i < array_len(keys); i++)
+    {
+        i32 value = *mapa_get(ii_map, &keys[i]);
+        if (value != values[i])
+            abort("failed at {}", value);
+    }
+
+    for (u32 i = 0; i < ii_map.size; i++)
+    {
+        if (!ii_map.entries[i].has_value)
+        {
+            printout("[{}]: (X) -> (X)\n", i);
+            continue;
+        }
+        i32 key = ii_map.entries[i].v.key;
+        i32 value = ii_map.entries[i].v.value;
+        printout("[{}]: ({}) -> ({})\n", i, key, value);
+    }
+
+    return 0;
+}
+/*
 #include <marrow/marrow.h>
 #include <glfw/glfw3.h>
 
@@ -101,31 +146,30 @@ int main(int argc, char* argv[])
         RIPPLE_RENDER_END(RIPPLE_RENDER_BEGIN());
     }
 
-    /*
     // CLEAN UP WGPU
 
-    wgpuPipelineLayoutRelease(pipeline_layout);
-    wgpuBindGroupLayoutRelease(bind_group_layout);
-    wgpuBindGroupRelease(bind_group);
+    //wgpuPipelineLayoutRelease(pipeline_layout);
+    //wgpuBindGroupLayoutRelease(bind_group_layout);
+    //wgpuBindGroupRelease(bind_group);
 
-    wgpuBufferRelease(vertex_buffer);
-    wgpuBufferRelease(index_buffer);
-    wgpuBufferRelease(uniform_buffer);
+    //wgpuBufferRelease(vertex_buffer);
+    //wgpuBufferRelease(index_buffer);
+    //wgpuBufferRelease(uniform_buffer);
 
-    wgpuRenderPipelineRelease(pipeline);
+    //wgpuRenderPipelineRelease(pipeline);
 
-    wgpuQueueRelease(queue);
+    //wgpuQueueRelease(queue);
 
-    wgpuDeviceRelease(device);
+    //wgpuDeviceRelease(device);
 
-    wgpuSurfaceUnconfigure(surface);
+    //wgpuSurfaceUnconfigure(surface);
 
-    wgpuInstanceRelease(instance);
+    //wgpuInstanceRelease(instance);
 
-    // CLEAN UP GLFW
+    //// CLEAN UP GLFW
 
-    glfwDestroyWindow(window);
-     */
+    //glfwDestroyWindow(window);
 
     return 0;
 }
+*/
