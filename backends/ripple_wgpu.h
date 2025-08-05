@@ -232,7 +232,7 @@ static struct {
         stbtt_bakedchar glyphs[96];
     } font;
 
-    Mapa* windows;
+    MAPA(u64, _Window) windows;
     _Window* current_window;
 
     bool initialized;
@@ -243,7 +243,7 @@ static void mouse_button_callback(GLFWwindow* glfw_window, i32 button, i32 actio
     unused mods;
 
     u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
-    _Window* window = mapa_get(_context.windows, &window_id, sizeof(window_id))->data;
+    _Window* window = mapa_get(_context.windows, &window_id);
 
     if (action == GLFW_PRESS)
     {
@@ -273,14 +273,14 @@ static void on_window_resized(GLFWwindow* glfw_window, i32 w, i32 h)
     unused w; unused h;
 
     u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
-    _Window* window = mapa_get(_context.windows, &window_id, sizeof(window_id))->data;
+    _Window* window = mapa_get(_context.windows, &window_id);
     window->should_configure_surface = true;
 }
 
 static void _initialize(RippleWindowConfig config)
 {
     // GENERAL
-    _context.windows = mapa_create(mapa_hash_u64, mapa_cmp_bytes, 0);
+    mapa_init(_context.windows, mapa_hash_u64, mapa_cmp_bytes, 0);
 
     // GLFW
     if (!glfwInit())
@@ -571,33 +571,31 @@ _Window create_window(u64 id, RippleWindowConfig config)
 void ripple_window_begin(u64 id, RippleWindowConfig config)
 {
     if (!_context.initialized)
-        _initialize( config);
+        _initialize(config);
 
     u64 parent_id = _context.current_window ? _context.current_window->id : 0;
 
-    MapaItem* window_item = mapa_get(_context.windows, &id, sizeof(id));
-    if (!window_item)
+    _context.current_window = mapa_get(_context.windows, &id);
+    if (!_context.current_window)
     {
-        _Window window = create_window(id, config);
-        window_item = mapa_insert(_context.windows, &id, sizeof(id), &window, sizeof(_Window));
+        _context.current_window = mapa_insert(_context.windows, &id, create_window(id, config));
     }
 
-    _context.current_window = (_Window*)window_item->data;
     _context.current_window->parent_id = parent_id;
 }
 
 void ripple_window_end()
 {
     _context.current_window = _context.current_window->parent_id ?
-        mapa_get(_context.windows, &_context.current_window->parent_id, sizeof(_context.current_window->parent_id))->data :
+        mapa_get(_context.windows, &_context.current_window->parent_id) :
         nullptr;
 }
 
 void ripple_window_close(u64 id)
 {
-    _Window* window = mapa_get(_context.windows, &id, sizeof(id))->data;
+    _Window* window = mapa_get(_context.windows, &id);
     glfwDestroyWindow(window->window);
-    mapa_remove(_context.windows, &id, sizeof(id));
+    mapa_remove(_context.windows, &id);
 }
 
 void ripple_get_window_size(u32* width, u32* height)
@@ -663,7 +661,7 @@ void ripple_render_window_begin(u64 id, void* render_context)
 {
     unused render_context;
 
-    _context.current_window = mapa_get(_context.windows, &id, sizeof(id))->data;
+    _context.current_window = mapa_get(_context.windows, &id);
     _context.current_window->n_instances = 0;
 }
 
@@ -723,11 +721,9 @@ void ripple_render_end(void* render_context)
     wgpuCommandBufferRelease(command);
 
 
-    u32 n_windows = mapa_capacity(_context.windows);
-    for (u32 window_i = 0; window_i < n_windows; window_i++)
+    for (u32 window_i = 0; window_i < _context.windows.size; window_i++)
     {
-        MapaItem* item = mapa_get_at_index(_context.windows, window_i);
-        _Window* window = (_Window*)item->data;
+        _Window* window = mapa_get_at_index(_context.windows, window_i);
         if (!window) continue;
         wgpuSurfacePresent(window->surface);
         wgpuTextureViewRelease(window->surface_texture_view);

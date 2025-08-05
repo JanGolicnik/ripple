@@ -189,7 +189,7 @@ typedef struct {
     };
 
     Vektor* elements;
-    Mapa* elements_states;
+    MAPA(u64, ElementState) elements_states;
     struct {
         u64 id;
         u32 index;
@@ -198,27 +198,23 @@ typedef struct {
     void* user_data;
 } Window;
 
-static thread_local Mapa* windows = nullptr;
+static thread_local MAPA(u64, Window) windows = { 0 };
 static thread_local Window* current_window = nullptr;
 static thread_local u32 current_frame_color = 0;
 
 bool Ripple_start_window(RippleWindowConfig config)
 {
-    if (!windows) windows = mapa_create(mapa_hash_u64, mapa_cmp_bytes, config.allocator);
+    if (!windows.entries)
+        mapa_init(windows, mapa_hash_u64, mapa_cmp_bytes, config.allocator);
 
     u64 parent_id = current_window ? current_window->id : 0;
 
     u64 window_id = hash_str(config.title);
-    MapaItem* window_item = mapa_get(windows, &window_id, sizeof(window_id));
-    if (!window_item || !window_item->data)
-    {
-        window_item = mapa_insert(windows, &window_id, sizeof(window_id), &(Window){ .id = window_id }, sizeof(Window));
-    }
+    current_window = mapa_get(windows, &window_id);
+    if (!current_window)
+        current_window = mapa_insert(windows, &window_id, (Window){ .id = window_id });
 
-    Window* window = window_item->data;
-    window->parent_id = parent_id;
-
-    current_window = window_item->data;
+    current_window->parent_id = parent_id;
 
     current_window->config = config;
 
@@ -248,8 +244,9 @@ bool Ripple_start_window(RippleWindowConfig config)
         if (current_window->elements) vektor_empty(current_window->elements);
         else current_window->elements = vektor_create(0, sizeof(ElementData), nullptr);
 
-        if (!current_window->elements_states)
-            current_window->elements_states = mapa_create(mapa_hash_u64, mapa_cmp_bytes, config.allocator);
+        if (!current_window->elements_states.entries)
+            mapa_init(current_window->elements_states, mapa_hash_u64, mapa_cmp_bytes, config.allocator);
+
         vektor_add(current_window->elements, &(ElementData) {
                 .calculated_layout = {
                     .x = 0,
@@ -271,7 +268,7 @@ void Ripple_finish_window()
 {
     ripple_window_end();
     current_window = current_window->parent_id ?
-        mapa_get(windows, &current_window->parent_id, sizeof(current_window->parent_id))->data :
+        mapa_get(windows, &current_window->parent_id) :
         nullptr;
 }
 
@@ -284,16 +281,14 @@ static void update_window(Window* window)
     finalize_element(window, vektor_get(window->elements, 0));
 
     // remove dead elements
-    i32 n_elements = (i32)mapa_capacity(window->elements_states);
-    for (i32 element_i = 0; element_i < n_elements; element_i++)
+    for (i32 element_i = 0; element_i < (i64)window->elements_states.size; element_i++)
     {
-        MapaItem* item = mapa_get_at_index(window->elements_states, element_i);
-        ElementState* state = (ElementState*)item->data;
+        ElementState* state = mapa_get_at_index(window->elements_states, (u64)element_i);
         if(!state) continue;
 
         if (state->frame_color != window->frame_color)
         {
-            mapa_remove_at_index(window->elements_states, element_i);
+            mapa_remove_at_index(window->elements_states, (u64)element_i);
             element_i--;
             continue;
         }
@@ -304,22 +299,20 @@ static void close_window(Window* window)
 {
     ripple_window_close(window->id);
     vektor_destroy(&window->elements);
-    mapa_destroy(&window->elements_states);
+    mapa_free(window->elements_states);
 }
 
 void* Ripple_render_begin()
 {
-    i32 n_windows = (i32)mapa_capacity(windows);
-    for (i32 window_i = 0; window_i < n_windows; window_i++)
+    for (i32 window_i = 0; window_i < (i64)windows.size; window_i++)
     {
-        MapaItem* item = mapa_get_at_index(windows, window_i);
-        Window* window = (Window*)item->data;
+        Window* window = mapa_get_at_index(windows, (u64)window_i);
         if(!window) continue;
 
         if (window->frame_color != current_frame_color)
         {
             close_window(window);
-            mapa_remove_at_index(windows, window_i);
+            mapa_remove_at_index(windows, (u64)window_i);
             window_i--;
             continue;
         }
@@ -334,12 +327,11 @@ void* Ripple_render_begin()
 
 void Ripple_render_end(void* user_data)
 {
-    u32 n_windows = mapa_capacity(windows);
-    for (u32 window_i = 0; window_i < n_windows; window_i++)
+    for (u32 window_i = 0; window_i < windows.size; window_i++)
     {
-        MapaItem* item = mapa_get_at_index(windows, window_i);
-        Window* window = (Window*)item->data;
+        Window* window = mapa_get_at_index(windows, window_i);
         if (!window) continue;
+
         ripple_render_window_begin(window->id, user_data);
         if (vektor_size(window->elements)){
             render_element(window, vektor_get(window->elements, 0), window->user_data, user_data);
@@ -518,11 +510,11 @@ static void render_element(Window* window, ElementData* element, void* window_us
 // for convenience also updates element state with new layout
 static void finalize_element(Window* window, ElementData* element)
 {
-    MapaItem* state_item = mapa_get(window->elements_states, &element->id, sizeof(element->id));
-    if (state_item)
+    ElementState* state = mapa_get(window->elements_states, &element->id);
+    if (state)
     {
-        ((ElementState*)state_item->data)->layout = element->calculated_layout;
-        update_element_state(window, (ElementState*)state_item->data);
+        state->layout = element->calculated_layout;
+        update_element_state(window, state);
     }
 
     // our layout is done and we can calculate children
@@ -617,11 +609,10 @@ void Ripple_end(void)
 
 static ElementState* _get_or_insert_current_element_state()
 {
-    MapaItem* item = mapa_get(current_window->elements_states, &current_window->current_element.id, sizeof(current_window->current_element.id));
-    if (!item)
-        item = mapa_insert(current_window->elements_states, &current_window->current_element.id, sizeof(current_window->current_element.id), &(ElementState){ 0 }, sizeof(ElementState));
+    ElementState* state = mapa_get(current_window->elements_states, &current_window->current_element.id);
+    if (!state)
+        state = mapa_insert(current_window->elements_states, &current_window->current_element.id, (ElementState){ 0 });
 
-    ElementState* state = (ElementState*)item->data;
     state->frame_color = current_window->frame_color;
     return state;
 }
