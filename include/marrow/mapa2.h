@@ -39,7 +39,7 @@ struct \
 
 #define mapa_init(m, hash_func, cmp_func, allocator) \
 do { \
-    m = (typeof(m)){ ._hash_func = hash_func, ._cmp_func = cmp_func, ._allocator = allocator, .size = MAPA_INITIAL_CAPACITY }; \
+    m._hash_func = hash_func; m._cmp_func = cmp_func; m._allocator = allocator; m.size = MAPA_INITIAL_CAPACITY; \
     m.entries = allocator_alloc(m._allocator, sizeof(m.entries[0]) * m.size); \
     buf_set(m.entries, 0, m.size); \
 } while(0)
@@ -74,7 +74,7 @@ u64 _mapa_get_index(_MAPA2* mapa, void* key, u32 key_size, u32 v_size, u32 entry
     return -1;
 }
 
-#define mapa_get_index(m, key) (_mapa_get_index((void*)&m, key, sizeof(*key), sizeof(m.entries[0].v), sizeof(*m.entries)))
+#define mapa_get_index(m, key_ptr) (_mapa_get_index((void*)&m, key_ptr, sizeof(m.entries[0].v.key), sizeof(m.entries[0].v), sizeof(*m.entries)))
 
 thread_local u64 _mapa_i = -1;
 #define mapa_get(m, key) (_mapa_i = mapa_get_index(m, key), _mapa_i <= m.size ? &m.entries[_mapa_i].v.value : nullptr)
@@ -108,7 +108,7 @@ void _internal_mapa_grow(_MAPA2* mapa, u32 new_size, u32 key_size, u32 v_size, u
 #define mapa_insert(m, key_ptr, _value) \
 do { \
     if (m.n_entries >= m.size * 0.55) \
-        _internal_mapa_grow((void*)&m, m.size * 2 + 1, sizeof(*m.entries), sizeof(m.entries[0].v), sizeof(m.entries[0])); \
+        _internal_mapa_grow((void*)&m, m.size * 2 + 1, sizeof(m.entries[0].v.key), sizeof(m.entries[0].v), sizeof(m.entries[0])); \
     u64 index = mapa_get_index(m, key_ptr); \
     if (!m.entries[index].has_value) \
         m.n_entries++; \
@@ -119,15 +119,17 @@ do { \
 
 #define mapa_remove_at_index(m, index) \
 do { \
-    m.entries[index] = (typeof(*m.entries)){ 0 }; \
+    if (index >= m.size) break; \
+    m.entries[index].has_value = false; \
+    m.n_entries--; \
     for (u32 i = 0; i < m.size; i++) \
     { \
         u32 next_index = (index + i + 1) % m.size; \
         if (m.entries[next_index].has_value == false || \
-            next_index == (m.hash_func(&m.entries[next_index].key, sizeof((m.entries)->key)) % m.size)) \
+            next_index == (m._hash_func(&m.entries[next_index].v.key, sizeof((m.entries)->v.key)) % m.size)) \
             break; \
         m.entries[index] = m.entries[next_index]; \
-        m.entries[next_index] = (typeof(*m.entries)){ 0 }; \
+        m.entries[next_index].has_value = false; \
     } \
 } while(0)
 
@@ -138,30 +140,30 @@ do { \
 
 u64 mapa_hash_djb2(void const* v_key, u64 key_size)
 {
-  // http://www.cse.yorku.ca/~oz/hash.html
-  u8 const* key = v_key;
-  u64 hash = MAPA_INITIAL_SEED;
-  for(u32 i = 0; i < key_size; i++)
-    hash = ((hash << 5) + hash) + *(key++); /* hash * 33 + c */
-  return hash;
+    // http://www.cse.yorku.ca/~oz/hash.html
+    u8 const* key = v_key;
+    u64 hash = MAPA_INITIAL_SEED;
+    for(u32 i = 0; i < key_size; i++)
+        hash = ((hash << 5) + hash) + *(key++); /* hash * 33 + c */
+    return hash;
 }
 
 u64 mapa_hash_fnv(void const* key, u64 key_size)
 {
-  // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
-  u64 hash = MAPA_INITIAL_SEED;
-  hash ^= 2166136261UL;
-  for(u32 i = 0; i < key_size; i++)
-    hash = (hash ^ ((u8*)key)[i]) * 16777619;
-  return hash;
+    // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
+    u64 hash = MAPA_INITIAL_SEED;
+    hash ^= 2166136261UL;
+    for(u32 i = 0; i < key_size; i++)
+        hash = (hash ^ ((u8*)key)[i]) * 16777619;
+    return hash;
 }
 
 u32 murmur_32_scramble(u32 k)
 {
-  k *= 0xcc932d51;
-  k = (k << 15) | (k >> 17);
-  k *= 0x1b873593;
-  return k;
+    k *= 0xcc932d51;
+    k = (k << 15) | (k >> 17);
+    k *= 0x1b873593;
+    return k;
 }
 
 u64 mapa_hash_u64(void const* key, u64 key_size)
@@ -176,30 +178,30 @@ u64 mapa_hash_u32(void const* key, u64 key_size)
 
 u64 mapa_hash_MurmurOAAT_32(void const* key, u64 key_size)
 {
-  // https://en.wikipedia.org/wiki/MurmurHash
-  u64 hash = MAPA_INITIAL_SEED;
+    // https://en.wikipedia.org/wiki/MurmurHash
+    u64 hash = MAPA_INITIAL_SEED;
 
-  for (u64 i = 0; i + 4 <= key_size; i += 4)
-  {
-    u32 group = ((u32*)key)[i];
-    hash ^= murmur_32_scramble(group);
-    hash = (hash << 13) | (hash >> 19);
-    hash = hash * 5 + 0x36546b64;
-  }
+    for (u64 i = 0; i + 4 <= key_size; i += 4)
+    {
+        u32 group = ((u32*)key)[i];
+        hash ^= murmur_32_scramble(group);
+        hash = (hash << 13) | (hash >> 19);
+        hash = hash * 5 + 0x36546b64;
+    }
 
-  u32 remaining = 0;
-  u8 remaining_size = key_size % 4;
-  for (u8 i = 0; i < remaining_size; i++)
-    remaining = ((u8*)key)[key_size - remaining_size + i] | (remaining << 8);
-  hash ^= murmur_32_scramble(remaining);
+    u32 remaining = 0;
+    u8 remaining_size = key_size % 4;
+    for (u8 i = 0; i < remaining_size; i++)
+        remaining = ((u8*)key)[key_size - remaining_size + i] | (remaining << 8);
+    hash ^= murmur_32_scramble(remaining);
 
-  hash ^= key_size;
-  hash ^= hash >> 16;
-  hash *= 0x85ebca6b;
-  hash ^= hash >> 13;
-  hash *= 0xc2b2ae35;
-  hash ^= hash >> 16;
-  return hash;
+    hash ^= key_size;
+    hash ^= hash >> 16;
+    hash *= 0x85ebca6b;
+    hash ^= hash >> 13;
+    hash *= 0xc2b2ae35;
+    hash ^= hash >> 16;
+    return hash;
 }
 
 u8 mapa_cmp_bytes(void const* a, void const* b, u64 size)

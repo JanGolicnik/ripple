@@ -1,17 +1,20 @@
 #include "marrow/mapa2.h"
 #include "printccy/printccy.h"
+#include <stdio.h>
 
 i32 main()
 {
-    MAPA(i32, i32) ii_map;
-    mapa_init(ii_map, mapa_hash_u32, mapa_cmp_bytes, nullptr);
+    MAPA(char*, i32) ii_map;
+    mapa_init(ii_map, mapa_hash_djb2, mapa_cmp_bytes, nullptr);
 
-    i32 keys[20] = {
-        0, 1, 1, 2, 3, 5, 8, 13, 21, 34,
-        55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181
-    };
+    char* keys[] = { "mister", "beast", "awoo", "heyy", "yaho !", "id:3" };
 
-    i32 values[20] = {
+    // i32 keys[] = {
+    //     0, 1, 1, 2, 3, 5, 8, 13, 21, 34,
+    //     55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181
+    // };
+
+    i32 values[] = {
         0, 1, 1, 4, 9, 25, 64, 169, 441, 1156,
         3025, 7921, 20736, 54289, 142129, 372100, 974169, 2550409, 6677056, 17480761
     };
@@ -32,17 +35,39 @@ i32 main()
     {
         if (!ii_map.entries[i].has_value)
         {
-            printout("[{}]: (X) -> (X)\n", i);
+            printf("[%d]: (X) -> (X)\n", i);
             continue;
         }
-        i32 key = ii_map.entries[i].v.key;
+        char* key = ii_map.entries[i].v.key;
         i32 value = ii_map.entries[i].v.value;
-        printout("[{}]: ({}) -> ({})\n", i, key, value);
+        printf("[%d]: (%s) -> (%d)\n", i, key, value);
+    }
+
+    for (u32 i = 0; i < array_len(keys); i++)
+    {
+        u64 index = mapa_get_index(ii_map, &keys[i]);
+        if (index >= ii_map.size) continue;
+        mapa_remove_at_index(ii_map, index);
+        // // TODO: this somehow modifies the size??
+        // printout("size after removing is: {}\n", ii_map.size); 
+    }
+
+    for (u32 i = 0; i < ii_map.size; i++)
+    {
+        if (!ii_map.entries[i].has_value)
+        {
+            printf("[%d]: (X) -> (X)\n", i);
+            continue;
+        }
+        char* key = ii_map.entries[i].v.key;
+        i32 value = ii_map.entries[i].v.value;
+        printf("[%d]: (%s) -> (%d)\n", i, key, value);
     }
 
     return 0;
 }
 /*
+
 #include <marrow/marrow.h>
 #include <glfw/glfw3.h>
 
@@ -172,4 +197,4 @@ int main(int argc, char* argv[])
 
     return 0;
 }
-*/
+    */

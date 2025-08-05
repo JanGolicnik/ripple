@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.10)
 project(ripple)
 
-set(CMAKE_C_STANDARD 23)
+set(C_STANDARD 17)
 
 add_subdirectory(./webgpu)
 add_subdirectory(./glfw)
 add_subdirectory(./glfw3webgpu)
 
 set(SOURCES main.c)
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -pedantic -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -Wno-bitfield-constant-conversion")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -pedantic -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -Wno-bitfield-constant-conversion -Wno-misleading-indentation")
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
