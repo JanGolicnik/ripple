@@ -188,7 +188,7 @@ typedef struct {
         u8 frame_color : 1;
     };
 
-    Vektor* elements;
+    VEKTOR(ElementData) elements;
     MAPA(u64, ElementState) elements_states;
     struct {
         u64 id;
@@ -241,13 +241,13 @@ bool Ripple_start_window(RippleWindowConfig config)
 
     // reset window elements
     {
-        if (current_window->elements) vektor_empty(current_window->elements);
-        else current_window->elements = vektor_create(0, sizeof(ElementData), nullptr);
+        if (current_window->elements.items) vektor_clear(current_window->elements);
+        else vektor_init(current_window->elements, 0, config.allocator);
 
         if (!current_window->elements_states.entries)
             mapa_init(current_window->elements_states, mapa_hash_u64, mapa_cmp_bytes, config.allocator);
 
-        vektor_add(current_window->elements, &(ElementData) {
+        vektor_add(current_window->elements, (ElementData) {
                 .calculated_layout = {
                     .x = 0,
                     .y = 0,
@@ -278,7 +278,7 @@ static void render_element(Window* window, ElementData* element, void* window_us
 
 static void update_window(Window* window)
 {
-    finalize_element(window, vektor_get(window->elements, 0));
+    finalize_element(window, &window->elements.items[0]);
 
     // remove dead elements
     for (i32 element_i = 0; element_i < (i64)window->elements_states.size; element_i++)
@@ -298,7 +298,7 @@ static void update_window(Window* window)
 static void close_window(Window* window)
 {
     ripple_window_close(window->id);
-    vektor_destroy(&window->elements);
+    vektor_free(window->elements);
     mapa_free(window->elements_states);
 }
 
@@ -333,8 +333,8 @@ void Ripple_render_end(void* user_data)
         if (!window) continue;
 
         ripple_render_window_begin(window->id, user_data);
-        if (vektor_size(window->elements)){
-            render_element(window, vektor_get(window->elements, 0), window->user_data, user_data);
+        if (window->elements.n_items){
+            render_element(window, &window->elements.items[0], window->user_data, user_data);
         }
         ripple_render_window_end(user_data);
     }
@@ -401,7 +401,7 @@ static void update_element_state(Window* window, ElementState* state)
 }
 
 #define _I1 LINE_UNIQUE_VAR(_i)
-#define _for_each_child(el) u32 _I1 = 0; for (ElementData* child = el + 1; _I1 < el->n_children; child = (ElementData*)vektor_get(window->elements, child->next_sibling), _I1++ )
+#define _for_each_child(el) u32 _I1 = 0; for (ElementData* child = el + 1; _I1 < el->n_children; child = &window->elements.items[child->next_sibling], _I1++ )
 
 static void grow_children(Window* window, ElementData* data)
 {
@@ -541,14 +541,14 @@ static u64 generate_element_id(u64 base, u64 parent_id, u32 index)
 // should be called before submit element
 void Ripple_push_id(u64 id)
 {
-    ElementData* parent = vektor_get(current_window->elements, current_window->current_element.index);
+    ElementData* parent = &current_window->elements.items[current_window->current_element.index];
     current_window->current_element.id = id ? generate_element_id(id, current_window->current_element.id, parent->n_children) : id;
 
-    vektor_add(current_window->elements, &(ElementData){
+    vektor_add(current_window->elements, (ElementData){
         .parent_element = current_window->current_element.index,
         .id = current_window->current_element.id
     });
-    current_window->current_element.index = vektor_size(current_window->elements) - 1;
+    current_window->current_element.index = current_window->elements.n_items - 1;
 }
 
 static RenderedLayout sum_layouts(RenderedLayout a, RenderedLayout b)
@@ -562,12 +562,11 @@ static RenderedLayout sum_layouts(RenderedLayout a, RenderedLayout b)
 
 void Ripple_submit_element(RippleElementConfig config)
 {
-    ElementData* element = vektor_get(current_window->elements, current_window->current_element.index);
-
-    ElementData* parent = vektor_get(current_window->elements, element->parent_element);
+    ElementData* element = &current_window->elements.items[current_window->current_element.index];
+    ElementData* parent = &current_window->elements.items[element->parent_element];
     if (parent->n_children++ > 0)
     {
-        ElementData* child = vektor_get(current_window->elements, parent->last_child);
+        ElementData* child = &current_window->elements.items[parent->last_child];
         child->next_sibling = current_window->current_element.index;
     }
     parent->last_child = current_window->current_element.index;
@@ -586,8 +585,8 @@ void Ripple_submit_element(RippleElementConfig config)
 
 void Ripple_pop_id(void)
 {
-    ElementData *element = (ElementData*)vektor_get(current_window->elements, current_window->current_element.index);
-    ElementData *parent = (ElementData*)vektor_get(current_window->elements, element->parent_element);
+    ElementData *element = &current_window->elements.items[current_window->current_element.index];
+    ElementData *parent = &current_window->elements.items[element->parent_element];
     element->calculated_layout = calculate_layout(element, parent);
     current_window->current_element.index = element->parent_element;
     current_window->current_element.id = parent->id;

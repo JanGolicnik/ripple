@@ -69,6 +69,33 @@ i32 main()
 }
 */
 
+/*
+#include <marrow/vektor.h>
+#include <stdio.h>
+
+int main() {
+    VEKTOR(int) vec;
+    vektor_init(vec, 0, nullptr);
+
+    vektor_add(vec, 1);
+    vektor_add(vec, 2);
+
+    for (u64 i = 0; i < vec.n_items; ++i)
+        printout("vec[{}] = {}\n", i, vec.items[i]);
+
+    return 0;
+
+    vektor_insert(vec, 5, 999);  // Insert 999 at position 5
+    vektor_remove(vec, 2);       // Remove element at index 2
+
+    for (u64 i = 0; i < vec.n_items; ++i)
+        printout("vec[{}] = {}\n", i, vec.items[i]);
+
+    vektor_free(vec);
+    return 0;
+}
+*/
+
 #include <marrow/marrow.h>
 #include <glfw/glfw3.h>
 

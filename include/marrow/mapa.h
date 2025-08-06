@@ -1,5 +1,5 @@
-#ifndef MARROW_MAPA2_H
-#define MARROW_MAPA2_H
+#ifndef MARROW_MAPA_H
+#define MARROW_MAPA_H
 
 #include "marrow.h"
 #include "marrow/allocator.h"
@@ -39,7 +39,7 @@ struct \
 
 #define mapa_init(m, hash_func, cmp_func, allocator) \
 do { \
-    m._hash_func = hash_func; m._cmp_func = cmp_func; m._allocator = allocator; m.size = MAPA_INITIAL_CAPACITY; \
+    m._hash_func = hash_func; m._cmp_func = cmp_func; m._allocator = allocator; m.size = MAPA_INITIAL_CAPACITY; m.n_entries = 0;\
     m.entries = allocator_alloc(m._allocator, sizeof(m.entries[0]) * m.size); \
     buf_set(m.entries, 0, m.size * sizeof(*m.entries)); \
 } while(0)
@@ -48,9 +48,7 @@ do { \
 do { \
     /* TODO: if owning free keys as well */ \
     allocator_free(m._allocator, m.entries, m.size * sizeof(*m.entries)); \
-    m.entries = nullptr; \
-    m.size = 0; \
-    m.n_entries = 0; \
+    m.n_entries = 0; m.size = 0; m.entries = nullptr;\
 } while(0)
 
 typedef MAPA(u8, u8) _MAPA2;
