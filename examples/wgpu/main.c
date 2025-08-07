@@ -39,8 +39,8 @@ i32 main()
             printf("[%d]: (X) -> (X)\n", i);
             continue;
         }
-        char* key = ii_map.entries[i].v.key;
-        i32 value = ii_map.entries[i].v.value;
+        char* key = ii_map.entries[i].key;
+        i32 value = ii_map.entries[i].value;
         printf("[%d]: (%s) -> (%d)\n", i, key, value);
     }
 
@@ -60,8 +60,8 @@ i32 main()
             printf("[%d]: (X) -> (X)\n", i);
             continue;
         }
-        char* key = ii_map.entries[i].v.key;
-        i32 value = ii_map.entries[i].v.value;
+        char* key = ii_map.entries[i].key;
+        i32 value = ii_map.entries[i].value;
         printf("[%d]: (%s) -> (%d)\n", i, key, value);
     }
 

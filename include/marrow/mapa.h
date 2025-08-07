@@ -20,10 +20,16 @@ struct \
 { \
     struct { \
         /* DO NOT CHANGE ORDER */ \
-        struct { \
-            key_type key; \
-            value_type value; \
-        } v; \
+        union { \
+            struct { \
+                key_type key; \
+                value_type value; \
+            } _v; \
+            struct { \
+                key_type key; \
+                value_type value; \
+            }; \
+        }; \
         bool has_value; \
     }* entries; \
 \
@@ -75,9 +81,9 @@ u64 _mapa_get_index(_MAPA2* mapa, void* key, u32 key_size, u32 v_size, u32 entry
     return -1;
 }
 
-#define mapa_get_index(m, key_ptr) (_mapa_get_index((void*)&m, key_ptr, sizeof(m.entries[0].v.key), sizeof(m.entries[0].v), sizeof(*m.entries)))
+#define mapa_get_index(m, key_ptr) (_mapa_get_index((void*)&m, key_ptr, sizeof(m.entries[0]._v.key), sizeof(m.entries[0]._v), sizeof(*m.entries)))
 
-#define mapa_get_at_index(m, index) ((index <= m.size && m.entries[index].has_value) ? &m.entries[index].v.value : nullptr)
+#define mapa_get_at_index(m, index) ((index <= m.size && m.entries[index].has_value) ? &m.entries[index]._v.value : nullptr)
 
 thread_local u64 _mapa_i = -1;
 #define mapa_get(m, key) (_mapa_i = mapa_get_index(m, key), mapa_get_at_index(m, _mapa_i))
@@ -111,14 +117,14 @@ void _internal_mapa_grow(_MAPA2* mapa, u32 new_size, u32 key_size, u32 v_size, u
 thread_local u64 _mapa_tmp_index = -1;
 #define mapa_insert(m, key_ptr, _value) ( \
     m.n_entries >= m.size * 0.55 ? \
-        _internal_mapa_grow((void*)&m, m.size * 2 + 1, sizeof((m).entries[0].v.key), sizeof((m).entries[0].v), sizeof((m).entries[0])) : \
+        _internal_mapa_grow((void*)&m, m.size * 2 + 1, sizeof((m).entries[0]._v.key), sizeof((m).entries[0]._v), sizeof((m).entries[0])) : \
             (void)0, \
     _mapa_tmp_index = mapa_get_index(m, key_ptr), \
     !m.entries[_mapa_tmp_index].has_value ? (void)m.n_entries++ : (void)0, \
     m.entries[_mapa_tmp_index].has_value = true, \
-    m.entries[_mapa_tmp_index].v.key = *(key_ptr), \
-    m.entries[_mapa_tmp_index].v.value = (_value), \
-    &m.entries[_mapa_tmp_index].v.value \
+    m.entries[_mapa_tmp_index]._v.key = *(key_ptr), \
+    m.entries[_mapa_tmp_index]._v.value = (_value), \
+    &m.entries[_mapa_tmp_index]._v.value \
 )
 
 #define mapa_remove_at_index(m, index) \
@@ -130,7 +136,7 @@ do { \
     { \
         u32 next_index = (index + i + 1) % m.size; \
         if (m.entries[next_index].has_value == false || \
-            next_index == (m._hash_func(&m.entries[next_index].v.key, sizeof((m.entries)->v.key)) % m.size)) \
+            next_index == (m._hash_func(&m.entries[next_index]._v.key, sizeof((m.entries)->_v.key)) % m.size)) \
             break; \
         m.entries[index] = m.entries[next_index]; \
         m.entries[next_index].has_value = false; \
