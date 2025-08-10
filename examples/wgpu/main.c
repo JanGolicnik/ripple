@@ -104,7 +104,7 @@ int main() {
 #define RIPPLE_WIDGETS
 #include "backends/ripple_wgpu.h"
 
-void full_test(f32 dt)
+void full_test(f32 dt, RippleImage image)
 {
     static f32 time = 0.0f;
     time += dt;
@@ -131,7 +131,8 @@ void full_test(f32 dt)
                 CENTERED(
                     f32 t_target = h ? 150.0f / (f32)h : 0.0f;
                     static f32 t = -1.0f; if (t < 0.0f) t = t_target;
-                    RIPPLE( FORM( .width = FIXED((i32)((f32)w * t)), .height = FIXED((i32)((f32)h * t)), .min_width = FIXED(150), .min_height = FIXED(150) ), RECTANGLE ( .color = STATE().hovered ? 0x4D525A : 0x393E46 ) ){
+                    RIPPLE( FORM( .width = FIXED((i32)((f32)w * t)), .height = FIXED((i32)((f32)h * t)), .min_width = FIXED(150), .min_height = FIXED(150) ),
+                            IMAGE( .image = image ) ){
                         if (STATE().is_held)
                             t_target = 1.0f;
                     }
@@ -162,6 +163,73 @@ void full_test(f32 dt)
 
 int main(int argc, char* argv[])
 {
+    RippleBackendConfig render_config = ripple_get_default_backend_config();
+    ripple_backend_initialize(render_config);
+    WGPUQueue queue = wgpuDeviceGetQueue(render_config.device);
+
+    RippleImage image = { 0 };
+    {
+        u32 texture_size = 256;
+        WGPUTexture texture = wgpuDeviceCreateTexture(render_config.device, &(WGPUTextureDescriptor){
+                .label = "gradient",
+                .size = (WGPUExtent3D){ .width = texture_size, .height = texture_size, .depthOrArrayLayers = 1 },
+                .format = WGPUTextureFormat_RGBA8Unorm,
+                .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
+                .dimension = WGPUTextureDimension_2D,
+                .mipLevelCount = 1,
+                .sampleCount = 1
+            });
+
+        WGPUTextureView view = wgpuTextureCreateView(texture, &(WGPUTextureViewDescriptor){
+                .format = WGPUTextureFormat_RGBA8Unorm,
+                .dimension = WGPUTextureViewDimension_2D,
+                .mipLevelCount = 1,
+                .arrayLayerCount = 1,
+                .aspect = WGPUTextureAspect_All,
+            });
+
+        WGPUSampler sampler = wgpuDeviceCreateSampler(render_config.device, &(WGPUSamplerDescriptor){
+                .addressModeU = WGPUAddressMode_ClampToEdge,
+                .addressModeV = WGPUAddressMode_ClampToEdge,
+                .addressModeW = WGPUAddressMode_ClampToEdge,
+                .magFilter = WGPUFilterMode_Linear,
+                .minFilter = WGPUFilterMode_Linear,
+                .mipmapFilter = WGPUMipmapFilterMode_Nearest,
+                .maxAnisotropy = 1
+            });
+
+        u8 texture_data[texture_size * texture_size * 4];
+        for (u32 y = 0; y < texture_size; y++) {
+            for (u32 x = 0; x < texture_size; x++) {
+                u32 i = 4 * (y * texture_size + x);
+                texture_data[i + 0] = x;
+                texture_data[i + 1] = y;
+                texture_data[i + 2] = 0xff;
+                texture_data[i + 3] = 0xff;
+            }
+        }
+
+        wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
+                .texture = texture,
+                .aspect = WGPUTextureAspect_All
+            },
+            texture_data,
+            texture_size * texture_size * 4,
+            &(WGPUTextureDataLayout){
+                .bytesPerRow = texture_size * 4,
+                .rowsPerImage = texture_size
+            },
+            &(WGPUExtent3D){
+                .width = texture_size,
+                .height = texture_size,
+                .depthOrArrayLayers = 1
+            }
+        );
+
+        image = ripple_register_image(view, sampler);
+    }
+
+
     bool main_is_open = true;
     bool second_is_open = false;
     bool third_is_open = false;
@@ -181,6 +249,12 @@ int main(int argc, char* argv[])
 
         SURFACE( .title = "surface", .width = 800, .height = 800, .is_open = &main_is_open )
         {
+            if (true)
+            {
+                full_test(0.001, image);
+                continue;
+            }
+
             RIPPLE( RECTANGLE( .color = 0x0000ff ))
             {
                 u32 size = print(0, 0, "{}", first_click_count);

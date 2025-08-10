@@ -127,6 +127,15 @@ thread_local u64 _mapa_tmp_index = -1;
     &m.entries[_mapa_tmp_index]._v.value \
 )
 
+// aborts if out of bounds
+#define mapa_insert_at_index(m, index, key_ptr, _value) ( \
+    !m.entries[index].has_value ? (void)m.n_entries++ : (void)0, \
+    m.entries[index].has_value = true, \
+    m.entries[index]._v.key = *(key_ptr), \
+    m.entries[index]._v.value = (_value), \
+    &m.entries[index]._v.value \
+)
+
 #define mapa_remove_at_index(m, index) \
 do { \
     if (index >= m.size) break; \

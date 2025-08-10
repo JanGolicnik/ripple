@@ -98,7 +98,7 @@ typedef struct {
 } RippleElementLayoutConfig;
 
 struct RippleElementConfig;
-typedef void (render_func_t)(struct RippleElementConfig, RenderedLayout, void*, void*);
+typedef void (render_func_t)(struct RippleElementConfig, RenderedLayout, void*, RippleRenderData);
 
 typedef struct RippleElementConfig {
     RippleElementLayoutConfig layout;
@@ -132,10 +132,13 @@ void Ripple_pop_id(void);
 void Ripple_begin(Allocator* allocator);
 void Ripple_end(void);
 
-void *Ripple_render_begin();
-void Ripple_render_end(void* user_data);
+RippleRenderData Ripple_render_begin();
+void Ripple_render_end(RippleRenderData user_data);
 
 // backend functions
+void ripple_backend_initialize(RippleBackendConfig config);
+RippleBackendConfig ripple_get_default_backend_config();
+
 void ripple_window_begin(u64 id, RippleWindowConfig config);
 void ripple_window_end();
 void ripple_window_close(u64 id);
@@ -143,13 +146,14 @@ void ripple_get_window_size(u32* width, u32* height);
 RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWindowConfig config);
 RippleCursorState ripple_update_cursor_state(RippleCursorState state);
 
-void* ripple_render_begin();
-    void ripple_render_window_begin(u64, void*);
+RippleRenderData ripple_render_begin();
+    void ripple_render_window_begin(u64, RippleRenderData);
         void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color);
+        void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage color);
         void ripple_render_text(i32 x, i32 y, const char* text, f32 font_size, u32 color);
         void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h);
-    void ripple_render_window_end(void*);
-void ripple_render_end(void*);
+    void ripple_render_window_end(RippleRenderData);
+void ripple_render_end(RippleRenderData);
 
 #ifdef RIPPLE_IMPLEMENTATION
 #undef RIPPLE_IMPLEMENTATION
@@ -274,7 +278,7 @@ void Ripple_finish_window()
 
 static void finalize_element(Window* window, ElementData* element);
 
-static void render_element(Window* window, ElementData* element, void* window_user_data, void* user_data);
+static void render_element(Window* window, ElementData* element, void* window_user_data, RippleRenderData user_data);
 
 static void update_window(Window* window)
 {
@@ -302,7 +306,7 @@ static void close_window(Window* window)
     mapa_free(window->elements_states);
 }
 
-void* Ripple_render_begin()
+RippleRenderData Ripple_render_begin()
 {
     for (i32 window_i = 0; window_i < (i64)windows.size; window_i++)
     {
@@ -325,21 +329,21 @@ void* Ripple_render_begin()
     return ripple_render_begin();
 }
 
-void Ripple_render_end(void* user_data)
+void Ripple_render_end(RippleRenderData render_data)
 {
     for (u32 window_i = 0; window_i < windows.size; window_i++)
     {
         Window* window = mapa_get_at_index(windows, window_i);
         if (!window) continue;
 
-        ripple_render_window_begin(window->id, user_data);
+        ripple_render_window_begin(window->id, render_data);
         if (window->elements.n_items){
-            render_element(window, &window->elements.items[0], window->user_data, user_data);
+            render_element(window, &window->elements.items[0], window->user_data, render_data);
         }
-        ripple_render_window_end(user_data);
+        ripple_render_window_end(render_data);
     }
 
-    ripple_render_end(user_data);
+    ripple_render_end(render_data);
 }
 
 static i64 apply_relative_sizing(RippleSizingValue value, i32 parent_value, i32 children_value)
@@ -493,16 +497,16 @@ static void grow_children(Window* window, ElementData* data)
 }
 
 // recursively renderes elements
-static void render_element(Window* window, ElementData* element, void* window_user_data, void* user_data)
+static void render_element(Window* window, ElementData* element, void* window_user_data, RippleRenderData render_data)
 {
     if (element->config.render_func)
-        element->config.render_func(element->config, element->calculated_layout, window_user_data, user_data);
+        element->config.render_func(element->config, element->calculated_layout, window_user_data, render_data);
 
     allocator_free(window->config.allocator, element->config.render_data, element->config.render_data_size);
 
     _for_each_child(element)
     {
-        render_element(window, child, window_user_data, user_data);
+        render_element(window, child, window_user_data, render_data);
     }
 }
 
@@ -653,7 +657,7 @@ typedef struct {
     RippleColor color;
 } RippleRectangleConfig;
 
-void render_rectangle(RippleElementConfig config, RenderedLayout layout, void* window_user_data, void* user_data)
+void render_rectangle(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {
     RippleRectangleConfig rectangle_data = *(RippleRectangleConfig*)config.render_data;
     ripple_render_rect(layout.x, layout.y, layout.w, layout.h, rectangle_data.color);
@@ -665,12 +669,27 @@ void render_rectangle(RippleElementConfig config, RenderedLayout layout, void* w
   .render_data_size = sizeof(RippleRectangleConfig)
 
 typedef struct {
+    RippleImage image;
+} RippleImageConfig;
+
+void render_image(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
+{
+    RippleImageConfig image_data = *(RippleImageConfig*)config.render_data;
+    ripple_render_image(layout.x, layout.y, layout.w, layout.h, image_data.image);
+}
+
+#define IMAGE(...)\
+  .render_func = render_image,\
+  .render_data = &(RippleImageConfig){__VA_ARGS__},\
+  .render_data_size = sizeof(RippleImageConfig)
+
+typedef struct {
     RippleColor color;
     const char* text;
     f32 font_size;
 } RippleTextConfig;
 
-void render_text(RippleElementConfig config, RenderedLayout layout, void* window_user_data, void* user_data)
+void render_text(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {
     RippleTextConfig text_data = *(RippleTextConfig*)config.render_data;
     ripple_render_text(layout.x, layout.y, text_data.text, text_data.font_size, text_data.color);
