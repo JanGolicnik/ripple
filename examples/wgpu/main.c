@@ -167,7 +167,7 @@ int main(int argc, char* argv[])
     ripple_backend_initialize(render_config);
     WGPUQueue queue = wgpuDeviceGetQueue(render_config.device);
 
-    RippleImage image = { 0 };
+    RippleImage green_image = { 0 };
     {
         u32 texture_size = 256;
         WGPUTexture texture = wgpuDeviceCreateTexture(render_config.device, &(WGPUTextureDescriptor){
@@ -188,14 +188,56 @@ int main(int argc, char* argv[])
                 .aspect = WGPUTextureAspect_All,
             });
 
-        WGPUSampler sampler = wgpuDeviceCreateSampler(render_config.device, &(WGPUSamplerDescriptor){
-                .addressModeU = WGPUAddressMode_ClampToEdge,
-                .addressModeV = WGPUAddressMode_ClampToEdge,
-                .addressModeW = WGPUAddressMode_ClampToEdge,
-                .magFilter = WGPUFilterMode_Linear,
-                .minFilter = WGPUFilterMode_Linear,
-                .mipmapFilter = WGPUMipmapFilterMode_Nearest,
-                .maxAnisotropy = 1
+        u8 texture_data[texture_size * texture_size * 4];
+        for (u32 y = 0; y < texture_size; y++) {
+            for (u32 x = 0; x < texture_size; x++) {
+                u32 i = 4 * (y * texture_size + x);
+                texture_data[i + 0] = x;
+                texture_data[i + 1] = 0xff;
+                texture_data[i + 2] = y;
+                texture_data[i + 3] = 0xff;
+            }
+        }
+
+        wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
+                .texture = texture,
+                .aspect = WGPUTextureAspect_All
+            },
+            texture_data,
+            texture_size * texture_size * 4,
+            &(WGPUTextureDataLayout){
+                .bytesPerRow = texture_size * 4,
+                .rowsPerImage = texture_size
+            },
+            &(WGPUExtent3D){
+                .width = texture_size,
+                .height = texture_size,
+                .depthOrArrayLayers = 1
+            }
+        );
+
+        green_image = ripple_register_image(view);
+    }
+
+    RippleImage blue_image = { 0 };
+    {
+        u32 texture_size = 256;
+        WGPUTexture texture = wgpuDeviceCreateTexture(render_config.device, &(WGPUTextureDescriptor){
+                .label = "gradient",
+                .size = (WGPUExtent3D){ .width = texture_size, .height = texture_size, .depthOrArrayLayers = 1 },
+                .format = WGPUTextureFormat_RGBA8Unorm,
+                .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
+                .dimension = WGPUTextureDimension_2D,
+                .mipLevelCount = 1,
+                .sampleCount = 1
+            });
+
+        WGPUTextureView view = wgpuTextureCreateView(texture, &(WGPUTextureViewDescriptor){
+                .format = WGPUTextureFormat_RGBA8Unorm,
+                .dimension = WGPUTextureViewDimension_2D,
+                .mipLevelCount = 1,
+                .arrayLayerCount = 1,
+                .aspect = WGPUTextureAspect_All,
             });
 
         u8 texture_data[texture_size * texture_size * 4];
@@ -226,9 +268,8 @@ int main(int argc, char* argv[])
             }
         );
 
-        image = ripple_register_image(view, sampler);
+        blue_image = ripple_register_image(view);
     }
-
 
     bool main_is_open = true;
     bool second_is_open = false;
@@ -249,20 +290,20 @@ int main(int argc, char* argv[])
 
         SURFACE( .title = "surface", .width = 800, .height = 800, .is_open = &main_is_open )
         {
-            if (true)
+            if (false)
             {
-                full_test(0.001, image);
+                full_test(0.001, blue_image);
                 continue;
             }
 
-            RIPPLE( RECTANGLE( .color = 0x0000ff ))
+            RIPPLE( IMAGE( .image = blue_image ))
             {
                 u32 size = print(0, 0, "{}", first_click_count);
                 u8* text = allocator_alloc(&text_allocator, size + 1);
                 print((void*)text, size, "{}", first_click_count);
                 i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
                 CENTERED(
-                    RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = (char*)text, .font_size = font_size));
+                    RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = (char*)text, .font_size = font_size ));
                 );
 
                 if (STATE().clicked)
@@ -272,14 +313,14 @@ int main(int argc, char* argv[])
                 }
             }
 
-            RIPPLE( RECTANGLE( .color = 0x00ff00 ))
+            RIPPLE( IMAGE( .image = green_image ))
             {
                 u32 size = print(0, 0, "{}", second_click_count);
                 u8* text = allocator_alloc(&text_allocator, size + 1);
                 print((void*)text, size, "{}", second_click_count);
                 i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
                 CENTERED(
-                    RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = (char*)text, .font_size = font_size));
+                    RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = (char*)text, .font_size = font_size, .color = 0xffffff ));
                 );
 
                 if (STATE().clicked)
@@ -293,12 +334,12 @@ int main(int argc, char* argv[])
             {
                 SURFACE( .title = "HELLO!", .width = 300, .height = 300, .is_open = &second_is_open )
                 {
-                    RIPPLE( RECTANGLE( .color = 0x0000ff ))
+                    RIPPLE( IMAGE( .image = blue_image ))
                     {
                         CENTERED(
                             const char* text = "blue++";
                             i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
-                            RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text, .font_size = font_size));
+                            RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text, .font_size = font_size ));
                         );
 
                         if (STATE().clicked)
@@ -311,12 +352,12 @@ int main(int argc, char* argv[])
             {
                 SURFACE( .title = "hh", .width = 300, .height = 300, .is_open = &third_is_open )
                 {
-                    RIPPLE( RECTANGLE( .color = 0x00ff00 ))
+                    RIPPLE( IMAGE( .image = green_image ))
                     {
                         CENTERED(
                             const char* text = "green++";
                             i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
-                            RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text, .font_size = font_size));
+                            RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text, .font_size = font_size, .color = 0xffffff ));
                         );
 
                         if (STATE().clicked)

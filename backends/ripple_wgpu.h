@@ -33,7 +33,7 @@ typedef u64 RippleImage;
 const f32 FONT_SIZE = 128.0f;
 const u32 BITMAP_SIZE = 1024;
 
-RippleImage ripple_register_image(WGPUTextureView view, WGPUSampler sampler);
+RippleImage ripple_register_image(WGPUTextureView view);
 
 #ifdef RIPPLE_WGPU_IMPLEMENTATION
 
@@ -146,7 +146,7 @@ static const u32 index_count = sizeof(index_data) / index_data_size;
 typedef struct {
     f32 pos[2];
     f32 size[2];
-    f32 font_texture_coords[4];
+    f32 uv[4];
     f32 color[3];
     f32 color_padding[1];
     u32 image_index;
@@ -160,11 +160,14 @@ struct ShaderData {\
     time: f32,\
 };\
 @group(0) @binding(0) var<uniform> shader_data: ShaderData;\
-@group(0) @binding(1) var font_texture: texture_2d<f32>;\
-@group(0) @binding(2) var font_texture_sampler: sampler;\
 \
-@group(1) @binding(0) var texture: texture_2d<f32>;\
-@group(1) @binding(1) var texture_sampler: sampler;\
+@group(1) @binding(0) var texture1: texture_2d<f32>;\
+@group(1) @binding(1) var texture2: texture_2d<f32>;\
+@group(1) @binding(2) var texture3: texture_2d<f32>;\
+@group(1) @binding(3) var texture4: texture_2d<f32>;\
+@group(1) @binding(4) var texture5: texture_2d<f32>;\
+\
+@group(2) @binding(0) var texture_sampler: sampler;\
 \
 struct VertexInput {\
     @location(0) position: vec2f,\
@@ -173,7 +176,7 @@ struct VertexInput {\
 struct InstanceInput {\
     @location(1) position: vec2f,\
     @location(2) size: vec2f,\
-    @location(3) font_texture_coords: vec4f,\
+    @location(3) uv: vec4f,\
     @location(4) color: vec3f,\
     @location(5) image_index: u32,\
 }\
@@ -181,7 +184,6 @@ struct InstanceInput {\
 struct VertexOutput{\
     @builtin(position) position: vec4f,\
     @location(0) color: vec3f,\
-    @location(1) font_texture_coords: vec2f,\
     @location(2) uv: vec2f,\
     @location(3) image_index: u32\
 };\
@@ -193,30 +195,33 @@ fn vs_main(v: VertexInput, i: InstanceInput, @builtin(vertex_index) index: u32) 
     position = position / resolution;\
     position = vec2f(position.x, 1.0f - position.y) * 2.0f - vec2f(1.0f, 1.0f);\
     var color = i.color;\
-    var font_texture_coords = i.font_texture_coords.xy;\
-    if (index == 1) { font_texture_coords = i.font_texture_coords.zy; }\
-    else if (index == 2) { font_texture_coords = i.font_texture_coords.zw; }\
-    else if (index == 3) { font_texture_coords = i.font_texture_coords.xw; }\
+    var uv = i.uv.xy;\
+    if (index == 1) { uv = i.uv.zy; }\
+    else if (index == 2) { uv = i.uv.zw; }\
+    else if (index == 3) { uv = i.uv.xw; }\
     \
     var out: VertexOutput;\
     out.position = vec4f(position.x, position.y, 0.0, 1.0);\
     out.color = color;\
-    out.font_texture_coords = font_texture_coords;\
-    out.uv = v.position;\
+    out.uv = uv;\
     out.image_index = i.image_index;\
     return out;\
 }\
 \
 @fragment \
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {\
-    let color = select(in.color, textureSample(texture, texture_sampler, in.uv).rgb, in.image_index != 0);\
-    let alpha = select(\
-        1.0,\
-        textureSample(font_texture, font_texture_sampler, in.font_texture_coords).x,\
-        any(in.font_texture_coords != vec2f(0.0))\
-    );\
-    let linear_color = pow(color, vec3f(2.2));\
-    return vec4f(linear_color, alpha);\
+    var tex_color: vec4f;\
+    switch in.image_index {\
+        case 0u { tex_color = textureSample(texture1, texture_sampler, in.uv); }\
+        case 1u { tex_color = vec4f(textureSample(texture2, texture_sampler, in.uv).r); }\
+        case 2u { tex_color = textureSample(texture3, texture_sampler, in.uv); }\
+        case 3u { tex_color = textureSample(texture4, texture_sampler, in.uv); }\
+        case 4u { tex_color = textureSample(texture5, texture_sampler, in.uv); }\
+        default { tex_color = vec4f(1.0, 1.0, 1.0, 1.0); }\
+    }\
+    let color = vec4f(tex_color.rgb * in.color, tex_color.a);\
+    let linear_color = pow(color.rgb, vec3f(2.2));\
+    return vec4f(linear_color, color.a);\
 }\
 ";
 
@@ -230,7 +235,8 @@ typedef struct {
 } ShaderData;
 
 typedef struct {
-    RippleImage image;
+    RippleImage images[5];
+    u32 n_images;
     u32 instance_index;
 } _RippleImageInstancePair;
 
@@ -281,17 +287,27 @@ static struct {
     WGPUBuffer vertex_buffer;
     WGPUBuffer index_buffer;
 
+    WGPUSampler sampler;
+    WGPUBindGroupLayout sampler_bind_group_layout;
+    WGPUBindGroup sampler_bind_group;
+
     struct {
         WGPUTexture texture;
         WGPUTextureView view;
-        WGPUSampler sampler;
+        RippleImage image;
+    } white_pixel;
+
+    struct {
+        WGPUTexture texture;
+        WGPUTextureView view;
+        RippleImage image;
         stbtt_bakedchar glyphs[96];
     } font;
 
     MAPA(u64, _Window) windows;
     _Window* current_window;
 
-    MAPA ( RippleImage, WGPUBindGroup ) image_bind_groups;
+    MAPA ( RippleImage, WGPUTextureView ) image_textures;
 
     bool initialized;
 } _context;
@@ -340,7 +356,7 @@ void ripple_backend_initialize(RippleBackendConfig config)
     debug("INITIALIZNG BACKEND");
     // GENERAL
     mapa_init(_context.windows, mapa_hash_u64, mapa_cmp_bytes, 0);
-    mapa_init(_context.image_bind_groups, mapa_hash_u64, mapa_cmp_bytes, 0);
+    mapa_init(_context.image_textures, mapa_hash_u64, mapa_cmp_bytes, 0);
 
     // GLFW
     if (!glfwInit())
@@ -406,19 +422,51 @@ void ripple_backend_initialize(RippleBackendConfig config)
                 .aspect = WGPUTextureAspect_All,
             });
 
-        _context.font.sampler = wgpuDeviceCreateSampler(_context.config.device, &(WGPUSamplerDescriptor){
-              .addressModeU = WGPUAddressMode_ClampToEdge,
-              .addressModeV = WGPUAddressMode_ClampToEdge,
-              .addressModeW = WGPUAddressMode_ClampToEdge,
-              .magFilter = WGPUFilterMode_Linear,
-              .minFilter = WGPUFilterMode_Linear,
-              .mipmapFilter = WGPUMipmapFilterMode_Nearest,
-              .maxAnisotropy = 1
+        _context.font.image = ripple_register_image(_context.font.view);
+    }
+
+    {
+        _context.white_pixel.texture = wgpuDeviceCreateTexture(_context.config.device, &(WGPUTextureDescriptor){
+                .label = "white_pixel",
+                .size = (WGPUExtent3D){ .width = 1, .height = 1, .depthOrArrayLayers = 1 },
+                .format = WGPUTextureFormat_RGBA8Unorm,
+                .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
+                .dimension = WGPUTextureDimension_2D,
+                .mipLevelCount = 1,
+                .sampleCount = 1
             });
+
+        _context.white_pixel.view = wgpuTextureCreateView(_context.white_pixel.texture, &(WGPUTextureViewDescriptor){
+                .format = WGPUTextureFormat_RGBA8Unorm,
+                .dimension = WGPUTextureViewDimension_2D,
+                .mipLevelCount = 1,
+                .arrayLayerCount = 1,
+                .aspect = WGPUTextureAspect_All,
+            });
+
+        u32 white = 0xffffffff;
+        wgpuQueueWriteTexture(_context.queue, &(WGPUImageCopyTexture){
+                .texture = _context.white_pixel.texture,
+                .aspect = WGPUTextureAspect_All
+            },
+            &white,
+            4,
+            &(WGPUTextureDataLayout){
+                .bytesPerRow = 4,
+                .rowsPerImage = 1
+            },
+            &(WGPUExtent3D){
+                .width = 1,
+                .height = 1,
+                .depthOrArrayLayers = 1
+            }
+        );
+
+        _context.white_pixel.image = ripple_register_image(_context.white_pixel.view);
     }
 
     _context.bind_group_layout = wgpuDeviceCreateBindGroupLayout(_context.config.device, &(WGPUBindGroupLayoutDescriptor){
-            .entryCount = 3,
+            .entryCount = 1,
             .entries = (WGPUBindGroupLayoutEntry[]) {
                 [0] = {
                     .binding = 0,
@@ -427,28 +475,13 @@ void ripple_backend_initialize(RippleBackendConfig config)
                         .type = WGPUBufferBindingType_Uniform,
                         .minBindingSize = sizeof(ShaderData)
                     }
-                },
-                [1] = {
-                    .binding = 1,
-                    .visibility = WGPUShaderStage_Fragment,
-                    .texture = {
-                        .sampleType = WGPUTextureSampleType_Float,
-                        .viewDimension = WGPUTextureViewDimension_2D,
-                    }
-                },
-                [2] = {
-                    .binding = 2,
-                    .visibility = WGPUShaderStage_Fragment,
-                    .sampler = {
-                        .type = WGPUSamplerBindingType_Filtering
-                    }
                 }
             }
         });
 
     _context.image_bind_group_layout = wgpuDeviceCreateBindGroupLayout(_context.config.device, &(WGPUBindGroupLayoutDescriptor)
         {
-            .entryCount = 2,
+            .entryCount = 5,
             .entries = (WGPUBindGroupLayoutEntry[]) {
                 [0] = {
                     .binding = 0,
@@ -456,14 +489,72 @@ void ripple_backend_initialize(RippleBackendConfig config)
                     .texture = {
                         .sampleType = WGPUTextureSampleType_Float,
                         .viewDimension = WGPUTextureViewDimension_2D,
-                    }
+                    },
                 },
                 [1] = {
                     .binding = 1,
                     .visibility = WGPUShaderStage_Fragment,
-                    .sampler = {
-                        .type = WGPUSamplerBindingType_Filtering
-                    }
+                    .texture = {
+                        .sampleType = WGPUTextureSampleType_Float,
+                        .viewDimension = WGPUTextureViewDimension_2D,
+                    },
+                },
+                [2] = {
+                    .binding = 2,
+                    .visibility = WGPUShaderStage_Fragment,
+                    .texture = {
+                        .sampleType = WGPUTextureSampleType_Float,
+                        .viewDimension = WGPUTextureViewDimension_2D,
+                    },
+                },
+                [3] = {
+                    .binding = 3,
+                    .visibility = WGPUShaderStage_Fragment,
+                    .texture = {
+                        .sampleType = WGPUTextureSampleType_Float,
+                        .viewDimension = WGPUTextureViewDimension_2D,
+                    },
+                },
+                [4] = {
+                    .binding = 4,
+                    .visibility = WGPUShaderStage_Fragment,
+                    .texture = {
+                        .sampleType = WGPUTextureSampleType_Float,
+                        .viewDimension = WGPUTextureViewDimension_2D,
+                    },
+                }
+            }
+        });
+
+    _context.sampler_bind_group_layout = wgpuDeviceCreateBindGroupLayout(_context.config.device, &(WGPUBindGroupLayoutDescriptor)
+        {
+            .entryCount = 1,
+            .entries = &(WGPUBindGroupLayoutEntry) {
+                .binding = 0,
+                .visibility = WGPUShaderStage_Fragment,
+                .sampler = {
+                    .type = WGPUSamplerBindingType_Filtering
+                }
+            }
+        });
+
+    _context.sampler = wgpuDeviceCreateSampler(_context.config.device, &(WGPUSamplerDescriptor){
+            .addressModeU = WGPUAddressMode_ClampToEdge,
+            .addressModeV = WGPUAddressMode_ClampToEdge,
+            .addressModeW = WGPUAddressMode_ClampToEdge,
+            .magFilter = WGPUFilterMode_Linear,
+            .minFilter = WGPUFilterMode_Linear,
+            .mipmapFilter = WGPUMipmapFilterMode_Nearest,
+            .maxAnisotropy = 1
+        });
+
+    _context.sampler_bind_group = wgpuDeviceCreateBindGroup(_context.config.device, &(WGPUBindGroupDescriptor){
+            .layout = _context.sampler_bind_group_layout,
+            .entryCount = 1,
+            .entries = (WGPUBindGroupEntry[]){
+                [0] = {
+                    .binding = 0,
+                    .sampler = _context.sampler
                 }
             }
         });
@@ -479,10 +570,11 @@ void ripple_backend_initialize(RippleBackendConfig config)
         });
 
     _context.pipeline_layout = wgpuDeviceCreatePipelineLayout(_context.config.device, &(WGPUPipelineLayoutDescriptor){
-            .bindGroupLayoutCount = 2,
+            .bindGroupLayoutCount = 3,
             .bindGroupLayouts = (WGPUBindGroupLayout[]) {
                 [0] = _context.bind_group_layout,
                 [1] = _context.image_bind_group_layout,
+                [2] = _context.sampler_bind_group_layout,
             }
         });
 
@@ -520,7 +612,7 @@ void ripple_backend_initialize(RippleBackendConfig config)
                             [2] = {
                                 .shaderLocation = 3,
                                 .format = WGPUVertexFormat_Float32x4,
-                                .offset = offsetof(Instance, font_texture_coords)
+                                .offset = offsetof(Instance, uv)
                             },
                             [3] = {
                                 .shaderLocation = 4,
@@ -615,21 +707,13 @@ _Window create_window(u64 id, RippleWindowConfig config)
 
     window.bind_group = wgpuDeviceCreateBindGroup(_context.config.device, &(WGPUBindGroupDescriptor){
             .layout = _context.bind_group_layout,
-            .entryCount = 3,
+            .entryCount = 1,
             .entries = (WGPUBindGroupEntry[]){
                 [0] = {
                     .binding = 0,
                     .buffer = window.uniform_buffer,
                     .offset = 0,
                     .size = sizeof(window.shader_data)
-                },
-                [1] = {
-                    .binding = 1,
-                    .textureView = _context.font.view,
-                },
-                [2] = {
-                    .binding = 2,
-                    .sampler = _context.font.sampler
                 }
             }
         });
@@ -734,6 +818,11 @@ void ripple_render_window_begin(u64 id, RippleRenderData render_data)
     _context.current_window = mapa_get(_context.windows, &id);
     vektor_clear(_context.current_window->instances);
     vektor_clear(_context.current_window->images);
+    vektor_add(_context.current_window->images, (_RippleImageInstancePair) {
+        .images = { [0] = _context.white_pixel.image, [1] = _context.font.image },
+        .n_images = 2,
+        .instance_index = 0
+    });
 }
 
 void ripple_render_window_end(RippleRenderData render_data)
@@ -781,9 +870,6 @@ void ripple_render_window_end(RippleRenderData render_data)
                 .loadOp = WGPULoadOp_Clear,
                 .storeOp = WGPUStoreOp_Store,
                 .clearValue = (WGPUColor){ 1.0f, 0.7f, 0.4f, 1.0f },
-                #ifndef WEBGPU_BACKEND_WGPU
-                .depthSlice = WGPU_DEPTH_SLICE_UNDEFINED
-                #endif //WEBGPU_BACKEND_WGPU
             },
             .depthStencilAttachment = nullptr
         });
@@ -792,29 +878,46 @@ void ripple_render_window_end(RippleRenderData render_data)
     wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0, _context.vertex_buffer, 0, wgpuBufferGetSize(_context.vertex_buffer));
     wgpuRenderPassEncoderSetIndexBuffer(render_pass, _context.index_buffer, WGPUIndexFormat_Uint16, 0, wgpuBufferGetSize(_context.index_buffer));
     wgpuRenderPassEncoderSetBindGroup(render_pass, 0, window->bind_group, 0, nullptr);
+    wgpuRenderPassEncoderSetBindGroup(render_pass, 2, _context.sampler_bind_group, 0, nullptr);
+
+    WGPUBindGroup bind_groups[window->images.n_items];
 
     u32 instance_index = 0;
     for (u32 i = 0; i < window->images.n_items; i++)
     {
         _RippleImageInstancePair* image_pair = &window->images.items[i];
+        WGPUBindGroupEntry image_textures[array_len(image_pair->images)];
+        for (u32 j = 0; j < array_len(image_pair->images); j++)
+        {
+            image_textures[j] = (WGPUBindGroupEntry){
+                .binding = j,
+                .textureView = *mapa_get(_context.image_textures, &image_pair->images[min(j, image_pair->n_images - 1)])
+            };
+        }
 
-        WGPUBindGroup* image_bind_group = mapa_get(_context.image_bind_groups, &image_pair->image);
+        u32 n_instances = ((i == window->images.n_items - 1) ? window->instances.n_items : image_pair->instance_index) - instance_index + 1;
 
-        u32 n_instances = image_pair->instance_index - instance_index + 1;
+        bind_groups[i] = wgpuDeviceCreateBindGroup(_context.config.device, &(WGPUBindGroupDescriptor)
+            {
+                .layout = _context.image_bind_group_layout,
+                .entryCount = array_len(image_textures),
+                .entries = image_textures
+            });
 
         wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, window->instance_buffer, 0, wgpuBufferGetSize(window->instance_buffer));
-        wgpuRenderPassEncoderSetBindGroup(render_pass, 1, *image_bind_group, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(render_pass, 1, bind_groups[i], 0, nullptr);
         wgpuRenderPassEncoderDrawIndexed(render_pass, index_count, n_instances, 0, 0, instance_index);
+
         instance_index += n_instances;
     }
 
-    if (instance_index < window->instances.n_items)
+    wgpuRenderPassEncoderEnd(render_pass);
+
+    for (u32 i = 0; i < array_len(bind_groups); i++)
     {
-        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, window->instance_buffer, 0, wgpuBufferGetSize(window->instance_buffer));
-        wgpuRenderPassEncoderDrawIndexed(render_pass, index_count, window->instances.n_items - instance_index, 0, 0, instance_index);
+        wgpuBindGroupRelease(bind_groups[i]);
     }
 
-    wgpuRenderPassEncoderEnd(render_pass);
 }
 
 void ripple_render_end(RippleRenderData render_data)
@@ -824,7 +927,6 @@ void ripple_render_end(RippleRenderData render_data)
 
     wgpuQueueSubmit(_context.queue, 1, &command);
     wgpuCommandBufferRelease(command);
-
 
     for (u32 window_i = 0; window_i < _context.windows.size; window_i++)
     {
@@ -849,7 +951,9 @@ void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
     vektor_add(_context.current_window->instances, (Instance){
         .pos = { (f32)x, (f32)y },
         .size = { (f32)w, (f32)h },
-        .color = { color_arr[0], color_arr[1], color_arr[2] }
+        .uv = { 0.0f, 0.0f, 1.0f, 1.0f },
+        .color = { color_arr[0], color_arr[1], color_arr[2] },
+        .image_index = 0
     });
 }
 
@@ -857,20 +961,45 @@ void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
 {
     _Window *window = _context.current_window;
 
-    if (_context.current_window->images.n_items == 0 ||
-        window->images.items[_context.current_window->images.n_items - 1].image != image)
+    u32 image_index = U32_MAX;
+    _RippleImageInstancePair* pair = &window->images.items[_context.current_window->images.n_items - 1];
+    for (u32 i = 0; i < pair->n_images; i++)
     {
-        vektor_add(window->images, (_RippleImageInstancePair) { .image = image, .instance_index = window->instances.n_items } );
+        if (pair->images[i] == image)
+        {
+            image_index = i;
+            break;
+        }
+    }
+
+
+    if (image_index >= pair->n_images && pair->n_images >= array_len(pair->images))
+    {
+        vektor_add(window->images, (_RippleImageInstancePair) {
+            .images = { [0] = _context.white_pixel.image, [1] = _context.font.image, [2] = image },
+            .n_images = 3,
+            .instance_index = window->instances.n_items
+        });
+
+        image_index = 2;
     }
     else
     {
-        window->images.items[_context.current_window->images.n_items].instance_index = _context.current_window->instances.n_items;
+        if (image_index >= pair->n_images)
+        {
+            image_index = pair->n_images;
+            pair->images[pair->n_images++] = image;
+        }
+
+        pair->instance_index = _context.current_window->instances.n_items;
     }
 
     vektor_add(window->instances, (Instance){
         .pos = { (f32)x, (f32)y },
+        .uv = { 0.0f, 0.0f, 1.0f, 1.0f },
+        .color = { 1.0f, 1.0f, 1.0f },
         .size = { (f32)w, (f32)h },
-        .image_index = 1
+        .image_index = image_index
     });
 }
 
@@ -906,39 +1035,24 @@ void ripple_render_text(i32 pos_x, i32 pos_y, const char* text, f32 font_size, u
         vektor_add(_context.current_window->instances, (Instance){
             .pos = { pos_x + quad.x0 * scale, pos_y + quad.y0 * scale },
             .size = { (quad.x1 - quad.x0) * scale, (quad.y1 - quad.y0) * scale },
-            .font_texture_coords = { quad.s0, quad.t0, quad.s1, quad.t1 },
-            .color = { color_arr[0], color_arr[1], color_arr[2] }
+            .uv = { quad.s0, quad.t0, quad.s1, quad.t1 },
+            .color = { color_arr[0], color_arr[1], color_arr[2] },
+            .image_index = 1
         });
     }
 }
 
 
-RippleImage ripple_register_image(WGPUTextureView view, WGPUSampler sampler)
+RippleImage ripple_register_image(WGPUTextureView view)
 {
-    u64 hash = hash_combine(hash_u64((u64)view), hash_u64((u64)sampler));
+    u64 hash = hash_u64((u64)view);
 
-    if (mapa_get(_context.image_bind_groups, &hash))
+    if (mapa_get(_context.image_textures, &hash))
     {
         abort("image already registered");
     }
 
-    WGPUBindGroup bind_group = wgpuDeviceCreateBindGroup(_context.config.device, &(WGPUBindGroupDescriptor){
-            //.layout = _context.image_bind_group_layout,
-            .layout = wgpuRenderPipelineGetBindGroupLayout(_context.pipeline, 1),
-            .entryCount = 2,
-            .entries = (WGPUBindGroupEntry[]){
-                [0] = {
-                    .binding = 0,
-                    .textureView = view,
-                },
-                [1] = {
-                    .binding = 1,
-                    .sampler = sampler
-                }
-            }
-        });
-
-    (void)mapa_insert(_context.image_bind_groups, &hash, bind_group);
+    (void)mapa_insert(_context.image_textures, &hash, view);
 
     return hash;
 }
