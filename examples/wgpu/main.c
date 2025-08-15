@@ -161,127 +161,60 @@ void full_test(f32 dt, RippleImage image)
     }
 }
 
+typedef struct {
+    struct {
+        WGPUTexture texture;
+        WGPUTextureView view;
+        RippleImage image;
+    } target;
+} Context;
+
+Context create_context(WGPUQueue queue, WGPUDevice device)
+{
+    Context ctx = { 0 };
+
+    u32 texture_size = 800;
+    ctx.target.texture = wgpuDeviceCreateTexture(device, &(WGPUTextureDescriptor){
+            .label = "render_target",
+            .size = (WGPUExtent3D){ .width = texture_size, .height = texture_size, .depthOrArrayLayers = 1 },
+            .format = WGPUTextureFormat_RGBA8Unorm,
+            .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment,
+            .dimension = WGPUTextureDimension_2D,
+            .mipLevelCount = 1,
+            .sampleCount = 1
+        });
+
+    ctx.target.view = wgpuTextureCreateView(ctx.target.texture, &(WGPUTextureViewDescriptor){
+            .format = WGPUTextureFormat_RGBA8Unorm,
+            .dimension = WGPUTextureViewDimension_2D,
+            .mipLevelCount = 1,
+            .arrayLayerCount = 1,
+            .aspect = WGPUTextureAspect_All,
+        });
+
+    ctx.target.image = ripple_register_image(ctx.target.view);
+
+    return ctx;
+}
+
 int main(int argc, char* argv[])
 {
     RippleBackendConfig render_config = ripple_get_default_backend_config();
     ripple_backend_initialize(render_config);
     WGPUQueue queue = wgpuDeviceGetQueue(render_config.device);
 
-    RippleImage green_image = { 0 };
-    {
-        u32 texture_size = 256;
-        WGPUTexture texture = wgpuDeviceCreateTexture(render_config.device, &(WGPUTextureDescriptor){
-                .label = "gradient",
-                .size = (WGPUExtent3D){ .width = texture_size, .height = texture_size, .depthOrArrayLayers = 1 },
-                .format = WGPUTextureFormat_RGBA8Unorm,
-                .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
-                .dimension = WGPUTextureDimension_2D,
-                .mipLevelCount = 1,
-                .sampleCount = 1
-            });
-
-        WGPUTextureView view = wgpuTextureCreateView(texture, &(WGPUTextureViewDescriptor){
-                .format = WGPUTextureFormat_RGBA8Unorm,
-                .dimension = WGPUTextureViewDimension_2D,
-                .mipLevelCount = 1,
-                .arrayLayerCount = 1,
-                .aspect = WGPUTextureAspect_All,
-            });
-
-        u8 texture_data[texture_size * texture_size * 4];
-        for (u32 y = 0; y < texture_size; y++) {
-            for (u32 x = 0; x < texture_size; x++) {
-                u32 i = 4 * (y * texture_size + x);
-                texture_data[i + 0] = x;
-                texture_data[i + 1] = 0xff;
-                texture_data[i + 2] = y;
-                texture_data[i + 3] = 0xff;
-            }
-        }
-
-        wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
-                .texture = texture,
-                .aspect = WGPUTextureAspect_All
-            },
-            texture_data,
-            texture_size * texture_size * 4,
-            &(WGPUTextureDataLayout){
-                .bytesPerRow = texture_size * 4,
-                .rowsPerImage = texture_size
-            },
-            &(WGPUExtent3D){
-                .width = texture_size,
-                .height = texture_size,
-                .depthOrArrayLayers = 1
-            }
-        );
-
-        green_image = ripple_register_image(view);
-    }
-
-    RippleImage blue_image = { 0 };
-    {
-        u32 texture_size = 256;
-        WGPUTexture texture = wgpuDeviceCreateTexture(render_config.device, &(WGPUTextureDescriptor){
-                .label = "gradient",
-                .size = (WGPUExtent3D){ .width = texture_size, .height = texture_size, .depthOrArrayLayers = 1 },
-                .format = WGPUTextureFormat_RGBA8Unorm,
-                .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
-                .dimension = WGPUTextureDimension_2D,
-                .mipLevelCount = 1,
-                .sampleCount = 1
-            });
-
-        WGPUTextureView view = wgpuTextureCreateView(texture, &(WGPUTextureViewDescriptor){
-                .format = WGPUTextureFormat_RGBA8Unorm,
-                .dimension = WGPUTextureViewDimension_2D,
-                .mipLevelCount = 1,
-                .arrayLayerCount = 1,
-                .aspect = WGPUTextureAspect_All,
-            });
-
-        u8 texture_data[texture_size * texture_size * 4];
-        for (u32 y = 0; y < texture_size; y++) {
-            for (u32 x = 0; x < texture_size; x++) {
-                u32 i = 4 * (y * texture_size + x);
-                texture_data[i + 0] = x;
-                texture_data[i + 1] = y;
-                texture_data[i + 2] = 0xff;
-                texture_data[i + 3] = 0xff;
-            }
-        }
-
-        wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
-                .texture = texture,
-                .aspect = WGPUTextureAspect_All
-            },
-            texture_data,
-            texture_size * texture_size * 4,
-            &(WGPUTextureDataLayout){
-                .bytesPerRow = texture_size * 4,
-                .rowsPerImage = texture_size
-            },
-            &(WGPUExtent3D){
-                .width = texture_size,
-                .height = texture_size,
-                .depthOrArrayLayers = 1
-            }
-        );
-
-        blue_image = ripple_register_image(view);
-    }
+    Context ctx = create_context(queue, render_config.device);
 
     bool main_is_open = true;
-    bool second_is_open = false;
-    bool third_is_open = false;
-
-    i32 first_click_count = 0;
-    i32 second_click_count = 0;
 
     f32 font_size = 64.0f;
 
     Allocator text_allocator;
+    unused text_allocator;
     u8 text_arena[1024];
+
+    i32 small_window_x = 0;
+    i32 small_window_y = 0;
 
     while (main_is_open) {
         buf_set(text_arena, 0, sizeof(text_arena));
@@ -290,80 +223,37 @@ int main(int argc, char* argv[])
 
         SURFACE( .title = "surface", .width = 800, .height = 800, .is_open = &main_is_open )
         {
-            if (false)
+            RIPPLE( IMAGE( .image = ctx.target.image ))
             {
-                full_test(0.001, blue_image);
-                continue;
             }
+        }
 
-            RIPPLE( IMAGE( .image = blue_image ))
+        SURFACE( .title = "hellooo", .width = 300, .height = 300, .x = &small_window_x, .y = &small_window_y, .hide_title = true )
+        {
+            RIPPLE( FORM( .direction = cld_VERTICAL ) )
             {
-                u32 size = print(0, 0, "{}", first_click_count);
-                u8* text = allocator_alloc(&text_allocator, size + 1);
-                print((void*)text, size, "{}", first_click_count);
-                i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
-                CENTERED(
-                    RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = (char*)text, .font_size = font_size ));
-                );
-
-                if (STATE().clicked)
+                RIPPLE( RECTANGLE( .color = 0x3e3e3e ), FORM( .height = FIXED(32) ) )
                 {
-                    first_click_count = 0;
-                    second_is_open = !second_is_open;
-                }
-            }
-
-            RIPPLE( IMAGE( .image = green_image ))
-            {
-                u32 size = print(0, 0, "{}", second_click_count);
-                u8* text = allocator_alloc(&text_allocator, size + 1);
-                print((void*)text, size, "{}", second_click_count);
-                i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
-                CENTERED(
-                    RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = (char*)text, .font_size = font_size, .color = 0xffffff ));
-                );
-
-                if (STATE().clicked)
-                {
-                    second_click_count = 0;
-                    third_is_open = !third_is_open;
-                }
-            }
-
-            if (second_is_open)
-            {
-                SURFACE( .title = "HELLO!", .width = 300, .height = 300, .is_open = &second_is_open )
-                {
-                    RIPPLE( IMAGE( .image = blue_image ))
+                    static i32 mouse_offset_x = 0;
+                    static i32 mouse_offset_y = 0;
+                    if (STATE().clicked)
                     {
-                        CENTERED(
-                            const char* text = "blue++";
-                            i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
-                            RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text, .font_size = font_size ));
-                        );
+                        mouse_offset_x = CURSOR().x;
+                        mouse_offset_y = CURSOR().y;
+                    }
 
-                        if (STATE().clicked)
-                            first_click_count++;
+                    if (STATE().is_weak_held)
+                    {
+                        small_window_x += CURSOR().x - mouse_offset_x;
+                        small_window_y += CURSOR().y - mouse_offset_y;
                     }
                 }
-            }
 
-            if (third_is_open)
-            {
-                SURFACE( .title = "hh", .width = 300, .height = 300, .is_open = &third_is_open )
-                {
-                    RIPPLE( IMAGE( .image = green_image ))
-                    {
-                        CENTERED(
-                            const char* text = "green++";
-                            i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
-                            RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text, .font_size = font_size, .color = 0xffffff ));
-                        );
-
-                        if (STATE().clicked)
-                            second_click_count++;
-                    }
-                }
+                CENTERED(
+                    const char* text = "helo";
+                    i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
+                    RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text, .font_size = font_size ));
+                );
             }
         }
 

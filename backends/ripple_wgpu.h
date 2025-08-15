@@ -241,6 +241,13 @@ typedef struct {
 } _RippleImageInstancePair;
 
 typedef struct {
+    RippleWindowConfig config;
+
+    struct {
+        i32 x;
+        i32 y;
+    } prev_config;
+
     u64 id;
     u64 parent_id;
 
@@ -251,6 +258,7 @@ typedef struct {
     // these two are only set inbetween render_window_end and render_end
     WGPUSurfaceTexture surface_texture;
     WGPUTextureView surface_texture_view;
+
 
     WGPUBuffer instance_buffer;
     WGPUBuffer uniform_buffer;
@@ -340,6 +348,15 @@ static void mouse_button_callback(GLFWwindow* glfw_window, i32 button, i32 actio
             window->middle_released = true;
         return;
     }
+}
+
+static void window_pos_callback(GLFWwindow* glfw_window, i32 x, i32 y)
+{
+    u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
+    _Window* window = mapa_get(_context.windows, &window_id);
+
+    if (window->config.x) *window->config.x = x;
+    if (window->config.y) *window->config.y = y;
 }
 
 static void on_window_resized(GLFWwindow* glfw_window, i32 w, i32 h)
@@ -683,11 +700,17 @@ void ripple_backend_initialize(RippleBackendConfig config)
 
 _Window create_window(u64 id, RippleWindowConfig config)
 {
-    _Window window = (_Window){ .id = id, .should_configure_surface = true };
+    _Window window = (_Window){ .id = id, .should_configure_surface = true, .config = config };
 
     // GLFW
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, config.not_resizable ? GLFW_FALSE : GLFW_TRUE);
+    glfwWindowHint(GLFW_DECORATED, config.hide_title ? GLFW_FALSE : GLFW_TRUE );
+    if (config.set_position)
+    {
+        glfwWindowHint(GLFW_POSITION_X, *config.x);
+        glfwWindowHint(GLFW_POSITION_Y, *config.y);
+    }
     window.window = glfwCreateWindow(config.width, config.height, config.title, nullptr, nullptr);
     if (!window.window)
         abort("Couldnt no open window!");
@@ -695,6 +718,7 @@ _Window create_window(u64 id, RippleWindowConfig config)
     glfwSetWindowUserPointer(window.window, (void*)id);
     glfwSetFramebufferSizeCallback(window.window, &on_window_resized);
     glfwSetMouseButtonCallback(window.window, &mouse_button_callback);
+    glfwSetWindowPosCallback(window.window, &window_pos_callback);
 
     // WGPU
     window.surface = glfwGetWGPUSurface(_context.config.instance, window.window);
@@ -718,6 +742,9 @@ _Window create_window(u64 id, RippleWindowConfig config)
             }
         });
 
+    if (config.x) window.prev_config.x = *config.x;
+    if (config.y) window.prev_config.y = *config.y;
+
     return window;
 }
 
@@ -735,6 +762,19 @@ void ripple_window_begin(u64 id, RippleWindowConfig config)
     }
 
     _context.current_window->parent_id = parent_id;
+
+    if ((config.x && _context.current_window->prev_config.x != *config.x) ||
+        (config.y && _context.current_window->prev_config.y != *config.y))
+    {
+        glfwSetWindowPos(_context.current_window->window, *config.x, *config.y);
+    }
+
+    if (_context.current_window->config.width != config.width || _context.current_window->config.width != config.height)
+    {
+        glfwSetWindowSize(_context.current_window->window, config.width, config.height);
+    }
+
+    _context.current_window->config = config;
 }
 
 void ripple_window_end()
@@ -832,7 +872,7 @@ void ripple_render_window_end(RippleRenderData render_data)
     if (!window->instance_buffer ||
         window->instance_buffer_size < window->instances.size)
     {
-        window->instance_buffer_size = window->instances.size;
+        window->instance_buffer_size = window->instances.size + 1;
 
         if (window->instance_buffer)
         {
@@ -895,14 +935,14 @@ void ripple_render_window_end(RippleRenderData render_data)
             };
         }
 
-        u32 n_instances = ((i == window->images.n_items - 1) ? window->instances.n_items : image_pair->instance_index) - instance_index + 1;
-
         bind_groups[i] = wgpuDeviceCreateBindGroup(_context.config.device, &(WGPUBindGroupDescriptor)
             {
                 .layout = _context.image_bind_group_layout,
                 .entryCount = array_len(image_textures),
                 .entries = image_textures
             });
+
+        u32 n_instances = ((i == window->images.n_items - 1) ? window->instances.n_items : image_pair->instance_index) - instance_index + 1;
 
         wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, window->instance_buffer, 0, wgpuBufferGetSize(window->instance_buffer));
         wgpuRenderPassEncoderSetBindGroup(render_pass, 1, bind_groups[i], 0, nullptr);

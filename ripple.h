@@ -40,17 +40,20 @@ typedef struct {
 
 typedef struct {
     const char* title;
+    bool* is_open;
+    Allocator* allocator;
+
+    i32* x;
+    i32* y;
 
     u32 width;
     u32 height;
 
-    bool* is_open;
-
     struct {
         bool not_resizable : 1;
+        bool hide_title : 1;
+        bool set_position : 1;
     };
-
-    Allocator* allocator;
 } RippleWindowConfig;
 
 typedef enum {
@@ -701,9 +704,11 @@ void render_text(RippleElementConfig config, RenderedLayout layout, void* window
   .render_data_size = sizeof(RippleTextConfig)
 
 #define CENTERED_HORIZONTAL(...) do {\
-        RIPPLE();\
-        { __VA_ARGS__ }\
-        RIPPLE();\
+        RIPPLE() {\
+            RIPPLE();\
+            { __VA_ARGS__ }\
+            RIPPLE();\
+        }\
 } while (false)
 #define CENTERED_VERTICAL(...) do {\
         RIPPLE( FORM( .width = DEPTH(1.0f, REFINEMENT), .direction = cld_VERTICAL ) ) {\
