@@ -147,7 +147,7 @@ typedef struct {
     f32 pos[2];
     f32 size[2];
     f32 uv[4];
-    f32 color[3];
+    f32 color[4];
     f32 color_padding[1];
     u32 image_index;
     u32 image_index_padding[3];
@@ -177,13 +177,13 @@ struct InstanceInput {\
     @location(1) position: vec2f,\
     @location(2) size: vec2f,\
     @location(3) uv: vec4f,\
-    @location(4) color: vec3f,\
+    @location(4) color: vec4f,\
     @location(5) image_index: u32,\
 }\
 \
 struct VertexOutput{\
     @builtin(position) position: vec4f,\
-    @location(0) color: vec3f,\
+    @location(0) color: vec4f,\
     @location(2) uv: vec2f,\
     @location(3) image_index: u32\
 };\
@@ -219,7 +219,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {\
         case 4u { tex_color = textureSample(texture5, texture_sampler, in.uv); }\
         default { tex_color = vec4f(1.0, 1.0, 1.0, 1.0); }\
     }\
-    let color = vec4f(tex_color.rgb * in.color, tex_color.a);\
+    let color = tex_color * in.color;\
     let linear_color = pow(color.rgb, vec3f(2.2));\
     return vec4f(linear_color, color.a);\
 }\
@@ -633,7 +633,7 @@ void ripple_backend_initialize(RippleBackendConfig config)
                             },
                             [3] = {
                                 .shaderLocation = 4,
-                                .format = WGPUVertexFormat_Float32x3,
+                                .format = WGPUVertexFormat_Float32x4,
                                 .offset = offsetof(Instance, color)
                             },
                             [4] = {
@@ -942,9 +942,9 @@ void ripple_render_window_end(RippleRenderData render_data)
                 .entries = image_textures
             });
 
-        u32 n_instances = ((i == window->images.n_items - 1) ? window->instances.n_items : image_pair->instance_index) - instance_index + 1;
+        u32 n_instances = ((i == window->images.n_items - 1) ? window->instances.n_items : image_pair->instance_index) - instance_index;
 
-        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, window->instance_buffer, 0, wgpuBufferGetSize(window->instance_buffer));
+        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, window->instance_buffer, 0, n_instances * sizeof(Instance));
         wgpuRenderPassEncoderSetBindGroup(render_pass, 1, bind_groups[i], 0, nullptr);
         wgpuRenderPassEncoderDrawIndexed(render_pass, index_count, n_instances, 0, 0, instance_index);
 
@@ -978,21 +978,32 @@ void ripple_render_end(RippleRenderData render_data)
     }
 }
 
-static void _u32_to_color(u32 color, f32 out_color[3])
+static void _ripple_color_to_color(RippleColor color, f32 out_color[4])
 {
-    out_color[0] = (f32)((color >> 16) & 0xff) / 255.0f;
-    out_color[1] = (f32)((color >> 8) & 0xff) / 255.0f;
-    out_color[2] = (f32)(color & 0xff) / 255.0f;
+    if (color.format == RCF_RGB)
+    {
+        out_color[0] = (f32)((color.value >> 16) & 0xff) / 255.0f;
+        out_color[1] = (f32)((color.value >> 8) & 0xff) / 255.0f;
+        out_color[2] = (f32)(color.value & 0xff) / 255.0f;
+        out_color[3] = 1.0f;
+    }
+    else
+    {
+        out_color[0] = (f32)((color.value >> 24) & 0xff) / 255.0f;
+        out_color[1] = (f32)((color.value >> 16) & 0xff) / 255.0f;
+        out_color[2] = (f32)((color.value >> 8) & 0xff) / 255.0f;
+        out_color[3] = (f32)(color.value & 0xff) / 255.0f;
+    }
 }
 
-void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
+void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color)
 {
-    f32 color_arr[3]; _u32_to_color(color, color_arr);
+    f32 color_arr[4]; _ripple_color_to_color(color, color_arr);
     vektor_add(_context.current_window->instances, (Instance){
         .pos = { (f32)x, (f32)y },
         .size = { (f32)w, (f32)h },
         .uv = { 0.0f, 0.0f, 1.0f, 1.0f },
-        .color = { color_arr[0], color_arr[1], color_arr[2] },
+        .color = { color_arr[0], color_arr[1], color_arr[2], color_arr[3] },
         .image_index = 0
     });
 }
@@ -1037,7 +1048,7 @@ void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
     vektor_add(window->instances, (Instance){
         .pos = { (f32)x, (f32)y },
         .uv = { 0.0f, 0.0f, 1.0f, 1.0f },
-        .color = { 1.0f, 1.0f, 1.0f },
+        .color = { 1.0f, 1.0f, 1.0f, 1.0f},
         .size = { (f32)w, (f32)h },
         .image_index = image_index
     });
@@ -1058,10 +1069,10 @@ void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h
     *out_h = (i32)(font_size);
 }
 
-void ripple_render_text(i32 pos_x, i32 pos_y, const char* text, f32 font_size, u32 color)
+void ripple_render_text(i32 pos_x, i32 pos_y, const char* text, f32 font_size, RippleColor color)
 {
     f32 scale = font_size / FONT_SIZE;
-    f32 color_arr[3]; _u32_to_color(color, color_arr);
+    f32 color_arr[4]; _ripple_color_to_color(color, color_arr);
     pos_y += font_size * 0.75f;
     f32 x = 0.0f;
     f32 y = 0.0f;
@@ -1076,7 +1087,7 @@ void ripple_render_text(i32 pos_x, i32 pos_y, const char* text, f32 font_size, u
             .pos = { pos_x + quad.x0 * scale, pos_y + quad.y0 * scale },
             .size = { (quad.x1 - quad.x0) * scale, (quad.y1 - quad.y0) * scale },
             .uv = { quad.s0, quad.t0, quad.s1, quad.t1 },
-            .color = { color_arr[0], color_arr[1], color_arr[2] },
+            .color = { color_arr[0], color_arr[1], color_arr[2], color_arr[3] },
             .image_index = 1
         });
     }

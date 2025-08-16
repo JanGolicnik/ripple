@@ -24,6 +24,16 @@ typedef struct {
     u8 is_open : 1;
 } RippleWindowState;
 
+typedef enum {
+    RCF_RGB = 0, // 0xrrggbb, alpha = 1.0f
+    RCF_RGBA = 1 // rrggbbaa
+} RippleColorFormat;
+
+typedef struct {
+    u32 value;
+    RippleColorFormat format;
+} RippleColor;
+
 typedef struct {
     u8 pressed : 1;
     u8 released : 1;
@@ -118,12 +128,11 @@ typedef struct RippleElementConfig {
 
 typedef struct {
     u8 clicked : 1;
+    u8 released : 1;
     u8 hovered : 1;
     u8 is_held : 1;
     u8 is_weak_held : 1;
 } RippleElementState;
-
-typedef u32 RippleColor;
 
 bool Ripple_start_window(RippleWindowConfig config);
 void Ripple_finish_window(void);
@@ -151,9 +160,9 @@ RippleCursorState ripple_update_cursor_state(RippleCursorState state);
 
 RippleRenderData ripple_render_begin();
     void ripple_render_window_begin(u64, RippleRenderData);
-        void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, u32 color);
-        void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage color);
-        void ripple_render_text(i32 x, i32 y, const char* text, f32 font_size, u32 color);
+        void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color);
+        void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image);
+        void ripple_render_text(i32 x, i32 y, const char* text, f32 font_size, RippleColor color);
         void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h);
     void ripple_render_window_end(RippleRenderData);
 void ripple_render_end(RippleRenderData);
@@ -373,22 +382,22 @@ static RenderedLayout calculate_layout(ElementData* element, ElementData* parent
     layout.max_w = CALCULATE_SIZING_OR(config.max_width, w, I32_MAX);
     i32 min_width = CALCULATE_SIZING_OR(config.min_width, w, 0);
     layout.w = clamp(layout.w, min_width, layout.max_w);
+    layout.x = parent->calculated_layout.x;
 
-    if (config.x._type != SVT_GROW )
+    if (config.x._type != SVT_GROW)
     {
-        i32 x = CALCULATE_SIZING_OR(config.x, w, 0);
-        layout.x = parent->calculated_layout.x + x;
+        layout.x += CALCULATE_SIZING_OR(config.x, w, 0);
     }
 
     layout.h = CALCULATE_SIZING_OR(config.height, h, parent->config.layout.direction == cld_VERTICAL ? layout.h : parent->calculated_layout.h);
     layout.max_h = CALCULATE_SIZING_OR(config.max_height, h, I32_MAX);
     i32 min_height = CALCULATE_SIZING_OR(config.min_height, h, 0);
     layout.h = clamp(layout.h, min_height, layout.max_h);
+    layout.y = parent->calculated_layout.y;
 
-    if (config.y._type != SVT_GROW )
+    if (config.y._type != SVT_GROW)
     {
-        i32 y = CALCULATE_SIZING_OR(config.y, h, 0);
-        layout.y = parent->calculated_layout.y + y;
+        layout.y += CALCULATE_SIZING_OR(config.y, h, 0);
     }
 
     return layout;
@@ -405,6 +414,7 @@ static void update_element_state(Window* window, ElementState* state)
     state->state.is_held = window->cursor_state.left.held && (state->state.clicked || (state->state.is_held && state->state.hovered));
     state->state.is_weak_held = window->cursor_state.left.held && (state->state.clicked || state->state.is_weak_held);
     state->state.clicked = state->state.hovered && window->cursor_state.left.pressed;
+    state->state.released = state->state.hovered && window->cursor_state.left.released;
 }
 
 #define _I1 LINE_UNIQUE_VAR(_i)
@@ -428,6 +438,7 @@ static void grow_children(Window* window, ElementData* data)
 
     u32 free_space = (u32)DIM(data->calculated_layout);
     _for_each_child(data) {
+        if (child->config.layout.fixed) continue;
         free_space = free_space >= (u32)DIM(child->calculated_layout) ? free_space - (u32)DIM(child->calculated_layout) : 0;
     }
 
@@ -655,6 +666,9 @@ static RenderedLayout _get_current_element_rendered_layout()
 #define CLOSE_THE_VOID() Ripple_end()
 
 #define CURSOR() current_window->cursor_state
+
+#define RIPPLE_RGB(v) (RippleColor){ .format = RCF_RGB, .value = v }
+#define RIPPLE_RGBA(v) (RippleColor){ .format = RCF_RGBA, .value = v }
 
 typedef struct {
     RippleColor color;

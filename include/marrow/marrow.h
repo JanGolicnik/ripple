@@ -92,6 +92,10 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #define push_stream(stream) fflush(stream)
 #endif // push_stream
 
+#ifndef thread_local
+#define thread_local _Thread_local
+#endif // thread_local
+
 #ifndef debug_color
 #define debug_color "\x1b[92m"
 #endif // debug_color
@@ -107,29 +111,42 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #ifdef MARROW_NO_PRINTCCY
 
 #ifndef debug
-#define debug(format, ...) do { fprintf(stderr, debug_color "[DEBUG]" text_color " %s on line %d: \x1b[0m " format "\n", __FILE__, __LINE__, __VA_ARGS__); push_stream(stderr); } while(0)
+#define debug(f, ...) do { fprintf(stderr, debug_color "[DEBUG]" text_color " %s on line %d: \x1b[0m " f "\n", __FILE__, __LINE__, __VA_ARGS__); push_stream(stderr); } while(0)
 #endif // debug
 
 #ifndef error
-#define error(format, ...) do { fprintf(stderr, error_color "[ERROR]" text_color " %s on line %d: \x1b[0m " format "\n", __FILE__, __LINE__, __VA_ARGS__); push_stream(stderr); } while(0)
+#define error(f, ...) do { fprintf(stderr, error_color "[ERROR]" text_color " %s on line %d: \x1b[0m " f "\n", __FILE__, __LINE__, __VA_ARGS__); push_stream(stderr); } while(0)
 #endif // error
 
 #ifndef abort
-#define abort(format, ...) do { fprintf(stderr, error_color "[ABORT]" text_color " %s on line %d: \x1b[0m " format "\n", __FILE__, __LINE__, __VA_ARGS__); push_stream(stderr); exit(1); } while(0)
+#define abort(f, ...) do { fprintf(stderr, error_color "[ABORT]" text_color " %s on line %d: \x1b[0m " f "\n", __FILE__, __LINE__, __VA_ARGS__); push_stream(stderr); exit(1); } while(0)
 #endif // abort
 
 #else // MARROW_NO_PRINTCCY
 
+#ifndef format
+thread_local u32 _format_size;
+thread_local char* _format_text;
+#define format(f, allocator, ...)\
+(\
+    _format_size = print(0, 0, f, __VA_ARGS__),\
+    _format_text = allocator_alloc(allocator, _format_size + 1),\
+    (void)print(_format_text, _format_size, f, __VA_ARGS__),\
+    _format_text[_format_size] = 0,\
+    _format_text\
+)
+#endif // format
+
 #ifndef debug
-#define debug(format, ...) do { printfb(stderr, debug_color "[DEBUG]" text_color " {} on line {}: \x1b[0m" format "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
+#define debug(f, ...) do { printfb(stderr, debug_color "[DEBUG]" text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // debug
 
 #ifndef error
-#define error(format, ...) do { printfb(stderr, error_color "[ERROR]" text_color " {} on line {}: \x1b[0m" format "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
+#define error(f, ...) do { printfb(stderr, error_color "[ERROR]" text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)
 #endif // error
 
 #ifndef abort
-#define abort(format, ...) do { printfb(stderr, error_color "[ABORT]" text_color " {} on line {}: \x1b[0m" format "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); exit(1); } while(0)
+#define abort(f, ...) do { printfb(stderr, error_color "[ABORT]" text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); exit(1); } while(0)
 #endif // abort
 
 #endif // MARROW_NO_PRINTCCY
@@ -174,8 +191,6 @@ void buf_set(void* dst, u8 value, usize len)
 #ifndef for_each_i
 #define for_each_i(el, ptr, n, i) for(u32 i = 0, LINE_UNIQUE_I = 1; i < n; i++, LINE_UNIQUE_I = 1) for(typeof(*(ptr)) *el = &ptr[i]; LINE_UNIQUE_I ; LINE_UNIQUE_I = 0)
 #endif // for_each_i
-
-#define thread_local _Thread_local
 
 u64 hash_buf(const u8* buf, size_t buf_size)
 {
