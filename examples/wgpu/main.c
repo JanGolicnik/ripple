@@ -226,7 +226,7 @@ bool button(const char* text, f32 font_size, u32 padding, RippleColor color, Rip
     RIPPLE( FORM( .width = FIXED((u32)text_w + padding), .height = FIXED((u32)text_h + padding)), RECTANGLE( .color = STATE().hovered ? highlight_color : color ) )
     {
         CENTERED(
-            RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text, .font_size = font_size ));
+            RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text ));
         );
         clicked = STATE().released;
     }
@@ -268,8 +268,10 @@ int main(int argc, char* argv[])
 
         SURFACE( .title = "surface", .width = 800, .height = 800, .is_open = &main_is_open )
         {
+            RIPPLE( IMAGE( .image = ctx.target.image ));
+
             f32 toolbar_target_pos = -100.0f;
-            RIPPLE ( FORM ( .fixed = true, .width = DEPTH(1.0f, REFINEMENT), .height = DEPTH(1.0f, REFINEMENT), .x = FIXED( toolbar_pos )), RECTANGLE( .color = { 0x3e3e3e } ) )
+            RIPPLE ( FORM ( .direction = cld_VERTICAL, .fixed = true, .width = DEPTH(1.0f, REFINEMENT), .height = DEPTH(1.0f, REFINEMENT), .x = FIXED( toolbar_pos )), RECTANGLE( .color = { 0x3e3e3e } ) )
             {
                 toolbar_target_pos = -SHAPE().w;
                 toolbar_is_hovered = STATE().hovered;
@@ -279,24 +281,12 @@ int main(int argc, char* argv[])
                     settings_is_open = true;
                 if (button(settings_is_open ? ">settings<" : "settings", 32.0f, 5, RIPPLE_RGBA(0), RIPPLE_RGB(0x00ff00)))
                     settings_is_open = true;
-                if (button(settings_is_open ? ">settings<" : "settings", 32.0f, 5, RIPPLE_RGBA(0), RIPPLE_RGB(0x00ff00)))
-                    settings_is_open = true;
-                if (button(settings_is_open ? ">settings<" : "settings", 32.0f, 5, RIPPLE_RGBA(0), RIPPLE_RGB(0x00ff00)))
-                    settings_is_open = true;
-                if (button(settings_is_open ? ">settings<" : "settings", 32.0f, 5, RIPPLE_RGBA(0), RIPPLE_RGB(0x00ff00)))
-                    settings_is_open = true;
-            }
 
-            if (toolbar_is_hovered || (CURSOR().y < SHAPE().h * 0.5f && CURSOR().x < 10))
-            {
-                toolbar_target_pos = 0.0f;
-            }
-            toolbar_pos += (toolbar_target_pos - toolbar_pos) * (1.0f - expf(10.0f * -dt));
-
-            continue;
-            RIPPLE( FORM( .direction = cld_VERTICAL ) )
-            {
-                RIPPLE( IMAGE( .image = ctx.target.image ));
+                if (toolbar_is_hovered || (CURSOR().y < SHAPE().h * 0.5f && CURSOR().x < 10))
+                {
+                    toolbar_target_pos = 0.0f;
+                }
+                toolbar_pos += (toolbar_target_pos - toolbar_pos) * (1.0f - expf(10.0f * -dt));
             }
         }
 
@@ -307,7 +297,7 @@ int main(int argc, char* argv[])
                 CENTERED(
                     const char* text = format("{}x{}", &text_allocator, small_window_x, small_window_y);
                     i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
-                    RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text, .font_size = font_size ));
+                    RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text ));
                 );
             }
         }
