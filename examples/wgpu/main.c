@@ -1,101 +1,3 @@
-/*
-#include "marrow/mapa.h"
-#include "printccy/printccy.h"
-#include <stdio.h>
-
-i32 main()
-{
-    MAPA(char*, i32) ii_map;
-    mapa_init(ii_map, mapa_hash_djb2, mapa_cmp_bytes, nullptr);
-
-    char* keys[] = { "mister", "beast", "awoo", "heyy", "yaho !", "id:3" };
-
-    // i32 keys[] = {
-    //     0, 1, 1, 2, 3, 5, 8, 13, 21, 34,
-    //     55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181
-    // };
-
-    i32 values[] = {
-        0, 1, 1, 4, 9, 25, 64, 169, 441, 1156,
-        3025, 7921, 20736, 54289, 142129, 372100, 974169, 2550409, 6677056, 17480761
-    };
-
-    for (u32 i = 0; i < array_len(keys); i++)
-    {
-        (void)mapa_insert(ii_map, &keys[i], values[i]);
-    }
-
-    for (u32 i = 0; i < array_len(keys); i++)
-    {
-        i32 value = *mapa_get(ii_map, &keys[i]);
-        if (value != values[i])
-            abort("failed at {}", value);
-    }
-
-    for (u32 i = 0; i < ii_map.size; i++)
-    {
-        if (!ii_map.entries[i].has_value)
-        {
-            printf("[%d]: (X) -> (X)\n", i);
-            continue;
-        }
-        char* key = ii_map.entries[i].key;
-        i32 value = ii_map.entries[i].value;
-        printf("[%d]: (%s) -> (%d)\n", i, key, value);
-    }
-
-    for (u32 i = 0; i < array_len(keys); i++)
-    {
-        u64 index = mapa_get_index(ii_map, &keys[i]);
-        if (index >= ii_map.size) continue;
-        mapa_remove_at_index(ii_map, index);
-        // // TODO: this somehow modifies the size??
-        // printout("size after removing is: {}\n", ii_map.size); 
-    }
-
-    for (u32 i = 0; i < ii_map.size; i++)
-    {
-        if (!ii_map.entries[i].has_value)
-        {
-            printf("[%d]: (X) -> (X)\n", i);
-            continue;
-        }
-        char* key = ii_map.entries[i].key;
-        i32 value = ii_map.entries[i].value;
-        printf("[%d]: (%s) -> (%d)\n", i, key, value);
-    }
-
-    return 0;
-}
-*/
-
-/*
-#include <marrow/vektor.h>
-#include <stdio.h>
-
-int main() {
-    VEKTOR(int) vec;
-    vektor_init(vec, 0, nullptr);
-
-    vektor_add(vec, 1);
-    vektor_add(vec, 2);
-
-    for (u64 i = 0; i < vec.n_items; ++i)
-        printout("vec[{}] = {}\n", i, vec.items[i]);
-
-    return 0;
-
-    vektor_insert(vec, 5, 999);  // Insert 999 at position 5
-    vektor_remove(vec, 2);       // Remove element at index 2
-
-    for (u64 i = 0; i < vec.n_items; ++i)
-        printout("vec[{}] = {}\n", i, vec.items[i]);
-
-    vektor_free(vec);
-    return 0;
-}
-*/
-
 #include <marrow/marrow.h>
 #include <glfw/glfw3.h>
 
@@ -223,7 +125,7 @@ bool button(const char* text, f32 font_size, u32 padding, RippleColor color, Rip
 {
     bool clicked = false;
     i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
-    RIPPLE( FORM( .width = FIXED((u32)text_w + padding), .height = FIXED((u32)text_h + padding)), RECTANGLE( .color = STATE().hovered ? highlight_color : color ) )
+    RIPPLE( FORM( .min_width = DEPTH(1.0f, FOUNDATION), .width = FIXED((u32)text_w + padding), .height = FIXED((u32)text_h + padding)), RECTANGLE( .color = STATE().hovered ? highlight_color : color ) )
     {
         CENTERED(
             RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text ));
@@ -244,6 +146,7 @@ int main(int argc, char* argv[])
 
     bool main_is_open = true;
     bool settings_is_open = false;
+    bool fps_is_open = false;
 
     f32 font_size = 64.0f;
 
@@ -252,6 +155,9 @@ int main(int argc, char* argv[])
 
     i32 small_window_x = 0;
     i32 small_window_y = 0;
+
+    i32 fps_window_width = 300;
+    i32 fps_window_height = 300;
 
     bool toolbar_is_hovered = false;
     f32 toolbar_pos = -100.0f;
@@ -275,12 +181,13 @@ int main(int argc, char* argv[])
             {
                 toolbar_target_pos = -SHAPE().w;
                 toolbar_is_hovered = STATE().hovered;
-                if (button(settings_is_open ? ">settings<" : "settings", 32.0f, 5, RIPPLE_RGBA(0), RIPPLE_RGB(0x00ff00)))
-                    settings_is_open = true;
-                if (button(settings_is_open ? ">settings<" : "settings", 32.0f, 5, RIPPLE_RGBA(0), RIPPLE_RGB(0x00ff00)))
-                    settings_is_open = true;
-                if (button(settings_is_open ? ">settings<" : "settings", 32.0f, 5, RIPPLE_RGBA(0), RIPPLE_RGB(0x00ff00)))
-                    settings_is_open = true;
+                for (u32 i = 0 ; i < 100; i++)
+                {
+                    if (button(settings_is_open ? ">settings<" : "settings", 32.0f, 5, RIPPLE_RGBA(0), RIPPLE_RGB(0x00ff00)))
+                        settings_is_open = true;
+                    if (button(fps_is_open ? ">fps<" : "fps", 32.0f, 5, RIPPLE_RGBA(0), RIPPLE_RGB(0x00ff00)))
+                        fps_is_open = true;
+                }
 
                 if (toolbar_is_hovered || (CURSOR().y < SHAPE().h * 0.5f && CURSOR().x < 10))
                 {
@@ -292,11 +199,25 @@ int main(int argc, char* argv[])
 
         if (settings_is_open)
         {
-            SURFACE( .title = "hellooo", .width = 300, .height = 300, .x = &small_window_x, .y = &small_window_y, .is_open = &settings_is_open )
+            SURFACE( .title = "settings", .width = 300, .height = 300, .x = &small_window_x, .y = &small_window_y, .is_open = &settings_is_open )
             {
                 CENTERED(
                     const char* text = format("{}x{}", &text_allocator, small_window_x, small_window_y);
                     i32 text_w, text_h; ripple_measure_text((const char*)text, font_size, &text_w, &text_h);
+                    RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text ));
+                );
+            }
+        }
+
+        if (fps_is_open)
+        {
+            SURFACE( .title = "fps", .width = fps_window_width, .height = fps_window_height, .is_open = &fps_is_open, .not_resizable = true )
+            {
+                CENTERED(
+                    const char* text = format("fps: {.2f}", &text_allocator, 1.0f / dt);
+                    i32 text_w, text_h; ripple_measure_text((const char*)text, 24.0f, &text_w, &text_h);
+                    fps_window_width = text_w + 20;
+                    fps_window_height = text_h + 20;
                     RIPPLE( FORM( .width = FIXED((u32)text_w), .height = FIXED((u32)text_h)), TEXT( .text = text ));
                 );
             }

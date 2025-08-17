@@ -769,9 +769,21 @@ void ripple_window_begin(u64 id, RippleWindowConfig config)
         glfwSetWindowPos(_context.current_window->window, *config.x, *config.y);
     }
 
-    if (_context.current_window->config.width != config.width || _context.current_window->config.width != config.height)
+    bool width_changed = _context.current_window->config.width != config.width;
+    bool height_changed = _context.current_window->config.height != config.height;
+    if (width_changed && height_changed)
     {
         glfwSetWindowSize(_context.current_window->window, config.width, config.height);
+    }
+    else if (width_changed)
+    {
+        u32 h; ripple_get_window_size(nullptr, &h);
+        glfwSetWindowSize(_context.current_window->window, config.width, h);
+    }
+    else if (height_changed)
+    {
+        u32 w; ripple_get_window_size(&w, nullptr);
+        glfwSetWindowSize(_context.current_window->window, w, config.height);
     }
 
     _context.current_window->config = config;
@@ -795,8 +807,8 @@ void ripple_get_window_size(u32* width, u32* height)
 {
     i32 w, h;
     glfwGetFramebufferSize(_context.current_window->window, &w, &h);
-    *width = w;
-    *height = h;
+    if (width) *width = w;
+    if (height) *height = h;
 }
 
 RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWindowConfig config)
