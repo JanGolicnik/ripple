@@ -46,7 +46,7 @@ struct \
 #define mapa_init(m, hash_func, cmp_func, allocator) \
 do { \
     m._hash_func = hash_func; m._cmp_func = cmp_func; m._allocator = allocator; m.size = MAPA_INITIAL_CAPACITY; m.n_entries = 0;\
-    m.entries = allocator_alloc(m._allocator, sizeof(m.entries[0]) * m.size); \
+    m.entries = allocator_alloc(m._allocator, sizeof(m.entries[0]) * m.size, 1); \
     buf_set(m.entries, 0, m.size * sizeof(*m.entries)); \
 } while(0)
 
@@ -91,7 +91,7 @@ thread_local u64 _mapa_i = -1;
 void _internal_mapa_grow(_MAPA2* mapa, u32 new_size, u32 key_size, u32 v_size, u32 entry_size)
 {
     u32 alloc_size = new_size * entry_size;
-    u8* new_entries = allocator_alloc(mapa->_allocator, alloc_size);
+    u8* new_entries = allocator_alloc(mapa->_allocator, alloc_size, 1);
     buf_set(new_entries, 0, alloc_size);
 
     u8* entries = (u8*)mapa->entries;

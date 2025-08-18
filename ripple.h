@@ -52,6 +52,7 @@ typedef struct {
     const char* title;
     bool* is_open;
     Allocator* allocator;
+    Allocator* frame_allocator;
 
     i32* x;
     i32* y;
@@ -218,10 +219,26 @@ static thread_local MAPA(u64, Window) windows = { 0 };
 static thread_local Window* current_window = nullptr;
 static thread_local u32 current_frame_color = 0;
 
+static struct {
+    BumpAllocator frame_allocator;
+    bool initialized;
+} context;
+
 bool Ripple_start_window(RippleWindowConfig config)
 {
+    if (!context.initialized)
+    {
+        context.frame_allocator = bump_allocator_create();
+        context.initialized = true;
+    }
+
     if (!windows.entries)
         mapa_init(windows, mapa_hash_u64, mapa_cmp_bytes, config.allocator);
+
+    if (!config.frame_allocator)
+    {
+        config.frame_allocator = (Allocator*)&context.frame_allocator;
+    }
 
     u64 parent_id = current_window ? current_window->id : 0;
 
@@ -353,6 +370,8 @@ void Ripple_render_end(RippleRenderData render_data)
         }
         ripple_render_window_end(render_data);
     }
+
+    bump_allocator_reset(&context.frame_allocator);
 
     ripple_render_end(render_data);
 }
@@ -545,7 +564,7 @@ static void render_element(Window* window, ElementData* element, void* window_us
     if (element->config.render_func)
         element->config.render_func(element->config, element->calculated_layout, window_user_data, render_data);
 
-    allocator_free(window->config.allocator, element->config.render_data, element->config.render_data_size);
+    allocator_free(window->config.frame_allocator, element->config.render_data, element->config.render_data_size);
 
     _for_each_child(element)
     {
@@ -584,7 +603,7 @@ void Ripple_submit_element(RippleElementConfig config)
 
     // render_data is supposed to be set if render_data_size is also
     if (config.render_data_size)
-        config.render_data = allocator_make_copy(current_window->config.allocator, config.render_data, config.render_data_size);
+        config.render_data = allocator_make_copy(current_window->config.frame_allocator, config.render_data, config.render_data_size, 1);
 
     element->config = config;
 }
@@ -716,10 +735,12 @@ void render_text(RippleElementConfig config, RenderedLayout layout, void* window
     ripple_render_text(layout.x, layout.y, text_data.text, layout.h, text_data.color);
 }
 
+#ifndef TEXT
 #define TEXT(...)\
   .render_func = render_text,\
   .render_data = &(RippleTextConfig){__VA_ARGS__},\
   .render_data_size = sizeof(RippleTextConfig)
+#endif // TEXT
 
 #define CENTERED_HORIZONTAL(...) do {\
         RIPPLE() {\

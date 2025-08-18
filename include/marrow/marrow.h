@@ -64,6 +64,10 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #define unused (void)
 #endif //unused
 
+#ifndef alignof
+#define alignof _Alignof
+#endif // alignof
+
 #ifndef max
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 #endif // max
