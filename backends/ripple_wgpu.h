@@ -26,14 +26,12 @@ typedef struct {
     WGPUCommandEncoder encoder;
 } RippleRenderData;
 
-typedef u64 RippleImage;
+typedef WGPUTextureView RippleImage;
 
 #include "../ripple.h"
 
 const f32 FONT_SIZE = 128.0f;
 const u32 BITMAP_SIZE = 1024;
-
-RippleImage ripple_register_image(WGPUTextureView view);
 
 #ifdef RIPPLE_WGPU_IMPLEMENTATION
 
@@ -302,20 +300,16 @@ static struct {
     struct {
         WGPUTexture texture;
         WGPUTextureView view;
-        RippleImage image;
     } white_pixel;
 
     struct {
         WGPUTexture texture;
         WGPUTextureView view;
-        RippleImage image;
         stbtt_bakedchar glyphs[96];
     } font;
 
     MAPA(u64, _Window) windows;
     _Window* current_window;
-
-    MAPA ( RippleImage, WGPUTextureView ) image_textures;
 
     bool initialized;
 } _context;
@@ -373,7 +367,6 @@ void ripple_backend_initialize(RippleBackendConfig config)
     debug("INITIALIZNG BACKEND");
     // GENERAL
     mapa_init(_context.windows, mapa_hash_u64, mapa_cmp_bytes, 0);
-    mapa_init(_context.image_textures, mapa_hash_u64, mapa_cmp_bytes, 0);
 
     // GLFW
     if (!glfwInit())
@@ -438,8 +431,6 @@ void ripple_backend_initialize(RippleBackendConfig config)
                 .arrayLayerCount = 1,
                 .aspect = WGPUTextureAspect_All,
             });
-
-        _context.font.image = ripple_register_image(_context.font.view);
     }
 
     {
@@ -478,8 +469,6 @@ void ripple_backend_initialize(RippleBackendConfig config)
                 .depthOrArrayLayers = 1
             }
         );
-
-        _context.white_pixel.image = ripple_register_image(_context.white_pixel.view);
     }
 
     _context.bind_group_layout = wgpuDeviceCreateBindGroupLayout(_context.config.device, &(WGPUBindGroupLayoutDescriptor){
@@ -871,7 +860,7 @@ void ripple_render_window_begin(u64 id, RippleRenderData render_data)
     vektor_clear(_context.current_window->instances);
     vektor_clear(_context.current_window->images);
     vektor_add(_context.current_window->images, (_RippleImageInstancePair) {
-        .images = { [0] = _context.white_pixel.image, [1] = _context.font.image },
+        .images = { [0] = _context.white_pixel.view, [1] = _context.font.view },
         .n_images = 2,
         .instance_index = 0
     });
@@ -943,7 +932,7 @@ void ripple_render_window_end(RippleRenderData render_data)
         {
             image_textures[j] = (WGPUBindGroupEntry){
                 .binding = j,
-                .textureView = *mapa_get(_context.image_textures, &image_pair->images[min(j, image_pair->n_images - 1)])
+                .textureView = image_pair->images[min(j, image_pair->n_images - 1)]
             };
         }
 
@@ -1039,7 +1028,7 @@ void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
     if (image_index >= pair->n_images && pair->n_images >= array_len(pair->images))
     {
         vektor_add(window->images, (_RippleImageInstancePair) {
-            .images = { [0] = _context.white_pixel.image, [1] = _context.font.image, [2] = image },
+            .images = { [0] = _context.white_pixel.view, [1] = _context.font.view, [2] = image },
             .n_images = 3,
             .instance_index = window->instances.n_items
         });
@@ -1103,21 +1092,6 @@ void ripple_render_text(i32 pos_x, i32 pos_y, const char* text, f32 font_size, R
             .image_index = 1
         });
     }
-}
-
-
-RippleImage ripple_register_image(WGPUTextureView view)
-{
-    u64 hash = hash_u64((u64)view);
-
-    if (mapa_get(_context.image_textures, &hash))
-    {
-        abort("image already registered");
-    }
-
-    (void)mapa_insert(_context.image_textures, &hash, view);
-
-    return hash;
 }
 
 #endif // RIPPLE_WGPU_IMPLEMENTATION

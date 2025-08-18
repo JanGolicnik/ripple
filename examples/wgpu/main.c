@@ -10,7 +10,6 @@ typedef struct {
     struct {
         WGPUTexture texture;
         WGPUTextureView view;
-        RippleImage image;
     } target;
 
     WGPUShaderModule shader;
@@ -51,7 +50,6 @@ Context create_context(WGPUQueue queue, WGPUDevice device)
         .arrayLayerCount = 1,
         .aspect = WGPUTextureAspect_All,
     });
-    ctx.target.image = ripple_register_image(ctx.target.view);
 
     ctx.shader = wgpuDeviceCreateShaderModule(device, &(WGPUShaderModuleDescriptor) {
         .label = "triangle_shader",
@@ -174,7 +172,7 @@ int main(int argc, char* argv[])
 
         SURFACE( .title = "surface", .width = 800, .height = 800, .is_open = &main_is_open )
         {
-            RIPPLE( IMAGE( .image = ctx.target.image ));
+            RIPPLE( IMAGE( .image = ctx.target.view ));
 
             f32 toolbar_target_pos = -100.0f;
             RIPPLE ( FORM ( .direction = cld_VERTICAL, .fixed = true, .width = DEPTH(1.0f, REFINEMENT), .height = DEPTH(1.0f, REFINEMENT), .x = FIXED( toolbar_pos )), RECTANGLE( .color = { 0x3e3e3e } ) )
