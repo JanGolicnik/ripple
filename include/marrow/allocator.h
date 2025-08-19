@@ -90,8 +90,14 @@ static BumpAllocatorBlock* bump_allocator_block_new(usize capacity)
 static void* bump_allocator_alloc(void* allocator, usize size, usize align)
 {
     BumpAllocator* a = allocator;
-    BumpAllocatorBlock* b = a->last;
 
+    if (!a->last)
+    {
+        a->first = bump_allocator_block_new(1024);
+        a->last = a->first;
+    }
+
+    BumpAllocatorBlock* b = a->last;
     loop {
         u8* ptr = b->data + b->used;
         u8* aligned_ptr = align_up(ptr, align);
@@ -118,12 +124,9 @@ static void bump_allocator_free(void* allocator, void* ptr, usize size)
 
 BumpAllocator bump_allocator_create()
 {
-    BumpAllocatorBlock* block = bump_allocator_block_new(1024);
     return (BumpAllocator) {
         .allocator.alloc = bump_allocator_alloc,
         .allocator.free = bump_allocator_free,
-        .first = block,
-        .last = block,
     };
 }
 

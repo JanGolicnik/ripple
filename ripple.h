@@ -49,7 +49,7 @@ typedef struct {
 } RippleCursorState;
 
 typedef struct {
-    const char* title;
+    Buf title;
     bool* is_open;
     Allocator* allocator;
     Allocator* frame_allocator;
@@ -165,8 +165,8 @@ RippleRenderData ripple_render_begin();
     void ripple_render_window_begin(u64, RippleRenderData);
         void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color);
         void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image);
-        void ripple_render_text(i32 x, i32 y, const char* text, f32 font_size, RippleColor color);
-        void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h);
+        void ripple_render_text(i32 x, i32 y, Buf text, f32 font_size, RippleColor color);
+        void ripple_measure_text(Buf text, f32 font_size, i32* out_w, i32* out_h);
     void ripple_render_window_end(RippleRenderData);
 void ripple_render_end(RippleRenderData);
 
@@ -242,7 +242,7 @@ bool Ripple_start_window(RippleWindowConfig config)
 
     u64 parent_id = current_window ? current_window->id : 0;
 
-    u64 window_id = hash_str(config.title);
+    u64 window_id = hash_buf(config.title);
     current_window = mapa_get(windows, &window_id);
     if (!current_window)
         current_window = mapa_insert(windows, &window_id, (Window){ .id = window_id });
@@ -726,7 +726,7 @@ void render_image(RippleElementConfig config, RenderedLayout layout, void* windo
 
 typedef struct {
     RippleColor color;
-    const char* text;
+    Buf text;
 } RippleTextConfig;
 
 void render_text(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
@@ -735,12 +735,12 @@ void render_text(RippleElementConfig config, RenderedLayout layout, void* window
     ripple_render_text(layout.x, layout.y, text_data.text, layout.h, text_data.color);
 }
 
-#ifndef TEXT
-#define TEXT(...)\
+#ifndef WORDS
+#define WORDS(...)\
   .render_func = render_text,\
   .render_data = &(RippleTextConfig){__VA_ARGS__},\
   .render_data_size = sizeof(RippleTextConfig)
-#endif // TEXT
+#endif // WORDS
 
 #define CENTERED_HORIZONTAL(...) do {\
         RIPPLE() {\

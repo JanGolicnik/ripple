@@ -92,6 +92,13 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #define array_len(arr) (sizeof(arr)/sizeof((arr)[0]))
 #endif // array_len
 
+typedef struct {
+    u8* ptr;
+    usize size;
+} Buf;
+
+#define S(str) (Buf){ .ptr = (u8*)str, .size = sizeof(str) }
+
 #ifndef push_stream
 #define push_stream(stream) fflush(stream)
 #endif // push_stream
@@ -129,15 +136,13 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #else // MARROW_NO_PRINTCCY
 
 #ifndef format
-thread_local u32 _format_size;
-thread_local char* _format_text;
+thread_local Buf _format_buf;
 #define format(f, allocator, ...)\
 (\
-    _format_size = print(0, 0, f, __VA_ARGS__),\
-    _format_text = allocator_alloc(allocator, _format_size + 1),\
-    (void)print(_format_text, _format_size, f, __VA_ARGS__),\
-    _format_text[_format_size] = 0,\
-    _format_text\
+    _format_buf.size = print(0, 0, f, __VA_ARGS__),\
+    _format_buf.ptr = allocator_alloc((Allocator*)allocator, _format_buf.size + 1, 1),\
+    (void)print((char*)_format_buf.ptr, _format_buf.size, f, __VA_ARGS__),\
+    _format_buf\
 )
 #endif // format
 
@@ -196,11 +201,11 @@ void buf_set(void* dst, u8 value, usize len)
 #define for_each_i(el, ptr, n, i) for(u32 i = 0, LINE_UNIQUE_I = 1; i < n; i++, LINE_UNIQUE_I = 1) for(typeof(*(ptr)) *el = &ptr[i]; LINE_UNIQUE_I ; LINE_UNIQUE_I = 0)
 #endif // for_each_i
 
-u64 hash_buf(const u8* buf, size_t buf_size)
+u64 hash_buf(Buf buf)
 {
     u64 hash = 0xcbf29ce484222325ULL;
-    while (buf_size--) {
-        hash ^= (u8)(*buf++);
+    while (buf.size--) {
+        hash ^= (u8)(*buf.ptr++);
         hash *= 0x100000001b3ULL;
     }
     return hash;

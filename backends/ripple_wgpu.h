@@ -700,7 +700,10 @@ _Window create_window(u64 id, RippleWindowConfig config)
         glfwWindowHint(GLFW_POSITION_X, *config.x);
         glfwWindowHint(GLFW_POSITION_Y, *config.y);
     }
-    window.window = glfwCreateWindow(config.width, config.height, config.title, nullptr, nullptr);
+
+    char null_terminated_title[config.title.size + 1];
+    buf_copy(null_terminated_title, config.title.ptr, config.title.size);
+    window.window = glfwCreateWindow(config.width, config.height, null_terminated_title, nullptr, nullptr);
     if (!window.window)
         abort("Couldnt no open window!");
 
@@ -1055,13 +1058,14 @@ void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
     });
 }
 
-void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h)
+void ripple_measure_text(Buf text, f32 font_size, i32* out_w, i32* out_h)
 {
     f32 scale = font_size / FONT_SIZE;
     f32 x = 0.0f, y = 0.0f;
 
-    for (const char* iter = text; *iter; iter++) {
-        i32 c = *iter;
+    for (u64 i = 0; i < text.size; i++)
+    {
+        i32 c = text.ptr[i];
         if (c < 32 || c >= 128) continue;
         stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, c - 32, &x, &y, &(stbtt_aligned_quad){ 0 }, 1);
     }
@@ -1070,16 +1074,16 @@ void ripple_measure_text(const char* text, f32 font_size, i32* out_w, i32* out_h
     *out_h = (i32)(font_size);
 }
 
-void ripple_render_text(i32 pos_x, i32 pos_y, const char* text, f32 font_size, RippleColor color)
+void ripple_render_text(i32 pos_x, i32 pos_y, Buf text, f32 font_size, RippleColor color)
 {
     f32 scale = font_size / FONT_SIZE;
     f32 color_arr[4]; _ripple_color_to_color(color, color_arr);
     pos_y += font_size * 0.75f;
     f32 x = 0.0f;
     f32 y = 0.0f;
-    for (const char* iter = text; *iter; iter++)
+    for (u64 i = 0; i < text.size; i++)
     {
-        char c = *iter;
+        i32 c = text.ptr[i];
 
         stbtt_aligned_quad quad;
         stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, c - 32, &x, &y, &quad, 1);

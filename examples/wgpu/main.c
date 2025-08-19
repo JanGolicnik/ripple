@@ -3,7 +3,7 @@
 
 #define RIPPLE_IMPLEMENTATION
 #define RIPPLE_WIDGETS
-#include "backends/ripple_empty.h"
+#include "backends/ripple_wgpu.h"
 
 #include <time.h>
 
@@ -25,6 +25,9 @@ int main(int argc, char* argv[])
     f32 dt_accum = 0.0f;
     f32 dt_samples = 0.0f;
     u32 n_loops = 0;
+
+    BumpAllocator str_allocator = bump_allocator_create();
+
     while (main_is_open) {
         f32 time = now_seconds();
         f32 dt = time - prev_time;
@@ -39,15 +42,16 @@ int main(int argc, char* argv[])
         dt_samples += 1.0f;
         prev_time = time;
 
-        SURFACE( .title = "surface", .width = 800, .height = 800, .is_open = &main_is_open )
+        SURFACE( .title = S("surface"), .width = 800, .height = 800, .is_open = &main_is_open )
         {
-            for (i32 i = 0; i < 100000; i++)
-            {
-                RIPPLE( RECTANGLE( .color = { 0xff0000 } ));
-            }
+            Buf text = format("fps rn is: {.2f}", &str_allocator, 1.0f / dt);
+            i32 w, h; ripple_measure_text(text, 32.0f, &w, &h);
+            RIPPLE( FORM( .width = FIXED(w), .height = FIXED(h) ), WORDS( .text = text ));
         }
 
         RIPPLE_RENDER_END(RIPPLE_RENDER_BEGIN());
+
+        bump_allocator_reset(&str_allocator);
     }
 
     return 0;
