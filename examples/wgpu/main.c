@@ -42,9 +42,9 @@ int main(int argc, char* argv[])
         dt_samples += 1.0f;
         prev_time = time;
 
-        SURFACE( .title = S("surface"), .width = 800, .height = 800, .is_open = &main_is_open )
+        SURFACE( .title = S8("surface"), .width = 800, .height = 800, .is_open = &main_is_open )
         {
-            Buf text = format("fps rn is: {.2f}", &str_allocator, 1.0f / dt);
+            s8 text = format("fps rn is: {.2f}", &str_allocator, 1.0f / dt);
             i32 w, h; ripple_measure_text(text, 32.0f, &w, &h);
             RIPPLE( FORM( .width = FIXED(w), .height = FIXED(h) ), WORDS( .text = text ));
         }

@@ -49,7 +49,7 @@ typedef struct {
 } RippleCursorState;
 
 typedef struct {
-    Buf title;
+    s8 title;
     bool* is_open;
     Allocator* allocator;
     Allocator* frame_allocator;
@@ -165,8 +165,8 @@ RippleRenderData ripple_render_begin();
     void ripple_render_window_begin(u64, RippleRenderData);
         void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color);
         void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image);
-        void ripple_render_text(i32 x, i32 y, Buf text, f32 font_size, RippleColor color);
-        void ripple_measure_text(Buf text, f32 font_size, i32* out_w, i32* out_h);
+        void ripple_render_text(i32 x, i32 y, s8 text, f32 font_size, RippleColor color);
+        void ripple_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h);
     void ripple_render_window_end(RippleRenderData);
 void ripple_render_end(RippleRenderData);
 
@@ -726,7 +726,7 @@ void render_image(RippleElementConfig config, RenderedLayout layout, void* windo
 
 typedef struct {
     RippleColor color;
-    Buf text;
+    s8 text;
 } RippleTextConfig;
 
 void render_text(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)

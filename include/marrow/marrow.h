@@ -95,9 +95,9 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 typedef struct {
     u8* ptr;
     usize size;
-} Buf;
+} s8;
 
-#define S(str) (Buf){ .ptr = (u8*)str, .size = sizeof(str) }
+#define S8(str) (s8){ .ptr = (u8*)str, .size = sizeof(str) }
 
 #ifndef push_stream
 #define push_stream(stream) fflush(stream)
@@ -136,7 +136,7 @@ typedef struct {
 #else // MARROW_NO_PRINTCCY
 
 #ifndef format
-thread_local Buf _format_buf;
+thread_local s8 _format_buf;
 #define format(f, allocator, ...)\
 (\
     _format_buf.size = print(0, 0, f, __VA_ARGS__),\
@@ -201,7 +201,7 @@ void buf_set(void* dst, u8 value, usize len)
 #define for_each_i(el, ptr, n, i) for(u32 i = 0, LINE_UNIQUE_I = 1; i < n; i++, LINE_UNIQUE_I = 1) for(typeof(*(ptr)) *el = &ptr[i]; LINE_UNIQUE_I ; LINE_UNIQUE_I = 0)
 #endif // for_each_i
 
-u64 hash_buf(Buf buf)
+u64 hash_buf(s8 buf)
 {
     u64 hash = 0xcbf29ce484222325ULL;
     while (buf.size--) {

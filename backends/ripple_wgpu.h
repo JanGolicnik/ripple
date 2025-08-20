@@ -1058,7 +1058,7 @@ void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
     });
 }
 
-void ripple_measure_text(Buf text, f32 font_size, i32* out_w, i32* out_h)
+void ripple_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h)
 {
     f32 scale = font_size / FONT_SIZE;
     f32 x = 0.0f, y = 0.0f;
@@ -1074,7 +1074,7 @@ void ripple_measure_text(Buf text, f32 font_size, i32* out_w, i32* out_h)
     *out_h = (i32)(font_size);
 }
 
-void ripple_render_text(i32 pos_x, i32 pos_y, Buf text, f32 font_size, RippleColor color)
+void ripple_render_text(i32 pos_x, i32 pos_y, s8 text, f32 font_size, RippleColor color)
 {
     f32 scale = font_size / FONT_SIZE;
     f32 color_arr[4]; _ripple_color_to_color(color, color_arr);
