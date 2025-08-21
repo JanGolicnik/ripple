@@ -94,8 +94,8 @@ typedef struct {
 } RenderedLayout;
 
 typedef enum {
-    cld_HORIZONTAL = 0,
-    cld_VERTICAL = 1
+    cld_VERTICAL = 0,
+    cld_HORIZONTAL = 1,
 } RippleChildLayoutDirection;
 
 typedef struct {
@@ -388,13 +388,13 @@ if (value._type == type)\
             var = (type == SVT_RELATIVE_PARENT ? parent : child) * ((f32)value._unsigned_value / (f32)(2<<14)); break;\
     }
 
-static u32 dim_offsets[] = { offsetof(RenderedLayout, w), offsetof(RenderedLayout, h) };
-static u32 other_dim_offsets[] = { offsetof(RenderedLayout, h), offsetof(RenderedLayout, w) };
-static u32 max_dim_offsets[] = { offsetof(RenderedLayout, max_w), offsetof(RenderedLayout, max_h) };
-static u32 pos_offsets[] = { offsetof(RenderedLayout, x), offsetof(RenderedLayout, y) };
-static u32 other_pos_offsets[] = { offsetof(RenderedLayout, y), offsetof(RenderedLayout, x) };
-static u32 layout_dim_offsets[] = { offsetof(RippleElementLayoutConfig, width), offsetof(RippleElementLayoutConfig, height) };
-static u32 layout_other_dim_offsets[] = { offsetof(RippleElementLayoutConfig, height), offsetof(RippleElementLayoutConfig, width) };
+static u32 dim_offsets[] = { offsetof(RenderedLayout, h), offsetof(RenderedLayout, w) };
+static u32 other_dim_offsets[] = { offsetof(RenderedLayout, w), offsetof(RenderedLayout, h) };
+static u32 max_dim_offsets[] = { offsetof(RenderedLayout, max_h), offsetof(RenderedLayout, max_w) };
+static u32 pos_offsets[] = { offsetof(RenderedLayout, y), offsetof(RenderedLayout, x) };
+static u32 other_pos_offsets[] = { offsetof(RenderedLayout, x), offsetof(RenderedLayout, y) };
+static u32 layout_dim_offsets[] = { offsetof(RippleElementLayoutConfig, height), offsetof(RippleElementLayoutConfig, width) };
+static u32 layout_other_dim_offsets[] = { offsetof(RippleElementLayoutConfig, width), offsetof(RippleElementLayoutConfig, height) };
 #define DIM(arg) (*(i32*)((u8*)(&arg) + dim_offsets[(u32)element->config.layout.direction]))
 #define OTHER_DIM(arg) (*(i32*)((u8*)(&arg) + other_dim_offsets[(u32)element->config.layout.direction]))
 #define MAX_DIM(arg) (*(i32*)((u8*)(&arg) + max_dim_offsets[(u32)element->config.layout.direction]))

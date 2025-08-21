@@ -4,6 +4,14 @@ project(ripple)
 
 set(CMAKE_C_STANDARD 23)
 
+include(FetchContent)
+FetchContent_Declare(
+  cglm
+  GIT_REPOSITORY https://github.com/recp/cglm.git
+  GIT_TAG        v0.9.5
+)
+FetchContent_MakeAvailable(cglm)
+
 set(SOURCES main.c)
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -pedantic -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -Wdouble-promotion -Wno-bitfield-constant-conversion")
@@ -18,7 +26,8 @@ target_include_directories(ripple PUBLIC
     ${CMAKE_SOURCE_DIR}
 )
 
-target_link_libraries(ripple
+target_link_libraries(ripple PRIVATE
+    cglm_headers
     ${CMAKE_SOURCE_DIR}/raylib/lib/libraylibdll.a
     -lopengl32
     -lgdi32

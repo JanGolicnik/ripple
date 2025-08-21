@@ -245,4 +245,6 @@ u64 hash_combine(u64 a, u64 b)
 
 #define LINE_UNIQUE_HASH hash_combine(hash_str(__FILE__), hash_u64(__LINE__))
 
+#define INV_SQRT_3 0.5773502691896258f  // 1/sqrt(3)
+
 #endif // MARROW_H

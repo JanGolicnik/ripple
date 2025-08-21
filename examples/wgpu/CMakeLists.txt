@@ -3,6 +3,15 @@ project(ripple)
 
 set(C_STANDARD 17)
 
+
+include(FetchContent)
+FetchContent_Declare(
+  cglm
+  GIT_REPOSITORY https://github.com/recp/cglm.git
+  GIT_TAG        v0.9.5
+)
+FetchContent_MakeAvailable(cglm)
+
 add_subdirectory(./webgpu)
 add_subdirectory(./glfw)
 add_subdirectory(./glfw3webgpu)
@@ -22,6 +31,7 @@ target_link_libraries(ripple
     webgpu
     glfw
     glfw3webgpu
+    cglm
 )
 
 target_copy_webgpu_binaries(${PROJECT_NAME})

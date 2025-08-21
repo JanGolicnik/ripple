@@ -149,7 +149,7 @@ typedef struct {
     f32 color_padding[1];
     u32 image_index;
     u32 image_index_padding[3];
-} Instance;
+} RippleWGPUInstance;
 
 const char* shader = "\
 struct ShaderData {\
@@ -230,7 +230,7 @@ typedef struct {
     i32 resolution[2];
     f32 time;
     f32 _padding[1];
-} ShaderData;
+} RippleWGPUShaderData;
 
 typedef struct {
     RippleImage images[5];
@@ -271,13 +271,13 @@ typedef struct {
         bool middle_released;
     };
 
-    ShaderData shader_data;
+    RippleWGPUShaderData shader_data;
 
     bool render_begin;
     bool should_configure_surface;
 
     u32 instance_buffer_size;
-    VEKTOR(Instance) instances;
+    VEKTOR(RippleWGPUInstance) instances;
 
     VEKTOR( _RippleImageInstancePair ) images;
 } _Window;
@@ -479,7 +479,7 @@ void ripple_backend_initialize(RippleBackendConfig config)
                     .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment,
                     .buffer = {
                         .type = WGPUBufferBindingType_Uniform,
-                        .minBindingSize = sizeof(ShaderData)
+                        .minBindingSize = sizeof(RippleWGPUShaderData)
                     }
                 }
             }
@@ -613,25 +613,25 @@ void ripple_backend_initialize(RippleBackendConfig config)
                             [1] = {
                                 .shaderLocation = 2,
                                 .format = WGPUVertexFormat_Float32x2,
-                                .offset = offsetof(Instance, size)
+                                .offset = offsetof(RippleWGPUInstance, size)
                             },
                             [2] = {
                                 .shaderLocation = 3,
                                 .format = WGPUVertexFormat_Float32x4,
-                                .offset = offsetof(Instance, uv)
+                                .offset = offsetof(RippleWGPUInstance, uv)
                             },
                             [3] = {
                                 .shaderLocation = 4,
                                 .format = WGPUVertexFormat_Float32x4,
-                                .offset = offsetof(Instance, color)
+                                .offset = offsetof(RippleWGPUInstance, color)
                             },
                             [4] = {
                                 .shaderLocation = 5,
                                 .format = WGPUVertexFormat_Uint32,
-                                .offset = offsetof(Instance, image_index)
+                                .offset = offsetof(RippleWGPUInstance, image_index)
                             }
                         },
-                        .arrayStride = sizeof(Instance),
+                        .arrayStride = sizeof(RippleWGPUInstance),
                         .stepMode = WGPUVertexStepMode_Instance,
                     }
                 }
@@ -948,7 +948,7 @@ void ripple_render_window_end(RippleRenderData render_data)
 
         u32 n_instances = ((i == window->images.n_items - 1) ? window->instances.n_items : image_pair->instance_index) - instance_index;
 
-        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, window->instance_buffer, 0, n_instances * sizeof(Instance));
+        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, window->instance_buffer, 0, n_instances * sizeof(RippleWGPUInstance));
         wgpuRenderPassEncoderSetBindGroup(render_pass, 1, bind_groups[i], 0, nullptr);
         wgpuRenderPassEncoderDrawIndexed(render_pass, index_count, n_instances, 0, 0, instance_index);
 
@@ -1003,7 +1003,7 @@ static void _ripple_color_to_color(RippleColor color, f32 out_color[4])
 void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color)
 {
     f32 color_arr[4]; _ripple_color_to_color(color, color_arr);
-    vektor_add(_context.current_window->instances, (Instance){
+    vektor_add(_context.current_window->instances, (RippleWGPUInstance){
         .pos = { (f32)x, (f32)y },
         .size = { (f32)w, (f32)h },
         .uv = { 0.0f, 0.0f, 1.0f, 1.0f },
@@ -1049,7 +1049,7 @@ void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
         pair->instance_index = _context.current_window->instances.n_items;
     }
 
-    vektor_add(window->instances, (Instance){
+    vektor_add(window->instances, (RippleWGPUInstance){
         .pos = { (f32)x, (f32)y },
         .uv = { 0.0f, 0.0f, 1.0f, 1.0f },
         .color = { 1.0f, 1.0f, 1.0f, 1.0f},
@@ -1088,7 +1088,7 @@ void ripple_render_text(i32 pos_x, i32 pos_y, s8 text, f32 font_size, RippleColo
         stbtt_aligned_quad quad;
         stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, c - 32, &x, &y, &quad, 1);
 
-        vektor_add(_context.current_window->instances, (Instance){
+        vektor_add(_context.current_window->instances, (RippleWGPUInstance){
             .pos = { pos_x + quad.x0 * scale, pos_y + quad.y0 * scale },
             .size = { (quad.x1 - quad.x0) * scale, (quad.y1 - quad.y0) * scale },
             .uv = { quad.s0, quad.t0, quad.s1, quad.t1 },

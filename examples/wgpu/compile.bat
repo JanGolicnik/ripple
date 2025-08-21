@@ -5,11 +5,16 @@ if "%1"=="release" (
     set configuration=release
 )
 
-set build_dir=build/%configuration%
+set build_dir=build\%configuration%
 
 if not exist %build_dir% (
    build.bat %configuration%
 )
+
+copy /Y "shader.wgsl" %build_dir%\
+
+
+
 cd %build_dir%
 
 if exist ripple.exe (
