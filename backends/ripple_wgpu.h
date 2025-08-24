@@ -493,7 +493,7 @@ void ripple_backend_initialize(RippleBackendConfig config)
                     .binding = 0,
                     .visibility = WGPUShaderStage_Fragment,
                     .texture = {
-                        .sampleType = WGPUTextureSampleType_Float,
+                        .sampleType = WGPUTextureSampleType_UnfilterableFloat,
                         .viewDimension = WGPUTextureViewDimension_2D,
                     },
                 },
@@ -501,7 +501,7 @@ void ripple_backend_initialize(RippleBackendConfig config)
                     .binding = 1,
                     .visibility = WGPUShaderStage_Fragment,
                     .texture = {
-                        .sampleType = WGPUTextureSampleType_Float,
+                        .sampleType = WGPUTextureSampleType_UnfilterableFloat,
                         .viewDimension = WGPUTextureViewDimension_2D,
                     },
                 },
@@ -509,7 +509,7 @@ void ripple_backend_initialize(RippleBackendConfig config)
                     .binding = 2,
                     .visibility = WGPUShaderStage_Fragment,
                     .texture = {
-                        .sampleType = WGPUTextureSampleType_Float,
+                        .sampleType = WGPUTextureSampleType_UnfilterableFloat,
                         .viewDimension = WGPUTextureViewDimension_2D,
                     },
                 },
@@ -517,7 +517,7 @@ void ripple_backend_initialize(RippleBackendConfig config)
                     .binding = 3,
                     .visibility = WGPUShaderStage_Fragment,
                     .texture = {
-                        .sampleType = WGPUTextureSampleType_Float,
+                        .sampleType = WGPUTextureSampleType_UnfilterableFloat,
                         .viewDimension = WGPUTextureViewDimension_2D,
                     },
                 },
@@ -525,7 +525,7 @@ void ripple_backend_initialize(RippleBackendConfig config)
                     .binding = 4,
                     .visibility = WGPUShaderStage_Fragment,
                     .texture = {
-                        .sampleType = WGPUTextureSampleType_Float,
+                        .sampleType = WGPUTextureSampleType_UnfilterableFloat,
                         .viewDimension = WGPUTextureViewDimension_2D,
                     },
                 }
@@ -539,7 +539,7 @@ void ripple_backend_initialize(RippleBackendConfig config)
                 .binding = 0,
                 .visibility = WGPUShaderStage_Fragment,
                 .sampler = {
-                    .type = WGPUSamplerBindingType_Filtering
+                    .type = WGPUSamplerBindingType_NonFiltering
                 }
             }
         });
@@ -548,8 +548,8 @@ void ripple_backend_initialize(RippleBackendConfig config)
             .addressModeU = WGPUAddressMode_ClampToEdge,
             .addressModeV = WGPUAddressMode_ClampToEdge,
             .addressModeW = WGPUAddressMode_ClampToEdge,
-            .magFilter = WGPUFilterMode_Linear,
-            .minFilter = WGPUFilterMode_Linear,
+            .magFilter = WGPUFilterMode_Nearest,
+            .minFilter = WGPUFilterMode_Nearest,
             .mipmapFilter = WGPUMipmapFilterMode_Nearest,
             .maxAnisotropy = 1
         });
@@ -961,7 +961,6 @@ void ripple_render_window_end(RippleRenderData render_data)
     {
         wgpuBindGroupRelease(bind_groups[i]);
     }
-
 }
 
 void ripple_render_end(RippleRenderData render_data)
@@ -1070,8 +1069,8 @@ void ripple_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h)
         stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, c - 32, &x, &y, &(stbtt_aligned_quad){ 0 }, 1);
     }
 
-    *out_w = (i32)(x * scale);
-    *out_h = (i32)(font_size);
+    if (out_w) *out_w = (i32)(x * scale);
+    if (out_h) *out_h = (i32)(font_size);
 }
 
 void ripple_render_text(i32 pos_x, i32 pos_y, s8 text, f32 font_size, RippleColor color)

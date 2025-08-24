@@ -69,7 +69,7 @@ typedef struct {
 
 typedef enum {
     SVT_GROW = 0,
-    SVT_FIXED = 1,
+    SVT_PIXELS = 1,
     SVT_RELATIVE_CHILD = 2,
     SVT_RELATIVE_PARENT = 3,
 } RippleSizingValueType;
@@ -383,7 +383,7 @@ void Ripple_render_end(RippleRenderData render_data)
 if (value._type == type)\
     switch(type){\
         case SVT_GROW: var = grow; break;\
-        case SVT_FIXED: var = value._signed_value; break;\
+        case SVT_PIXELS: var = value._signed_value; break;\
         case SVT_RELATIVE_CHILD: case SVT_RELATIVE_PARENT:\
             var = (type == SVT_RELATIVE_PARENT ? parent : child) * ((f32)value._unsigned_value / (f32)(2<<14)); break;\
     }
@@ -614,7 +614,7 @@ void Ripple_pop_id(void)
     ElementData *parent = &current_window->elements.items[element->parent_element];
 
     element_apply_sizing(element, SVT_GROW, (RenderedLayout){ 0 }, (RenderedLayout){ 0 });
-    element_apply_sizing(element, SVT_FIXED, (RenderedLayout){ 0 }, (RenderedLayout){ 0 });
+    element_apply_sizing(element, SVT_PIXELS, (RenderedLayout){ 0 }, (RenderedLayout){ 0 });
     RenderedLayout children = element_calculate_children_bounds(current_window, element);
     element_apply_sizing(element, SVT_RELATIVE_CHILD, (RenderedLayout){ 0 }, children);
 
@@ -674,10 +674,8 @@ static RenderedLayout _get_current_element_rendered_layout()
 
 #define SHAPE() (_get_current_element_rendered_layout())
 
-#define FOUNDATION ._type = SVT_RELATIVE_PARENT
-#define REFINEMENT ._type = SVT_RELATIVE_CHILD
-#define DEPTH(value, relation) { ._unsigned_value = (u32)((value) * (f32)(2<<14)), relation }
-#define FIXED(value) { ._signed_value = value, ._type = SVT_FIXED }
+#define RELATIVE(value, relation) { ._unsigned_value = (u32)((value) * (f32)(2<<14)), relation }
+#define PIXELS(value) { ._signed_value = value, ._type = SVT_PIXELS }
 #define GROW { ._type = SVT_GROW }
 
 #define SURFACE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_start_window((RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_finish_window(), LINE_UNIQUE_VAR(_rippleiter)++)
@@ -750,7 +748,7 @@ void render_text(RippleElementConfig config, RenderedLayout layout, void* window
         }\
 } while (false)
 #define CENTERED_VERTICAL(...) do {\
-        RIPPLE( FORM( .width = DEPTH(1.0f, REFINEMENT), .direction = cld_VERTICAL ) ) {\
+        RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .direction = cld_VERTICAL ) ) {\
             RIPPLE();\
             { __VA_ARGS__ }\
             RIPPLE();\
