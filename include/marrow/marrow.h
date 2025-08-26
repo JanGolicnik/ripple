@@ -247,4 +247,22 @@ u64 hash_combine(u64 a, u64 b)
 
 #define INV_SQRT_3 0.5773502691896258f  // 1/sqrt(3)
 
+#define array_get_sorted_indices(out, array, n, cmp) do {\
+    for (u32 i = 0; i < n; i++) {\
+        typeof(*array)* a = &array[i];\
+        u32 index = 0;\
+        while(index < i)\
+        {\
+            typeof(*array)* b = &array[out[index]];\
+            if (cmp) break;\
+            index++;\
+        }\
+        for (u32 j = i; j > index; j--)\
+        {\
+            out[j] = out[j - 1];\
+        }\
+        out[index] = i;\
+    }\
+} while( 0 )
+
 #endif // MARROW_H

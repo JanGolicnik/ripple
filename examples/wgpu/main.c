@@ -8,23 +8,23 @@
 #include <cglm/struct.h>
 
 typedef struct {
-    struct {
-        WGPUTexture texture;
-        WGPUTextureView view;
-    } target;
+    WGPUTexture texture;
+    WGPUTextureView view;
+    WGPUExtent3D extent;
+} Texture;
 
-    struct {
-        WGPUTexture texture;
-        WGPUTextureView view;
-    } depth;
+typedef struct {
+    Texture texture;
+    WGPUBindGroupLayout layout;
+    WGPUBindGroup group;
+} BindableTexture;
 
-    struct {
-        WGPUTexture texture;
-        WGPUTextureView view;
-        WGPUExtent3D extent;
-    } gradient;
+typedef struct {
+    Texture target;
+    Texture depth;
 
-    mat4s proj;
+    BindableTexture gradient;
+    BindableTexture color;
 
     u32 n_vertices;
     WGPUBuffer vertex_buffer;
@@ -35,9 +35,17 @@ typedef struct {
     WGPURenderPipeline pipeline;
     WGPUPipelineLayout pipeline_layout;
 
-    WGPUBindGroup bind_group;
-    WGPUBindGroupLayout bind_group_layout;
-    WGPUBuffer uniform_buffer;
+    struct {
+        WGPUBindGroup group;
+        WGPUBindGroupLayout layout;
+        WGPUBuffer buffer;
+    } shader_data;
+
+    struct {
+        WGPUSampler sampler;
+        WGPUBindGroupLayout layout;
+        WGPUBindGroup group;
+    } sampler;
 } Context;
 
 typedef struct {
@@ -45,6 +53,10 @@ typedef struct {
     vec3s camera_position;
     f32 time;
     f32 gain;
+    f32 speed;
+    f32 offset;
+    f32 height;
+    f32 time_scale;
     f32 lacunarity;
     f32 scale;
 } ShaderData;
@@ -101,70 +113,147 @@ static const Instance instances[1] = {
     { .color = {1.0f, 0.0f, 0.0f, 1.0f} }
 };
 
+void subdivide(Vertex* vertices, u32* n_vertices, u16* indices, u32* n_indices)
+{
+    u32 n = *n_indices;
+    for (u32 i = 0; i < n; i+= 3)
+    {
+        u16 i1 = indices[i + 0];
+        u16 i3 = indices[i + 1];
+        u16 i5 = indices[i + 2];
+        Vertex v1 = vertices[i1];
+        Vertex v3 = vertices[i3];
+        Vertex v5 = vertices[i5];
+
+        Vertex v2 = { .position = glms_vec3_scale(glms_vec3_add(v1.position, v3.position), 0.5f) };
+        Vertex v4 = { .position = glms_vec3_scale(glms_vec3_add(v3.position, v5.position), 0.5f) };
+        Vertex v6 = { .position = glms_vec3_scale(glms_vec3_add(v5.position, v1.position), 0.5f) };
+
+        u16 i2 = *n_vertices; vertices[(*n_vertices)++] = v2;
+        u16 i4 = *n_vertices; vertices[(*n_vertices)++] = v4;
+        u16 i6 = *n_vertices; vertices[(*n_vertices)++] = v6;
+
+        indices[i] = i1; indices[i + 1] = i2; indices[i + 2] = i6;
+        indices[(*n_indices)++] = i2; indices[(*n_indices)++] = i3; indices[(*n_indices)++] = i4;
+        indices[(*n_indices)++] = i4; indices[(*n_indices)++] = i5; indices[(*n_indices)++] = i6;
+        indices[(*n_indices)++] = i6; indices[(*n_indices)++] = i2; indices[(*n_indices)++] = i4;
+    }
+
+    for_each(vertex, vertices, *n_vertices)
+    {
+        vertex->position = vertex->normal = glms_vec3_normalize(vertex->position);
+    }
+}
+
+Texture create_texture(WGPUDevice device, const char* label, u32 w, u32 h, WGPUTextureFormat format, WGPUTextureUsage usage, WGPUTextureAspect aspect)
+{
+    Texture tex;
+
+    tex.extent = (WGPUExtent3D){ .width = w, .height = h, .depthOrArrayLayers = 1 };
+
+    tex.texture = wgpuDeviceCreateTexture(device, &(WGPUTextureDescriptor){
+            .label = label,
+            .size = tex.extent,
+            .format = format,
+            .usage = usage,
+            .dimension = WGPUTextureDimension_2D,
+            .mipLevelCount = 1,
+            .sampleCount = 1
+        });
+
+    tex.view = wgpuTextureCreateView(tex.texture, &(WGPUTextureViewDescriptor){
+            .format = format,
+            .dimension = WGPUTextureViewDimension_2D,
+            .mipLevelCount = 1,
+            .arrayLayerCount = 1,
+            .aspect = aspect,
+        });
+
+    return tex;
+}
+
+BindableTexture create_bindable_texture(WGPUDevice device, Texture texture, WGPUShaderStage visibility)
+{
+    BindableTexture tex = { .texture = texture };
+
+    tex.layout = wgpuDeviceCreateBindGroupLayout(device, &(WGPUBindGroupLayoutDescriptor)
+        {
+            .entryCount = 1,
+            .entries = (WGPUBindGroupLayoutEntry[]) {
+                [0] = {
+                    .binding = 0,
+                    .visibility = visibility,
+                    .texture = {
+                        .sampleType = WGPUTextureSampleType_UnfilterableFloat,
+                        .viewDimension = WGPUTextureViewDimension_2D,
+                    },
+                }
+            }
+        });
+
+    tex.group = wgpuDeviceCreateBindGroup(device, &(WGPUBindGroupDescriptor){
+            .layout = tex.layout,
+            .entryCount = 1,
+            .entries = (WGPUBindGroupEntry[]){
+                [0] = {
+                    .binding = 0,
+                    .textureView = tex.texture.view
+                }
+            }
+        });
+
+    return tex;
+}
+
 Context create_context(WGPUDevice device, WGPUQueue queue)
 {
     Context ctx;
 
     {
-       ctx.target.texture = wgpuDeviceCreateTexture(device, &(WGPUTextureDescriptor){
-                .label = "surface_texture",
-                .size = (WGPUExtent3D){ .width = 1000, .height = 1000, .depthOrArrayLayers = 1 },
-                .format = WGPUTextureFormat_BGRA8UnormSrgb,
-                .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment,
-                .dimension = WGPUTextureDimension_2D,
-                .mipLevelCount = 1,
-                .sampleCount = 1
+        ctx.target = create_texture(device, "surface_texture", 1000, 1000, WGPUTextureFormat_BGRA8UnormSrgb, WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment, WGPUTextureAspect_All);
+        ctx.depth = create_texture(device, "depth_texture", 1000, 1000, WGPUTextureFormat_Depth24Plus, WGPUTextureUsage_RenderAttachment, WGPUTextureAspect_DepthOnly);
+
+        Texture gradient_texture =  create_texture(device, "gradient_texture", 255, 1, WGPUTextureFormat_R32Float, WGPUTextureUsage_CopyDst | WGPUTextureUsage_TextureBinding, WGPUTextureAspect_All);
+        ctx.gradient = create_bindable_texture(device, gradient_texture, WGPUShaderStage_Vertex);
+        Texture color_texture =  create_texture(device, "color_texture", 255, 1, WGPUTextureFormat_RGBA8Unorm, WGPUTextureUsage_CopyDst | WGPUTextureUsage_TextureBinding, WGPUTextureAspect_All);
+        ctx.color = create_bindable_texture(device, color_texture, WGPUShaderStage_Fragment);
+
+        ctx.sampler.layout = wgpuDeviceCreateBindGroupLayout(device, &(WGPUBindGroupLayoutDescriptor)
+            {
+                .entryCount = 1,
+                .entries = &(WGPUBindGroupLayoutEntry) {
+                    .binding = 0,
+                    .visibility = WGPUShaderStage_Fragment | WGPUShaderStage_Vertex,
+                    .sampler = {
+                        .type = WGPUSamplerBindingType_NonFiltering
+                    }
+                }
             });
 
-        ctx.target.view = wgpuTextureCreateView(ctx.target.texture, &(WGPUTextureViewDescriptor){
-                .format = WGPUTextureFormat_BGRA8UnormSrgb,
-                .dimension = WGPUTextureViewDimension_2D,
-                .mipLevelCount = 1,
-                .arrayLayerCount = 1,
-                .aspect = WGPUTextureAspect_All,
+        ctx.sampler.sampler = wgpuDeviceCreateSampler(device, &(WGPUSamplerDescriptor){
+                .addressModeU = WGPUAddressMode_ClampToEdge,
+                .addressModeV = WGPUAddressMode_ClampToEdge,
+                .addressModeW = WGPUAddressMode_ClampToEdge,
+                .magFilter = WGPUFilterMode_Nearest,
+                .minFilter = WGPUFilterMode_Nearest,
+                .mipmapFilter = WGPUMipmapFilterMode_Nearest,
+                .maxAnisotropy = 1
             });
 
-       ctx.depth.texture = wgpuDeviceCreateTexture(device, &(WGPUTextureDescriptor){
-                .label = "depth_texture",
-                .size = (WGPUExtent3D){ .width = 1000, .height = 1000, .depthOrArrayLayers = 1 },
-                .format = WGPUTextureFormat_Depth24Plus,
-                .usage = WGPUTextureUsage_RenderAttachment,
-                .dimension = WGPUTextureDimension_2D,
-                .mipLevelCount = 1,
-                .sampleCount = 1
-            });
-
-        ctx.depth.view = wgpuTextureCreateView(ctx.depth.texture, &(WGPUTextureViewDescriptor){
-                .format = WGPUTextureFormat_Depth24Plus,
-                .dimension = WGPUTextureViewDimension_2D,
-                .aspect = WGPUTextureAspect_DepthOnly,
-                .mipLevelCount = 1,
-                .arrayLayerCount = 1,
-            });
-
-       ctx.gradient.extent = (WGPUExtent3D){ .width = 256, .height = 1, .depthOrArrayLayers = 1 };
-
-       ctx.gradient.texture = wgpuDeviceCreateTexture(device, &(WGPUTextureDescriptor){
-                .label = "gradient_texture",
-                .size = ctx.gradient.extent,
-                .format = WGPUTextureFormat_R32Float,
-                .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
-                .dimension = WGPUTextureDimension_2D,
-                .mipLevelCount = 1,
-                .sampleCount = 1
-            });
-
-        ctx.gradient.view = wgpuTextureCreateView(ctx.gradient.texture, &(WGPUTextureViewDescriptor){
-                .format = WGPUTextureFormat_R32Float,
-                .dimension = WGPUTextureViewDimension_2D,
-                .mipLevelCount = 1,
-                .arrayLayerCount = 1,
-                .aspect = WGPUTextureAspect_All,
+        ctx.sampler.group = wgpuDeviceCreateBindGroup(device, &(WGPUBindGroupDescriptor){
+                .layout = ctx.sampler.layout,
+                .entryCount = 1,
+                .entries = (WGPUBindGroupEntry[]){
+                    [0] = {
+                        .binding = 0,
+                        .sampler = ctx.sampler.sampler
+                    }
+                }
             });
     }
 
     {
-        ctx.bind_group_layout = wgpuDeviceCreateBindGroupLayout(device, &(WGPUBindGroupLayoutDescriptor){
+        ctx.shader_data.layout = wgpuDeviceCreateBindGroupLayout(device, &(WGPUBindGroupLayoutDescriptor){
             .entryCount = 1,
             .entries = (WGPUBindGroupLayoutEntry[]) {
                 [0] = {
@@ -178,20 +267,18 @@ Context create_context(WGPUDevice device, WGPUQueue queue)
             }
         });
 
-        ctx.uniform_buffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor){
+        ctx.shader_data.buffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor){
             .size = sizeof(ShaderData),
             .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
         });
 
-        ctx.proj = glms_ortho(-2.5f, +2.5f, -2.5f, +2.5f, 0.1f, 1000.0f);
-
-        ctx.bind_group = wgpuDeviceCreateBindGroup(device, &(WGPUBindGroupDescriptor){
-            .layout = ctx.bind_group_layout,
+        ctx.shader_data.group = wgpuDeviceCreateBindGroup(device, &(WGPUBindGroupDescriptor){
+            .layout = ctx.shader_data.layout,
             .entryCount = 1,
             .entries = (WGPUBindGroupEntry[]){
                 [0] = {
                     .binding = 0,
-                    .buffer = ctx.uniform_buffer,
+                    .buffer = ctx.shader_data.buffer,
                     .offset = 0,
                     .size = sizeof(ShaderData)
                 }
@@ -218,9 +305,12 @@ Context create_context(WGPUDevice device, WGPUQueue queue)
             });
 
         ctx.pipeline_layout = wgpuDeviceCreatePipelineLayout(device, &(WGPUPipelineLayoutDescriptor){
-                .bindGroupLayoutCount = 1,
+                .bindGroupLayoutCount = 4,
                 .bindGroupLayouts = (WGPUBindGroupLayout[]) {
-                    [0] = ctx.bind_group_layout
+                    [0] = ctx.shader_data.layout,
+                    [1] = ctx.sampler.layout,
+                    [2] = ctx.gradient.layout,
+                    [3] = ctx.color.layout
                 }
             });
 
@@ -314,44 +404,14 @@ Context create_context(WGPUDevice device, WGPUQueue queue)
 
         wgpuShaderModuleRelease(shader_module);
 
-        ctx.n_vertices = (array_len(icosahedron_indices) / 3) * 6;
-        Vertex vertices[ctx.n_vertices];
+        ctx.n_vertices = array_len(icosahedron_indices) / 3;
+        ctx.n_indices = array_len(icosahedron_indices);
+        Vertex vertices[ctx.n_vertices * 6 * 6];
+        u16 indices[ctx.n_indices * 4 * 4];
         buf_copy(vertices, icosahedron_vertices, sizeof(icosahedron_vertices));
-        u32 vertices_i = array_len(icosahedron_vertices);
-        ctx.n_indices = array_len(icosahedron_indices) * 4;
-        u16 indices[ctx.n_indices];
-        u32 indices_i = 0;
-
-        for (u32 i = 0; i < array_len(icosahedron_indices); i+= 3)
-        {
-            u16 i1 = icosahedron_indices[i + 0];
-            u16 i3 = icosahedron_indices[i + 1];
-            u16 i5 = icosahedron_indices[i + 2];
-            Vertex v1 = icosahedron_vertices[i1];
-            Vertex v3 = icosahedron_vertices[i3];
-            Vertex v5 = icosahedron_vertices[i5];
-
-            Vertex v2 = { .position = glms_vec3_scale(glms_vec3_add(v1.position, v3.position), 0.5f) };
-            Vertex v4 = { .position = glms_vec3_scale(glms_vec3_add(v3.position, v5.position), 0.5f) };
-            Vertex v6 = { .position = glms_vec3_scale(glms_vec3_add(v5.position, v1.position), 0.5f) };
-
-            u16 i2 = vertices_i; vertices[vertices_i++] = v2;
-            u16 i4 = vertices_i; vertices[vertices_i++] = v4;
-            u16 i6 = vertices_i; vertices[vertices_i++] = v6;
-
-            indices[indices_i++] = i1; indices[indices_i++] = i2; indices[indices_i++] = i6;
-            indices[indices_i++] = i2; indices[indices_i++] = i3; indices[indices_i++] = i4;
-            indices[indices_i++] = i4; indices[indices_i++] = i5; indices[indices_i++] = i6;
-            indices[indices_i++] = i6; indices[indices_i++] = i2; indices[indices_i++] = i4;
-        }
-
-        debug("ctx.n_indices: {}, indices_i {}", ctx.n_indices, indices_i);
-        debug("ctx.n_vertices {}, n_vertices: {}", ctx.n_vertices, vertices_i);
-
-        for_each(vertex, vertices, array_len(vertices))
-        {
-            vertex->position = vertex->normal = glms_vec3_normalize(vertex->position);
-        }
+        buf_copy(indices, icosahedron_indices, sizeof(icosahedron_indices));
+        subdivide(vertices, &ctx.n_vertices, indices, &ctx.n_indices);
+        subdivide(vertices, &ctx.n_vertices, indices, &ctx.n_indices);
 
         ctx.vertex_buffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor) {
             .size = sizeof(vertices),
@@ -375,47 +435,79 @@ Context create_context(WGPUDevice device, WGPUQueue queue)
     return ctx;
 }
 
+#define STOP_RAMP_BODY(lerp)\
+bool changed = false;\
+u32 stop_w = 10;\
+RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZONTAL), IMAGE( .image = view )) {\
+    changed = STATE().first_render;\
+    u32 x = SHAPE().x;\
+    u32 w = SHAPE().w;\
+    CENTERED_VERTICAL(\
+    RIPPLE( FORM( .direction = cld_HORIZONTAL ) ) {\
+        for (u32 i = 0; i < n_stops; i++) {\
+            RIPPLE( FORM( .x = PIXELS(stops[i].t * (w - stop_w)), .width = PIXELS(stop_w), .height = PIXELS(10) ), RECTANGLE( .color = {0xffffff}) ) {\
+                if (!changed && STATE().is_weak_held) {\
+                    stops[i].t = clamp(((f32)CURSOR().x - (f32)x) / (f32)w, 0.0f, 1.0f);\
+                    changed = true;\
+                }\
+            }\
+        }\
+    }\
+    );\
+}\
+if (!changed) return false;\
+u32 sorted[n_stops];\
+array_get_sorted_indices(sorted, stops, n_stops, a->t < b->t);\
+u32 buffer_i = 0;\
+for (u32 i = 0; i < n_stops + 1; i++)\
+{\
+    typeof(*stops) v0 = i == 0 ? (typeof(*stops)){ 0.0f, stops[sorted[0]].value } : stops[sorted[i - 1]];\
+    typeof(*stops) v1 = i == n_stops ? (typeof(*stops)){ 1.0f, stops[sorted[i - 1]].value } : stops[sorted[i]];\
+    i32 n_steps = ceil((f32)buffer_len * (v1.t - v0.t));\
+    for (i32 j = 0; j < n_steps; j++)\
+    {\
+        f32 t = (f32)j / (f32)n_steps;\
+        buffer[buffer_i++] = lerp;\
+    }\
+}\
+return true
+
 typedef struct {
     f32 t;
     f32 value;
 } FloatRampStop;
-
-bool float_ramp(WGPUTextureView view, FloatRampStop* stops, u32 n_stops)
+bool float_ramp(WGPUTextureView view, FloatRampStop* stops, u32 n_stops, f32* buffer, u32 buffer_len)
 {
-    bool shouldRecreate = false;
+    STOP_RAMP_BODY(v0.value * (1.0f - t) + v1.value * t);
+}
 
-    u32 stop_w = 10;
 
-    RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZONTAL), IMAGE( .image = view ))
-    {
-        u32 x = SHAPE().x;
-        u32 w = SHAPE().w;
-        u32 empty_w = w - n_stops * stop_w;
+u32 lerp_color(u32 a, u32 b, f32 t)
+{
+    t = clamp(t, 0.0f, 1.0f);
+    f32 t2 = 1.0f - t;
 
-        CENTERED_VERTICAL(
-            RIPPLE( FORM( .direction = cld_HORIZONTAL ) )
-            {
-                for (u32 i = 0; i < n_stops; i++)
-                {
-                    f32 prev_t = i == 0 ? 0.0f : stops[i - 1].t;
-                    f32 next_t = i == n_stops - 1 ? 1.0f : stops[i + 1].t;
+    f32 ar = (f32)((a >> 16) & 0xFF);
+    f32 ag = (f32)((a >>  8) & 0xFF);
+    f32 ab = (f32)(a & 0xFF);
+    f32 br = (f32)((b >> 16) & 0xFF);
+    f32 bg = (f32)((b >>  8) & 0xFF);
+    f32 bb = (f32)(b & 0xFF);
 
-                    RIPPLE( FORM( .width = PIXELS( (stops[i].t - prev_t) * empty_w ) ) );
-                    RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10) ), RECTANGLE( .color = {0xffffff}) )
-                    {
-                        if (STATE().is_weak_held)
-                        {
-                            stops[i].t = clamp(((f32)CURSOR().x - (f32)x) / (f32)w, prev_t, next_t);
-                            shouldRecreate = true;
-                        }
-                    }
-                }
-            }
-        );
+    uint32_t r = min((uint32_t)(ar * t2 + br * t), 0xff);
+    uint32_t g = min((uint32_t)(ag * t2 + bg * t), 0xff);
+    uint32_t bl= min((uint32_t)(ab * t2 + bb * t), 0xff);
 
-    }
+    return (0xff << 24) | (bl << 16) | (g << 8) | r;
+}
 
-    return shouldRecreate;
+typedef struct {
+    f32 t;
+    u32 value;
+} ColorRampStop;
+bool color_ramp(WGPUTextureView view, ColorRampStop* stops, u32 n_stops, u32* buffer, u32 buffer_len)
+{
+    STOP_RAMP_BODY(lerp_color(v0.value, v1.value, t));
 }
 
 void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allocator)
@@ -424,22 +516,17 @@ void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allo
 
     RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
     {
-        s8 text = format("{}: {2.2f}", str_allocator, label, *value);
-        i32 width; ripple_measure_text(text, font_size, &width, nullptr);
-        RIPPLE( FORM( .width = PIXELS(width) ), WORDS( .text = text ));
-
-        RIPPLE( FORM( .width = PIXELS(5) ) );
-
-        RIPPLE( FORM( .width = PIXELS(115), .direction = cld_HORIZONTAL ))
+        RIPPLE( FORM( .width = PIXELS(315), .direction = cld_HORIZONTAL ))
         {
             f32 range = max - min;
             f32 t = clamp(( *value - min ) / range, 0.0f, 1.0f);
             u32 w = SHAPE().w;
+            u32 x = SHAPE().x;
+
             CENTERED_VERTICAL(
                 RIPPLE( FORM( .width = PIXELS((1.0f - t) * (w - 15)) , .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = { 0 } ) );
             );
 
-            u32 x = SHAPE().x;
             RIPPLE( FORM( .width = PIXELS(15)), RECTANGLE( .color = { 0xff0000 } ) )
             {
                 if (STATE().is_weak_held)
@@ -452,6 +539,12 @@ void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allo
                 RIPPLE( FORM( .width = PIXELS(t * (w - 15)), .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = { 0 } ) );
             );
         }
+
+        RIPPLE( FORM( .width = PIXELS(5) ) );
+
+        s8 text = format("{}: {.2f}", str_allocator, label, *value);
+        i32 width; ripple_measure_text(text, font_size, &width, nullptr);
+        RIPPLE( FORM( .width = PIXELS(width) ), WORDS( .text = text ));
     }
 }
 
@@ -473,12 +566,32 @@ int main(int argc, char* argv[])
 
     BumpAllocator str_allocator = bump_allocator_create();
 
-    ShaderData shader_data = { .gain = 0.25f, .lacunarity = 2.3f, .scale = 100.0f };
+    ShaderData shader_data = {
+        .gain = 1.2f,
+        .lacunarity = 5.0f,
+        .time_scale = 1.0f,
+        .speed = 8.0f,
+        .offset = 0.24f,
+        .height = 8.35f,
+        .scale = 0.13f
+    };
 
-    FloatRampStop gradient_stops[3];
-    gradient_stops[0] = (FloatRampStop){ 0.0f, 0.0f };
-    gradient_stops[1] = (FloatRampStop){ 0.5f, 0.5f };
-    gradient_stops[2] = (FloatRampStop){ 1.0f, 1.0f };
+    FloatRampStop gradient_stops[] = {
+        [0] = (FloatRampStop){ 0.075f, 0.0f },
+        [1] = (FloatRampStop){ 0.5f, 0.5f },
+        [2] = (FloatRampStop){ 0.7, 1.0f },
+    };
+
+    ColorRampStop color_stops[] = {
+        [0] = (ColorRampStop){ 0.6f, 0xff0000 },
+        [1] = (ColorRampStop){ 0.65f, 0xff7400 },
+        [2] = (ColorRampStop){ 0.8, 0xfffb00 },
+        [3] = (ColorRampStop){ 1.0f, 0xffffff },
+    };
+
+    bool debug_window_open = true;
+
+    f32 zoom = 5.0f;
 
     while (main_is_open) {
         f32 time = shader_data.time = glfwGetTime();
@@ -493,57 +606,81 @@ int main(int argc, char* argv[])
         prev_time = time;
 
         {
-            shader_data.camera_position = (vec3s){ .x = sin(time) * 40.0f, .y = sin(time) * 40.0f + 40.0f, .z = cos(time) * 40.0f};
+            shader_data.camera_position = (vec3s){ .x = sin(time) * 40.0f, .y = 40.0f, .z = cos(time) * 40.0f};
 
+            mat4s proj = glms_ortho(-zoom, +zoom, -zoom, +zoom, 0.1f, 1000.0f);
             mat4s view = glms_lookat( shader_data.camera_position, (vec3s){ .x = 0.0f, .y = 2.0f, .z = 0.0f}, GLMS_YUP );
-            glm_mat4_copy(glms_mat4_mul(ctx.proj, view).raw, shader_data.camera_matrix); // cam.raw is plain mat4
+            glm_mat4_copy(glms_mat4_mul(proj, view).raw, shader_data.camera_matrix); // cam.raw is plain mat4
         }
 
         SURFACE( .title = S8("surface"), .width = 800, .height = 800, .is_open = &main_is_open )
+        {
+            if (!debug_window_open)
+            {
+                s8 text = S8("debug");
+                i32 w, h; ripple_measure_text(text, 32.0f, &w, &h);
+                RIPPLE( FORM( .width = PIXELS(w), .height = PIXELS(h) ), RECTANGLE( .color = RIPPLE_RGB(STATE().hovered ? 0xeeeeee : 0xffffff) ))
+                {
+                    RIPPLE( FORM( .width = PIXELS(20), .height = PIXELS(20), .fixed = true ), WORDS( .text = text ) );
+                    debug_window_open = STATE().clicked;
+                }
+            }
+
+            RIPPLE( IMAGE( ctx.target.view ) );
+        }
+
+        if (debug_window_open)
+        SURFACE( .title = S8("debug"), .width = 400, .height = 400, .is_open = &debug_window_open )
         {
             s8 text = format("fps rn is: {.2f}", &str_allocator, 1.0f / (dt_accum / dt_samples));
             i32 w, h; ripple_measure_text(text, 32.0f, &w, &h);
             RIPPLE( FORM( .width = PIXELS(w), .height = PIXELS(h) ), WORDS( .text = text ));
 
             slider("gain", &shader_data.gain, 0.0f, 3.0f, (Allocator*)&str_allocator);
-            slider("lacunarity", &shader_data.lacunarity, 0.0f, 10.0f, (Allocator*)&str_allocator);
-            slider("scale", &shader_data.scale, 0.0f, 1000.0f, (Allocator*)&str_allocator);
+            slider("speed", &shader_data.speed, 0.0f, 60.0f, (Allocator*)&str_allocator);
+            slider("offset", &shader_data.offset, 0.0f, 5.0f, (Allocator*)&str_allocator);
+            slider("height", &shader_data.height, 0.0f, 10.0f, (Allocator*)&str_allocator);
+            slider("time_scale", &shader_data.time_scale, 0.0f, 1.0f, (Allocator*)&str_allocator);
+            slider("lacunarity", &shader_data.lacunarity, 0.0f, 5.0f, (Allocator*)&str_allocator);
+            slider("scale", &shader_data.scale, 0.0f, 10.0f, (Allocator*)&str_allocator);
+            slider("zoom", &zoom, 1.0f, 10.0f, (Allocator*)&str_allocator);
 
-            if (float_ramp(ctx.gradient.view, gradient_stops, array_len(gradient_stops)))
+            f32 float_buffer[256];
+            if (float_ramp(ctx.gradient.texture.view, gradient_stops, array_len(gradient_stops), float_buffer, array_len(float_buffer)))
             {
-                f32 buffer[256];
-                u32 buffer_i = 0;
-                i32 n_stops = array_len(gradient_stops);
-                for (i32 i = 0; i < n_stops + 1; i++)
-                {
-                    FloatRampStop v0 = i == 0 ? (FloatRampStop){ 0.0f, gradient_stops[0].value } : gradient_stops[max(i - 1, 0)];
-                    FloatRampStop v1 = i == n_stops ? (FloatRampStop){ 1.0f, gradient_stops[i - 1].value } : gradient_stops[i];
-                    i32 n_steps = array_len(buffer) * (v1.t - v0.t);
-                    for (i32 j = 0; j < n_steps; j++)
-                    {
-                        f32 t = (f32)j / (f32)n_steps;
-                        buffer[buffer_i++] = v0.value * (1.0f - t)  + v1.value * t;
-                    }
-                }
-
                 wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
-                        .texture = ctx.gradient.texture,
+                        .texture = ctx.gradient.texture.texture,
                         .aspect = WGPUTextureAspect_All
                     },
-                    buffer,
-                    sizeof(buffer),
+                    float_buffer,
+                    sizeof(float_buffer),
                     &(WGPUTextureDataLayout){
-                        .bytesPerRow = sizeof(buffer),
+                        .bytesPerRow = sizeof(float_buffer),
                         .rowsPerImage = 1
                     },
-                    &ctx.gradient.extent
+                    &ctx.gradient.texture.extent
                 );
             }
 
-            RIPPLE( IMAGE( ctx.target.view ) );
+            u32 color_buffer[256];
+            if (color_ramp(ctx.color.texture.view, color_stops, array_len(color_stops), color_buffer, array_len(color_buffer)))
+            {
+                wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
+                        .texture = ctx.color.texture.texture,
+                        .aspect = WGPUTextureAspect_All
+                    },
+                    color_buffer,
+                    sizeof(color_buffer),
+                    &(WGPUTextureDataLayout){
+                        .bytesPerRow = sizeof(color_buffer),
+                        .rowsPerImage = 1
+                    },
+                    &ctx.color.texture.extent
+                );
+            }
         }
 
-        wgpuQueueWriteBuffer(queue, ctx.uniform_buffer, 0, &shader_data, sizeof(shader_data));
+        wgpuQueueWriteBuffer(queue, ctx.shader_data.buffer, 0, &shader_data, sizeof(shader_data));
 
         RippleRenderData render_data = RIPPLE_RENDER_BEGIN();
 
@@ -554,7 +691,7 @@ int main(int argc, char* argv[])
                         .view = ctx.target.view,
                         .loadOp = WGPULoadOp_Clear,
                         .storeOp = WGPUStoreOp_Store,
-                        .clearValue = (WGPUColor){ 0.73f, 0.86f, 0.89f, 1.0f },
+                        .clearValue = (WGPUColor){ 0.09f, 0.192f, 0.243f, 1.0f },
                     },
                     .depthStencilAttachment = &(WGPURenderPassDepthStencilAttachment){
                         .view = ctx.depth.view,
@@ -569,7 +706,10 @@ int main(int argc, char* argv[])
             wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0, ctx.vertex_buffer, 0, wgpuBufferGetSize(ctx.vertex_buffer));
             wgpuRenderPassEncoderSetIndexBuffer(render_pass, ctx.index_buffer, WGPUIndexFormat_Uint16, 0, wgpuBufferGetSize(ctx.index_buffer));
             wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, ctx.instance_buffer, 0, wgpuBufferGetSize(ctx.instance_buffer));
-            wgpuRenderPassEncoderSetBindGroup(render_pass, 0, ctx.bind_group, 0, NULL);
+            wgpuRenderPassEncoderSetBindGroup(render_pass, 0, ctx.shader_data.group, 0, NULL);
+            wgpuRenderPassEncoderSetBindGroup(render_pass, 1, ctx.sampler.group, 0, NULL);
+            wgpuRenderPassEncoderSetBindGroup(render_pass, 2, ctx.gradient.group, 0, NULL);
+            wgpuRenderPassEncoderSetBindGroup(render_pass, 3, ctx.color.group, 0, NULL);
             wgpuRenderPassEncoderDrawIndexed(render_pass, ctx.n_indices, array_len(instances), 0, 0, 0);
 
             wgpuRenderPassEncoderEnd(render_pass);

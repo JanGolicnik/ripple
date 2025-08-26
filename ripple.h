@@ -135,6 +135,7 @@ typedef struct {
     u8 hovered : 1;
     u8 is_held : 1;
     u8 is_weak_held : 1;
+    u8 first_render : 1;
 } RippleElementState;
 
 bool Ripple_start_window(RippleWindowConfig config);
@@ -395,6 +396,8 @@ static u32 pos_offsets[] = { offsetof(RenderedLayout, y), offsetof(RenderedLayou
 static u32 other_pos_offsets[] = { offsetof(RenderedLayout, x), offsetof(RenderedLayout, y) };
 static u32 layout_dim_offsets[] = { offsetof(RippleElementLayoutConfig, height), offsetof(RippleElementLayoutConfig, width) };
 static u32 layout_other_dim_offsets[] = { offsetof(RippleElementLayoutConfig, width), offsetof(RippleElementLayoutConfig, height) };
+static u32 layout_pos_offsets[] = { offsetof(RippleElementLayoutConfig, y), offsetof(RippleElementLayoutConfig, x) };
+static u32 layout_other_pos_offsets[] = { offsetof(RippleElementLayoutConfig, x), offsetof(RippleElementLayoutConfig, y) };
 #define DIM(arg) (*(i32*)((u8*)(&arg) + dim_offsets[(u32)element->config.layout.direction]))
 #define OTHER_DIM(arg) (*(i32*)((u8*)(&arg) + other_dim_offsets[(u32)element->config.layout.direction]))
 #define MAX_DIM(arg) (*(i32*)((u8*)(&arg) + max_dim_offsets[(u32)element->config.layout.direction]))
@@ -402,6 +405,8 @@ static u32 layout_other_dim_offsets[] = { offsetof(RippleElementLayoutConfig, wi
 #define OTHER_POS(arg) (*(i32*)((u8*)(&arg) + other_pos_offsets[(u32)element->config.layout.direction]))
 #define LAYOUT_DIM(arg) (*(RippleSizingValue*)((u8*)(&arg) + layout_dim_offsets[(u32)element->config.layout.direction]))
 #define LAYOUT_OTHER_DIM(arg) (*(RippleSizingValue*)((u8*)(&arg) + layout_other_dim_offsets[(u32)element->config.layout.direction]))
+#define LAYOUT_POS(arg) (*(RippleSizingValue*)((u8*)(&arg) + layout_pos_offsets[(u32)element->config.layout.direction]))
+#define LAYOUT_OTHER_POS(arg) (*(RippleSizingValue*)((u8*)(&arg) + layout_other_pos_offsets[(u32)element->config.layout.direction]))
 
 static RenderedLayout element_calculate_children_bounds(Window* window, ElementData* element)
 {
@@ -428,25 +433,35 @@ static void element_apply_sizing(ElementData* element, RippleSizingValueType typ
     APPLY_SIZING(layout.max_h, config.max_height, I32_MAX, parent.h, children.h);
     APPLY_SIZING(layout.min_h, config.min_height, 0, parent.h, children.h);
 
-    if (config.fixed)
-    {
-        APPLY_SIZING(layout.x, config.x, 0, parent.w, children.w);
-        APPLY_SIZING(layout.y, config.y, 0, parent.h, children.h);
-    }
+    APPLY_SIZING(layout.x, config.x, 0, parent.w, children.w);
+    APPLY_SIZING(layout.y, config.y, 0, parent.h, children.h);
 
     element->calculated_layout = layout;
 }
 
 static void element_position_children(Window* window, ElementData* element)
 {
-    // reposition, centers on other dimension
     u32 offset = 0;
     _for_each_child(element) {
         if (child->config.layout.fixed) continue;
+        if (LAYOUT_POS(child->config)._type != SVT_GROW)
+        {
+            POS(child->calculated_layout) += POS(element->calculated_layout);
+        }
+        else
+        {
+            POS(child->calculated_layout) = POS(element->calculated_layout) + offset;
+            offset += DIM(child->calculated_layout);
+        }
 
-        POS(child->calculated_layout) = POS(element->calculated_layout) + offset;
-        offset += DIM(child->calculated_layout);
-        OTHER_POS(child->calculated_layout) = OTHER_POS(element->calculated_layout);
+        if (LAYOUT_OTHER_POS(child->config)._type != SVT_GROW)
+        {
+            OTHER_POS(child->calculated_layout) += OTHER_POS(element->calculated_layout);
+        }
+        else
+        {
+            OTHER_POS(child->calculated_layout) = OTHER_POS(element->calculated_layout);
+        }
     }
 }
 
@@ -652,7 +667,14 @@ static ElementState* _get_or_insert_current_element_state()
 {
     ElementState* state = mapa_get(current_window->elements_states, &current_window->current_element.id);
     if (!state)
+    {
         state = mapa_insert(current_window->elements_states, &current_window->current_element.id, (ElementState){ 0 });
+        state->state.first_render = true;
+    }
+    else
+    {
+        state->state.first_render = false;
+    }
 
     state->frame_color = current_window->frame_color;
     return state;

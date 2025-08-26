@@ -3,10 +3,17 @@ struct ShaderData {
     camera_position: vec3f,
     time: f32,
     gain: f32,
+    speed: f32,
+    offset: f32,
+    height: f32,
+    time_scale: f32,
     lacunarity: f32,
     scale: f32,
 };
 @group(0) @binding(0) var<uniform> shader_data: ShaderData;
+@group(1) @binding(0) var nearest_sampler: sampler;
+@group(2) @binding(0) var gradient_tex: texture_2d<f32>;
+@group(3) @binding(0) var color_tex: texture_2d<f32>;
 
 struct VertexInput {
     @location(0) position: vec3f,
@@ -22,7 +29,7 @@ struct VertexOutput{
     @location(0) color: vec4f,
     @location(1) normal: vec3f,
     @location(2) clip: f32,
-    @location(3) world_position: vec4f,
+    @location(3) @interpolate(flat) world_position: vec4f,
     @location(4) distance: f32,
 };
 
@@ -95,10 +102,12 @@ fn vs_main(v: VertexInput, i: InstanceInput, @builtin(vertex_index) index: u32) 
 
     var position = vec3f(v.position.x, 0.0f, v.position.y);
 
-    let factor = max(1.0f - length(position), 0.0f); // pass this thorugh a curve
+    var factor = max(1.0f - length(position), 0.0f);
+    factor = textureSampleLevel(gradient_tex, nearest_sampler, vec2f(factor, 0.5f), 0.0f).r;
 
-    let noise = fbm3(position * shader_data.scale + vec3f(0.0f, shader_data.time, 0.0f), 4, shader_data.lacunarity, shader_data.gain);
-    position.y = factor * (abs(noise) + 0.2f) * 7.5f;
+    let offset = round(shader_data.time * shader_data.speed) * shader_data.time_scale;
+    let noise = fbm3(position * shader_data.scale + vec3f(0.0f, offset, 0.0f), 4, shader_data.lacunarity, shader_data.gain);
+    position.y = factor * (abs(noise) + shader_data.offset) * shader_data.height;
 
     out.normal = v.normal;
     out.color  = i.color;
@@ -110,5 +119,13 @@ fn vs_main(v: VertexInput, i: InstanceInput, @builtin(vertex_index) index: u32) 
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    return vec4(vec3f(in.distance), in.color.a);
+
+    let center_to_camera = normalize(shader_data.camera_position - vec3f(0.0f, in.world_position.y * 0.5f, 0.0f));
+    let pos_to_camera = normalize(center_to_camera * 5.0f - in.world_position.xyz);
+
+    let d = pow(max(dot(center_to_camera, pos_to_camera), 0.0f), 33.7f);
+
+    let color = textureSample(color_tex, nearest_sampler, vec2f(d, 0.5f)).rgb;
+
+    return vec4(color, in.color.a);
 }
