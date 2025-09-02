@@ -46,6 +46,7 @@ typedef struct {
     MouseButtonState middle;
     i32 x;
     i32 y;
+    bool consumed;
 } RippleCursorState;
 
 typedef struct {
@@ -130,12 +131,12 @@ typedef struct RippleElementConfig {
 } RippleElementConfig;
 
 typedef struct {
-    u8 clicked : 1;
-    u8 released : 1;
-    u8 hovered : 1;
-    u8 is_held : 1;
-    u8 is_weak_held : 1;
-    u8 first_render : 1;
+    u8 clicked : 1; // left click pressed and hovered
+    u8 released : 1; // left click released and hovered
+    u8 hovered : 1; // as long as cursor is in bounds
+    u8 is_held : 1; // if was clicked and until button is released regardless of hovered
+    u8 is_weak_held : 1; // cancelled when loses hover
+    u8 first_render : 1; // when called after not existing the previous frame
 } RippleElementState;
 
 bool Ripple_start_window(RippleWindowConfig config);
@@ -193,6 +194,7 @@ typedef struct {
     u32 n_children;
     u32 last_child;
     u32 next_sibling;
+    u32 prev_sibling; // equals parent index if first sibling
 } ElementData;
 
 typedef struct {
@@ -266,6 +268,8 @@ bool Ripple_start_window(RippleWindowConfig config)
         current_window->cursor_state.right.held |= current_window->cursor_state.right.pressed;
         current_window->cursor_state.middle.held |= current_window->cursor_state.middle.pressed;
 
+        current_window->cursor_state.consumed = false;
+
         current_window->cursor_state = ripple_update_cursor_state(current_window->cursor_state);
 
         if (current_window->cursor_state.left.released) current_window->cursor_state.left.held = 0;
@@ -308,10 +312,12 @@ void Ripple_finish_window()
 
 static void finalize_element(Window* window, ElementData* element);
 static void render_element(Window* window, ElementData* element, void* window_user_data, RippleRenderData user_data);
+static void update_element_state_recursive_reverse(Window* window, ElementData* element);
 
 static void update_window(Window* window)
 {
     finalize_element(window, &window->elements.items[0]);
+    update_element_state_recursive_reverse(window, &window->elements.items[0]);
 
     // remove dead elements
     for (i32 element_i = 0; element_i < (i64)window->elements_states.size; element_i++)
@@ -540,21 +546,41 @@ static void update_element_state(Window* window, ElementState* state)
         window->cursor_state.x >= state->layout.x && window->cursor_state.x < state->layout.x + state->layout.w &&
         window->cursor_state.y >= state->layout.y && window->cursor_state.y < state->layout.y + state->layout.h;
 
-    state->state.is_held = window->cursor_state.left.held && (state->state.clicked || (state->state.is_held && state->state.hovered));
-    state->state.is_weak_held = window->cursor_state.left.held && (state->state.clicked || state->state.is_weak_held);
-    state->state.clicked = state->state.hovered && window->cursor_state.left.pressed;
-    state->state.released = state->state.hovered && window->cursor_state.left.released;
+    if (!window->cursor_state.consumed)
+    {
+        state->state.clicked = state->state.hovered && window->cursor_state.left.pressed;
+        state->state.released = state->state.hovered && window->cursor_state.left.released;
+    }
+
+    if (state->state.clicked)
+    {
+        window->cursor_state.consumed = true;
+    }
+
+    state->state.is_held      = (window->cursor_state.left.pressed && state->state.clicked) ||
+                                (window->cursor_state.left.held && state->state.is_held);
+    state->state.is_weak_held = state->state.hovered &&
+                                ((window->cursor_state.left.pressed && state->state.clicked) ||
+                                 (window->cursor_state.left.held && state->state.is_held));
 }
 
-static void finalize_element(Window* window, ElementData* element)
+static void update_element_state_recursive_reverse(Window* window, ElementData* element)
 {
+    for (u32 i = element->last_child; i != 0; i = window->elements.items[i].prev_sibling)
+    {
+        update_element_state_recursive_reverse(window, &window->elements.items[i]);
+    }
+
     ElementState* state = mapa_get(window->elements_states, &element->id);
     if (state)
     {
         state->layout = element->calculated_layout;
         update_element_state(window, state);
     }
+}
 
+static void finalize_element(Window* window, ElementData* element)
+{
     _for_each_child(element)
     {
         element_apply_sizing(child, SVT_RELATIVE_PARENT, element->calculated_layout, (RenderedLayout){ 0 });
@@ -614,6 +640,7 @@ void Ripple_submit_element(RippleElementConfig config)
         ElementData* child = &current_window->elements.items[parent->last_child];
         child->next_sibling = current_window->current_element.index;
     }
+    element->prev_sibling = parent->last_child;
     parent->last_child = current_window->current_element.index;
 
     // render_data is supposed to be set if render_data_size is also

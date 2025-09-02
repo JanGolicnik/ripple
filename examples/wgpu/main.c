@@ -438,7 +438,7 @@ Context create_context(WGPUDevice device, WGPUQueue queue)
 #define STOP_RAMP_BODY(lerp)\
 bool changed = false;\
 u32 stop_w = 10;\
-RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZONTAL), IMAGE( .image = view )) {\
+RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZONTAL), IMAGE( .image = image )) {\
     changed = STATE().first_render;\
     u32 x = SHAPE().x;\
     u32 w = SHAPE().w;\
@@ -446,7 +446,7 @@ RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZ
     RIPPLE( FORM( .direction = cld_HORIZONTAL ) ) {\
         for (u32 i = 0; i < n_stops; i++) {\
             RIPPLE( FORM( .x = PIXELS(stops[i].t * (w - stop_w)), .width = PIXELS(stop_w), .height = PIXELS(10) ), RECTANGLE( .color = {0xffffff}) ) {\
-                if (!changed && STATE().is_weak_held) {\
+                if (!changed && STATE().is_held) {\
                     stops[i].t = clamp(((f32)CURSOR().x - (f32)x) / (f32)w, 0.0f, 1.0f);\
                     changed = true;\
                 }\
@@ -476,11 +476,10 @@ typedef struct {
     f32 t;
     f32 value;
 } FloatRampStop;
-bool float_ramp(WGPUTextureView view, FloatRampStop* stops, u32 n_stops, f32* buffer, u32 buffer_len)
+bool float_ramp(RippleImage image, FloatRampStop* stops, u32 n_stops, f32* buffer, u32 buffer_len)
 {
     STOP_RAMP_BODY(v0.value * (1.0f - t) + v1.value * t);
 }
-
 
 u32 lerp_color(u32 a, u32 b, f32 t)
 {
@@ -505,7 +504,7 @@ typedef struct {
     f32 t;
     u32 value;
 } ColorRampStop;
-bool color_ramp(WGPUTextureView view, ColorRampStop* stops, u32 n_stops, u32* buffer, u32 buffer_len)
+bool color_ramp(RippleImage image, ColorRampStop* stops, u32 n_stops, u32* buffer, u32 buffer_len)
 {
     STOP_RAMP_BODY(lerp_color(v0.value, v1.value, t));
 }
@@ -529,7 +528,7 @@ void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allo
 
             RIPPLE( FORM( .width = PIXELS(15)), RECTANGLE( .color = { 0xff0000 } ) )
             {
-                if (STATE().is_weak_held)
+                if (STATE().is_held)
                 {
                     *value = (1.0f - (clamp((f32)CURSOR().x - (f32)x, 0.0f, (f32)w) / (f32)w)) * range + min;
                 }
@@ -546,6 +545,45 @@ void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allo
         i32 width; ripple_measure_text(text, font_size, &width, nullptr);
         RIPPLE( FORM( .width = PIXELS(width) ), WORDS( .text = text ));
     }
+}
+
+void color_picker(s8 label, bool* open, u32 color)
+{
+    f32 font_size = 32.0f;
+    bool should_close = false;
+
+    RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
+    {
+        RIPPLE( FORM( .width = PIXELS(font_size) ), RECTANGLE( .color = RIPPLE_RGB(color) ) )
+        {
+            if (CURSOR().left.pressed && !STATE().hovered)
+            {
+                should_close = true;
+            }
+
+            if (STATE().released)
+            {
+                *open = true;
+            }
+        }
+
+        i32 width; ripple_measure_text(label, font_size, &width, nullptr);
+        RIPPLE( FORM( .width = PIXELS(width) ), WORDS( .text = label ));
+
+        if (*open)
+        {
+            RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(300), .x = PIXELS(0), .y = PIXELS(-300) ), RECTANGLE( .color = RIPPLE_RGB(color) ) )
+            {
+                if (STATE().hovered)
+                {
+                    should_close = false;
+                }
+            }
+        }
+    }
+
+    if (should_close)
+        *open = false;
 }
 
 int main(int argc, char* argv[])
@@ -678,6 +716,9 @@ int main(int argc, char* argv[])
                     &ctx.color.texture.extent
                 );
             }
+
+            static bool color_picker_state = false;
+            color_picker(S8("color pixer"), &color_picker_state, 0x00ff00);
         }
 
         wgpuQueueWriteBuffer(queue, ctx.shader_data.buffer, 0, &shader_data, sizeof(shader_data));

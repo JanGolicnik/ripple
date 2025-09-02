@@ -2,6 +2,7 @@
 #define MARROW_H
 
 #include <stdint.h>
+#include <math.h>
 
 #ifndef MARROW_NO_PRINTCCY
 #include <printccy/printccy.h>
@@ -79,6 +80,12 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #ifndef clamp
 #define clamp(val, low, high) min(max(val, low), high)
 #endif // clamp
+
+static f32 wrap_float(f32 val, f32 max) {
+    val = fmodf(val, max);
+    if (val < 0.f) val += max;
+    return val;
+}
 
 #ifndef is_between
 #define is_between(val, low, high) ((val) > (low) && (val) < (high))
@@ -264,5 +271,68 @@ u64 hash_combine(u64 a, u64 b)
         out[index] = i;\
     }\
 } while( 0 )
+
+u32 hsv_to_rgb(f32 hue, f32 saturation, f32 value) {
+    f32 h = wrap_float(hue, 360.0f);
+    f32 s = clamp(saturation, 0.0f, 1.0f);
+    f32 v = clamp(value, 0.0f, 1.0f);
+
+    f32 r, g, b;
+
+    if (s == 0.f) {
+        r = g = b = v;
+    } else {
+        f32 c = v * s;
+        f32 hp = h / 60.f;
+        f32 x  = c * (1.f - fabsf(fmodf(hp, 2.f) - 1.f));
+        f32 r1=0.f, g1=0.f, b1=0.f;
+
+        if      (0.f <= hp && hp < 1.f) { r1 = c; g1 = x; b1 = 0.f; }
+        else if (1.f <= hp && hp < 2.f) { r1 = x; g1 = c; b1 = 0.f; }
+        else if (2.f <= hp && hp < 3.f) { r1 = 0.f; g1 = c; b1 = x; }
+        else if (3.f <= hp && hp < 4.f) { r1 = 0.f; g1 = x; b1 = c; }
+        else if (4.f <= hp && hp < 5.f) { r1 = x; g1 = 0.f; b1 = c; }
+        else                             { r1 = c; g1 = 0.f; b1 = x; }
+
+        f32 m = v - c;
+        r = r1 + m; g = g1 + m; b = b1 + m;
+    }
+
+    u32 R = (u32)lroundf(fmaxf(0.f, fminf(r, 1.f)) * 255.f);
+    u32 G = (u32)lroundf(fmaxf(0.f, fminf(g, 1.f)) * 255.f);
+    u32 B = (u32)lroundf(fmaxf(0.f, fminf(b, 1.f)) * 255.f);
+
+    return (R << 16) | (G << 8) | B;
+}
+
+void rgb_to_hsv(u32 color, f32* hue, f32* saturation, f32* value) {
+    f32 r = (f32)((color >> 16) & 0xFF) / 255.f;
+    f32 g = (f32)((color >>  8) & 0xFF) / 255.f;
+    f32 b = (f32)( color        & 0xFF) / 255.f;
+
+    f32 maxv = fmaxf(r, fmaxf(g, b));
+    f32 minv = fminf(r, fminf(g, b));
+    f32 delta = maxv - minv;
+
+    f32 V = maxv;
+
+    f32 S = (maxv <= 0.f) ? 0.f : (delta / maxv);
+
+    f32 H;
+    if (delta == 0.f) {
+        H = 0.f;
+    } else if (maxv == r) {
+        H = 60.f * fmodf(((g - b) / delta), 6.f);
+        if (H < 0.f) H += 360.f;
+    } else if (maxv == g) {
+        H = 60.f * (((b - r) / delta) + 2.f);
+    } else {
+        H = 60.f * (((r - g) / delta) + 4.f);
+    }
+
+    if (hue)        *hue = wrap_float(H, 360.0f);
+    if (saturation) *saturation = clamp(S, 0.0f, 1.0f);
+    if (value)      *value = clamp(V, 0.0f, 1.0f);
+}
 
 #endif // MARROW_H
