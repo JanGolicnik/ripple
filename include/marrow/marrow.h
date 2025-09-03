@@ -272,6 +272,12 @@ u64 hash_combine(u64 a, u64 b)
     }\
 } while( 0 )
 
+u32 value_to_rgb(f32 value)
+{
+    value = clamp(value, 0.0f, 1.0f);
+    return ((u8)(value * 0xff) << 16) | ((u8)(value * 0xff) << 8) | (u8)(value * 0xff);
+}
+
 u32 hsv_to_rgb(f32 hue, f32 saturation, f32 value) {
     f32 h = wrap_float(hue, 360.0f);
     f32 s = clamp(saturation, 0.0f, 1.0f);

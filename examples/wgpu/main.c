@@ -435,17 +435,34 @@ Context create_context(WGPUDevice device, WGPUQueue queue)
     return ctx;
 }
 
-#define STOP_RAMP_BODY(lerp)\
+#define STOP_RAMP_BODY(lerp, to_rgb)\
 bool changed = false;\
 u32 stop_w = 10;\
-RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZONTAL), IMAGE( .image = image )) {\
-    changed = STATE().first_render;\
+u32 sorted[n_stops];\
+array_get_sorted_indices(sorted, stops, n_stops, a->t < b->t);\
+RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZONTAL)) {\
     u32 x = SHAPE().x;\
     u32 w = SHAPE().w;\
+    f32 t = 0.0f;\
+    for (i32 i = 0; i < (i32)n_stops; i++) {\
+        u32 color = to_rgb(stops[sorted[i]].value);\
+        u32 prev_color = to_rgb(stops[sorted[max(i - 1, 0)]].value);\
+        RIPPLE( FORM( .x = RELATIVE(t, SVT_RELATIVE_PARENT),\
+                      .width = RELATIVE(stops[sorted[i]].t - t + 3.0f / 300.0f, SVT_RELATIVE_PARENT)), \
+            RECTANGLE(\
+                .color1 = {prev_color}, .color3 = {prev_color},\
+                .color2 = {color},      .color4 = {color},\
+            ) );\
+        t = stops[sorted[i]].t;\
+    }\
+    RIPPLE( FORM( .x = RELATIVE(stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT), .width = RELATIVE(1.0f - stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT)),\
+            RECTANGLE( .color = {value_to_rgb(stops[sorted[n_stops - 1]].value)} )\
+    );\
+    changed = STATE().first_render;\
     CENTERED_VERTICAL(\
     RIPPLE( FORM( .direction = cld_HORIZONTAL ) ) {\
         for (u32 i = 0; i < n_stops; i++) {\
-            RIPPLE( FORM( .x = PIXELS(stops[i].t * (w - stop_w)), .width = PIXELS(stop_w), .height = PIXELS(10) ), RECTANGLE( .color = {0xffffff}) ) {\
+            RIPPLE( FORM( .x = PIXELS(stops[i].t * (w - stop_w)), .width = PIXELS(stop_w), .height = PIXELS(10) ), RECTANGLE( .color = {0xff00ff}) ) {\
                 if (!changed && STATE().is_held) {\
                     stops[i].t = clamp(((f32)CURSOR().x - (f32)x) / (f32)w, 0.0f, 1.0f);\
                     changed = true;\
@@ -456,8 +473,6 @@ RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZ
     );\
 }\
 if (!changed) return false;\
-u32 sorted[n_stops];\
-array_get_sorted_indices(sorted, stops, n_stops, a->t < b->t);\
 u32 buffer_i = 0;\
 for (u32 i = 0; i < n_stops + 1; i++)\
 {\
@@ -476,9 +491,9 @@ typedef struct {
     f32 t;
     f32 value;
 } FloatRampStop;
-bool float_ramp(RippleImage image, FloatRampStop* stops, u32 n_stops, f32* buffer, u32 buffer_len)
+bool float_ramp(FloatRampStop* stops, u32 n_stops, f32* buffer, u32 buffer_len)
 {
-    STOP_RAMP_BODY(v0.value * (1.0f - t) + v1.value * t);
+    STOP_RAMP_BODY(v0.value * (1.0f - t) + v1.value * t, value_to_rgb);
 }
 
 u32 lerp_color(u32 a, u32 b, f32 t)
@@ -504,9 +519,10 @@ typedef struct {
     f32 t;
     u32 value;
 } ColorRampStop;
-bool color_ramp(RippleImage image, ColorRampStop* stops, u32 n_stops, u32* buffer, u32 buffer_len)
+bool color_ramp(ColorRampStop* stops, u32 n_stops, u32* buffer, u32 buffer_len)
 {
-    STOP_RAMP_BODY(lerp_color(v0.value, v1.value, t));
+    STOP_RAMP_BODY(lerp_color(v0.value, v1.value, t), (u32));
+    return false;
 }
 
 void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allocator)
@@ -572,7 +588,8 @@ void color_picker(s8 label, bool* open, u32 color)
 
         if (*open)
         {
-            RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(300), .x = PIXELS(0), .y = PIXELS(-300) ), RECTANGLE( .color = RIPPLE_RGB(color) ) )
+            RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(300), .x = PIXELS(0), .y = PIXELS(-300) ),
+                    RECTANGLE( .color1 = {0x0}, .color2 = {0x0}, .color3 = {0xffffff}, .color4 = RIPPLE_RGB(color) ) )
             {
                 if (STATE().hovered)
                 {
@@ -684,7 +701,7 @@ int main(int argc, char* argv[])
             slider("zoom", &zoom, 1.0f, 10.0f, (Allocator*)&str_allocator);
 
             f32 float_buffer[256];
-            if (float_ramp(ctx.gradient.texture.view, gradient_stops, array_len(gradient_stops), float_buffer, array_len(float_buffer)))
+            if (float_ramp(gradient_stops, array_len(gradient_stops), float_buffer, array_len(float_buffer)))
             {
                 wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
                         .texture = ctx.gradient.texture.texture,
@@ -701,7 +718,7 @@ int main(int argc, char* argv[])
             }
 
             u32 color_buffer[256];
-            if (color_ramp(ctx.color.texture.view, color_stops, array_len(color_stops), color_buffer, array_len(color_buffer)))
+            if (color_ramp(color_stops, array_len(color_stops), color_buffer, array_len(color_buffer)))
             {
                 wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
                         .texture = ctx.color.texture.texture,

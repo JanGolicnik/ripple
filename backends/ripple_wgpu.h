@@ -145,7 +145,10 @@ typedef struct {
     f32 pos[2];
     f32 size[2];
     f32 uv[4];
-    f32 color[4];
+    f32 color1[4];
+    f32 color2[4];
+    f32 color3[4];
+    f32 color4[4];
     f32 color_padding[1];
     u32 image_index;
     u32 image_index_padding[3];
@@ -175,15 +178,21 @@ struct InstanceInput {\
     @location(1) position: vec2f,\
     @location(2) size: vec2f,\
     @location(3) uv: vec4f,\
-    @location(4) color: vec4f,\
-    @location(5) image_index: u32,\
-}\
+    @location(4) color1: vec4f,\
+    @location(5) color2: vec4f,\
+    @location(6) color3: vec4f,\
+    @location(7) color4: vec4f,\
+    @location(8) image_index: u32,\
+};\
 \
 struct VertexOutput{\
     @builtin(position) position: vec4f,\
-    @location(0) color: vec4f,\
-    @location(2) uv: vec2f,\
-    @location(3) image_index: u32\
+    @location(0) uv: vec2f,\
+    @location(1) image_index: u32,\
+    @location(2) color1: vec4f,\
+    @location(3) color2: vec4f,\
+    @location(4) color3: vec4f,\
+    @location(5) color4: vec4f,\
 };\
 \
 @vertex \
@@ -192,7 +201,6 @@ fn vs_main(v: VertexInput, i: InstanceInput, @builtin(vertex_index) index: u32) 
     var position = i.position + v.position * i.size;\
     position = position / resolution;\
     position = vec2f(position.x, 1.0f - position.y) * 2.0f - vec2f(1.0f, 1.0f);\
-    var color = i.color;\
     var uv = i.uv.xy;\
     if (index == 1) { uv = i.uv.zy; }\
     else if (index == 2) { uv = i.uv.zw; }\
@@ -200,8 +208,11 @@ fn vs_main(v: VertexInput, i: InstanceInput, @builtin(vertex_index) index: u32) 
     \
     var out: VertexOutput;\
     out.position = vec4f(position.x, position.y, 0.0, 1.0);\
-    out.color = color;\
     out.uv = uv;\
+    out.color1 = i.color1;\
+    out.color2 = i.color2;\
+    out.color3 = i.color3;\
+    out.color4 = i.color4;\
     out.image_index = i.image_index;\
     return out;\
 }\
@@ -217,7 +228,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {\
         case 4u { tex_color = textureSample(texture5, texture_sampler, in.uv); }\
         default { tex_color = vec4f(1.0, 1.0, 1.0, 1.0); }\
     }\
-    let color = tex_color * in.color;\
+    let gradient = mix(mix(in.color3, in.color4, in.uv.x), mix(in.color1, in.color2, in.uv.x), in.uv.y);\
+    let color = tex_color * gradient;\
     let linear_color = pow(color.rgb, vec3f(2.2));\
     return vec4f(linear_color, color.a);\
 }\
@@ -603,7 +615,7 @@ void ripple_backend_initialize(RippleBackendConfig config)
                         .stepMode = WGPUVertexStepMode_Vertex,
                     },
                     [1] = {
-                        .attributeCount = 5,
+                        .attributeCount = 8,
                         .attributes = (WGPUVertexAttribute[]) {
                             [0] = {
                                 .shaderLocation = 1,
@@ -623,10 +635,25 @@ void ripple_backend_initialize(RippleBackendConfig config)
                             [3] = {
                                 .shaderLocation = 4,
                                 .format = WGPUVertexFormat_Float32x4,
-                                .offset = offsetof(RippleWGPUInstance, color)
+                                .offset = offsetof(RippleWGPUInstance, color1)
                             },
                             [4] = {
                                 .shaderLocation = 5,
+                                .format = WGPUVertexFormat_Float32x4,
+                                .offset = offsetof(RippleWGPUInstance, color2)
+                            },
+                            [5] = {
+                                .shaderLocation = 6,
+                                .format = WGPUVertexFormat_Float32x4,
+                                .offset = offsetof(RippleWGPUInstance, color3)
+                            },
+                            [6] = {
+                                .shaderLocation = 7,
+                                .format = WGPUVertexFormat_Float32x4,
+                                .offset = offsetof(RippleWGPUInstance, color4)
+                            },
+                            [7] = {
+                                .shaderLocation = 8,
                                 .format = WGPUVertexFormat_Uint32,
                                 .offset = offsetof(RippleWGPUInstance, image_index)
                             }
@@ -999,16 +1026,19 @@ static void _ripple_color_to_color(RippleColor color, f32 out_color[4])
     }
 }
 
-void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color)
+void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4)
 {
-    f32 color_arr[4]; _ripple_color_to_color(color, color_arr);
-    vektor_add(_context.current_window->instances, (RippleWGPUInstance){
+    RippleWGPUInstance instance = {
         .pos = { (f32)x, (f32)y },
         .size = { (f32)w, (f32)h },
         .uv = { 0.0f, 0.0f, 1.0f, 1.0f },
-        .color = { color_arr[0], color_arr[1], color_arr[2], color_arr[3] },
         .image_index = 0
-    });
+    };
+    _ripple_color_to_color(color1, instance.color1);
+    _ripple_color_to_color(color2, instance.color2);
+    _ripple_color_to_color(color3, instance.color3);
+    _ripple_color_to_color(color4, instance.color4);
+    vektor_add(_context.current_window->instances, instance);
 }
 
 void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
@@ -1051,7 +1081,10 @@ void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
     vektor_add(window->instances, (RippleWGPUInstance){
         .pos = { (f32)x, (f32)y },
         .uv = { 0.0f, 0.0f, 1.0f, 1.0f },
-        .color = { 1.0f, 1.0f, 1.0f, 1.0f},
+        .color1 = { 1.0f, 1.0f, 1.0f, 1.0f},
+        .color2 = { 1.0f, 1.0f, 1.0f, 1.0f},
+        .color3 = { 1.0f, 1.0f, 1.0f, 1.0f},
+        .color4 = { 1.0f, 1.0f, 1.0f, 1.0f},
         .size = { (f32)w, (f32)h },
         .image_index = image_index
     });
@@ -1091,7 +1124,10 @@ void ripple_render_text(i32 pos_x, i32 pos_y, s8 text, f32 font_size, RippleColo
             .pos = { pos_x + quad.x0 * scale, pos_y + quad.y0 * scale },
             .size = { (quad.x1 - quad.x0) * scale, (quad.y1 - quad.y0) * scale },
             .uv = { quad.s0, quad.t0, quad.s1, quad.t1 },
-            .color = { color_arr[0], color_arr[1], color_arr[2], color_arr[3] },
+            .color1 = { color_arr[0], color_arr[1], color_arr[2], color_arr[3] },
+            .color2 = { color_arr[0], color_arr[1], color_arr[2], color_arr[3] },
+            .color3 = { color_arr[0], color_arr[1], color_arr[2], color_arr[3] },
+            .color4 = { color_arr[0], color_arr[1], color_arr[2], color_arr[3] },
             .image_index = 1
         });
     }

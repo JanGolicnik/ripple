@@ -165,7 +165,7 @@ RippleCursorState ripple_update_cursor_state(RippleCursorState state);
 
 RippleRenderData ripple_render_begin();
     void ripple_render_window_begin(u64, RippleRenderData);
-        void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color);
+        void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4);
         void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image);
         void ripple_render_text(i32 x, i32 y, s8 text, f32 font_size, RippleColor color);
         void ripple_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h);
@@ -743,12 +743,20 @@ static RenderedLayout _get_current_element_rendered_layout()
 
 typedef struct {
     RippleColor color;
+    RippleColor color1;
+    RippleColor color2;
+    RippleColor color3;
+    RippleColor color4;
 } RippleRectangleConfig;
 
 void render_rectangle(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {
     RippleRectangleConfig rectangle_data = *(RippleRectangleConfig*)config.render_data;
-    ripple_render_rect(layout.x, layout.y, layout.w, layout.h, rectangle_data.color);
+    if (rectangle_data.color.value != 0 || rectangle_data.color.format != 0)
+    {
+        rectangle_data.color1 = rectangle_data.color2 = rectangle_data.color3 = rectangle_data.color4 = rectangle_data.color;
+    }
+    ripple_render_rect(layout.x, layout.y, layout.w, layout.h, rectangle_data.color1, rectangle_data.color2, rectangle_data.color3, rectangle_data.color4);
 }
 
 #define RECTANGLE(...)\
