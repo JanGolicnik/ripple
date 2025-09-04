@@ -125,7 +125,6 @@ typedef struct RippleElementConfig {
     usize render_data_size;
 
     struct{
-        bool accept_input : 1;
         bool _dummy : 1;
     };
 } RippleElementConfig;
@@ -139,38 +138,40 @@ typedef struct {
     u8 first_render : 1; // when called after not existing the previous frame
 } RippleElementState;
 
-bool Ripple_start_window(RippleWindowConfig config);
-void Ripple_finish_window(void);
+struct Window;
 
-void Ripple_push_id(u64);
-void Ripple_submit_element(RippleElementConfig config); // copies render data if its size is non zero
-void Ripple_pop_id(void);
+void ripple_start_window(RippleWindowConfig config);
+void ripple_finish_window(void);
 
-void Ripple_begin(Allocator* allocator);
-void Ripple_end(void);
+void ripple_push_id(struct Window* window, u64);
+void ripple_submit_element(struct Window* window, RippleElementConfig config); // copies render data if its size is non zero
+void ripple_pop_id(struct Window* window);
 
-RippleRenderData Ripple_render_begin();
-void Ripple_render_end(RippleRenderData user_data);
+void ripple_begin(Allocator* allocator);
+void ripple_end(void);
+
+RippleRenderData ripple_render_begin();
+void ripple_render_end(RippleRenderData user_data);
 
 // backend functions
 void ripple_backend_initialize(RippleBackendConfig config);
 RippleBackendConfig ripple_get_default_backend_config();
 
-void ripple_window_begin(u64 id, RippleWindowConfig config);
-void ripple_window_end();
-void ripple_window_close(u64 id);
-void ripple_get_window_size(u32* width, u32* height);
-RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWindowConfig config);
-RippleCursorState ripple_update_cursor_state(RippleCursorState state);
+void ripple_backend_window_begin(u64 id, RippleWindowConfig config);
+void ripple_backend_window_end();
+void ripple_backend_window_close(u64 id);
+void ripple_backend_get_window_size(u32* width, u32* height);
+RippleWindowState ripple_backend_update_window_state(RippleWindowState state, RippleWindowConfig config);
+RippleCursorState ripple_backend_update_cursor_state(RippleCursorState state);
 
-RippleRenderData ripple_render_begin();
-    void ripple_render_window_begin(u64, RippleRenderData);
-        void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4);
-        void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image);
-        void ripple_render_text(i32 x, i32 y, s8 text, f32 font_size, RippleColor color);
-        void ripple_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h);
-    void ripple_render_window_end(RippleRenderData);
-void ripple_render_end(RippleRenderData);
+RippleRenderData ripple_backend_render_begin();
+    void ripple_backend_render_window_begin(u64, RippleRenderData);
+        void ripple_backend_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4);
+        void ripple_backend_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image);
+        void ripple_backend_render_text(i32 x, i32 y, s8 text, f32 font_size, RippleColor color);
+        void ripple_backend_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h);
+    void ripple_backend_render_window_end(RippleRenderData);
+void ripple_backend_render_end(RippleRenderData);
 
 #ifdef RIPPLE_IMPLEMENTATION
 #undef RIPPLE_IMPLEMENTATION
@@ -197,7 +198,7 @@ typedef struct {
     u32 prev_sibling; // equals parent index if first sibling
 } ElementData;
 
-typedef struct {
+typedef struct Window {
     u64 id;
     u64 parent_id;
     RippleWindowConfig config;
@@ -218,106 +219,102 @@ typedef struct {
     void* user_data;
 } Window;
 
-static thread_local MAPA(u64, Window) windows = { 0 };
-static thread_local Window* current_window = nullptr;
-static thread_local u32 current_frame_color = 0;
-
-static struct {
+thread_local struct {
     BumpAllocator frame_allocator;
     bool initialized;
-} context;
 
-bool Ripple_start_window(RippleWindowConfig config)
+    MAPA(u64, Window) windows;
+    Window* current_window;
+    u32 current_frame_color;
+} _ripple_context;
+
+void ripple_start_window(RippleWindowConfig config)
 {
-    if (!context.initialized)
+    if (!_ripple_context.initialized)
     {
-        context.frame_allocator = bump_allocator_create();
-        context.initialized = true;
-    }
+        _ripple_context.frame_allocator = bump_allocator_create();
 
-    if (!windows.entries)
-        mapa_init(windows, mapa_hash_u64, mapa_cmp_bytes, config.allocator);
+        mapa_init(_ripple_context.windows, mapa_hash_u64, mapa_cmp_bytes, config.allocator);
+
+        _ripple_context.initialized = true;
+    }
 
     if (!config.frame_allocator)
     {
-        config.frame_allocator = (Allocator*)&context.frame_allocator;
+        config.frame_allocator = (Allocator*)&_ripple_context.frame_allocator;
     }
 
-    u64 parent_id = current_window ? current_window->id : 0;
+    u64 parent_id = _ripple_context.current_window ? _ripple_context.current_window->id : 0;
 
     u64 window_id = hash_buf(config.title);
-    current_window = mapa_get(windows, &window_id);
-    if (!current_window)
-        current_window = mapa_insert(windows, &window_id, (Window){ .id = window_id });
+    Window* window = _ripple_context.current_window = mapa_get(_ripple_context.windows, &window_id);
+    if (!window)
+        window = _ripple_context.current_window = mapa_insert(_ripple_context.windows, &window_id, (Window){ .id = window_id });
 
-    current_window->parent_id = parent_id;
+    window->parent_id = parent_id;
 
-    current_window->config = config;
+    window->config = config;
 
     // update backend and state
     {
-        ripple_window_begin(window_id, config);
+        ripple_backend_window_begin(window_id, config);
 
-        ripple_get_window_size(&current_window->config.width, &current_window->config.height);
+        ripple_backend_get_window_size(&window->config.width, &window->config.height);
 
-        current_window->state = ripple_update_window_state(current_window->state, current_window->config);
+        window->state = ripple_backend_update_window_state(window->state, window->config);
 
-        if (config.is_open) *config.is_open = current_window->state.is_open;
+        if (config.is_open) *config.is_open = window->state.is_open;
 
-        current_window->cursor_state.left.held |= current_window->cursor_state.left.pressed;
-        current_window->cursor_state.right.held |= current_window->cursor_state.right.pressed;
-        current_window->cursor_state.middle.held |= current_window->cursor_state.middle.pressed;
+        window->cursor_state.left.held |= window->cursor_state.left.pressed;
+        window->cursor_state.right.held |= window->cursor_state.right.pressed;
+        window->cursor_state.middle.held |= window->cursor_state.middle.pressed;
 
-        current_window->cursor_state.consumed = false;
+        window->cursor_state.consumed = false;
 
-        current_window->cursor_state = ripple_update_cursor_state(current_window->cursor_state);
+        window->cursor_state = ripple_backend_update_cursor_state(window->cursor_state);
 
-        if (current_window->cursor_state.left.released) current_window->cursor_state.left.held = 0;
-        if (current_window->cursor_state.right.released) current_window->cursor_state.right.held = 0;
-        if (current_window->cursor_state.middle.released) current_window->cursor_state.middle.held = 0;
+        if (window->cursor_state.left.released) window->cursor_state.left.held = 0;
+        if (window->cursor_state.right.released) window->cursor_state.right.held = 0;
+        if (window->cursor_state.middle.released) window->cursor_state.middle.held = 0;
     }
 
     // reset window elements
     {
-        if (current_window->elements.items) vektor_clear(current_window->elements);
-        else vektor_init(current_window->elements, 0, config.allocator);
+        if (window->elements.items) vektor_clear(window->elements);
+        else vektor_init(window->elements, 0, config.allocator);
 
-        if (!current_window->elements_states.entries)
-            mapa_init(current_window->elements_states, mapa_hash_u64, mapa_cmp_bytes, config.allocator);
+        if (!window->elements_states.entries)
+            mapa_init(window->elements_states, mapa_hash_u64, mapa_cmp_bytes, config.allocator);
 
-        vektor_add(current_window->elements, (ElementData) {
+        vektor_add(window->elements, (ElementData) {
                 .calculated_layout = {
                     .x = 0,
                     .y = 0,
-                    .w = current_window->config.width,
-                    .h = current_window->config.height
+                    .w = window->config.width,
+                    .h = window->config.height
                 },
         });
-        current_window->current_element.id = 0;
-        current_window->current_element.index = 0;
+        window->current_element.id = 0;
+        window->current_element.index = 0;
 
-        current_window->frame_color = current_frame_color;
+        window->frame_color = _ripple_context.current_frame_color;
     }
-
-    return current_window->state.is_open;
 }
 
-void Ripple_finish_window()
+void ripple_finish_window()
 {
-    ripple_window_end();
-    current_window = current_window->parent_id ?
-        mapa_get(windows, &current_window->parent_id) :
+    ripple_backend_window_end();
+    _ripple_context.current_window = _ripple_context.current_window->parent_id ?
+        mapa_get(_ripple_context.windows, &_ripple_context.current_window->parent_id) :
         nullptr;
 }
 
 static void finalize_element(Window* window, ElementData* element);
 static void render_element(Window* window, ElementData* element, void* window_user_data, RippleRenderData user_data);
-static void update_element_state_recursive_reverse(Window* window, ElementData* element);
 
 static void update_window(Window* window)
 {
     finalize_element(window, &window->elements.items[0]);
-    update_element_state_recursive_reverse(window, &window->elements.items[0]);
 
     // remove dead elements
     for (i32 element_i = 0; element_i < (i64)window->elements_states.size; element_i++)
@@ -336,22 +333,22 @@ static void update_window(Window* window)
 
 static void close_window(Window* window)
 {
-    ripple_window_close(window->id);
+    ripple_backend_window_close(window->id);
     vektor_free(window->elements);
     mapa_free(window->elements_states);
 }
 
-RippleRenderData Ripple_render_begin()
+RippleRenderData ripple_render_begin()
 {
-    for (i32 window_i = 0; window_i < (i64)windows.size; window_i++)
+    for (i32 window_i = 0; window_i < (i64)_ripple_context.windows.size; window_i++)
     {
-        Window* window = mapa_get_at_index(windows, (u64)window_i);
+        Window* window = mapa_get_at_index(_ripple_context.windows, (u64)window_i);
         if(!window) continue;
 
-        if (window->frame_color != current_frame_color)
+        if (window->frame_color != _ripple_context.current_frame_color)
         {
             close_window(window);
-            mapa_remove_at_index(windows, (u64)window_i);
+            mapa_remove_at_index(_ripple_context.windows, (u64)window_i);
             window_i--;
             continue;
         }
@@ -359,28 +356,28 @@ RippleRenderData Ripple_render_begin()
         update_window(window);
     }
 
-    current_frame_color = current_frame_color ? 0 : 1;
+    _ripple_context.current_frame_color = _ripple_context.current_frame_color ? 0 : 1;
 
-    return ripple_render_begin();
+    return ripple_backend_render_begin();
 }
 
-void Ripple_render_end(RippleRenderData render_data)
+void ripple_render_end(RippleRenderData render_data)
 {
-    for (u32 window_i = 0; window_i < windows.size; window_i++)
+    for (u32 window_i = 0; window_i < _ripple_context.windows.size; window_i++)
     {
-        Window* window = mapa_get_at_index(windows, window_i);
+        Window* window = mapa_get_at_index(_ripple_context.windows, window_i);
         if (!window) continue;
 
-        ripple_render_window_begin(window->id, render_data);
+        ripple_backend_render_window_begin(window->id, render_data);
         if (window->elements.n_items){
             render_element(window, &window->elements.items[0], window->user_data, render_data);
         }
-        ripple_render_window_end(render_data);
+        ripple_backend_render_window_end(render_data);
     }
 
-    bump_allocator_reset(&context.frame_allocator);
+    bump_allocator_reset(&_ripple_context.frame_allocator);
 
-    ripple_render_end(render_data);
+    ripple_backend_render_end(render_data);
 }
 
 #define _I1 LINE_UNIQUE_VAR(_i)
@@ -395,24 +392,15 @@ if (value._type == type)\
             var = (type == SVT_RELATIVE_PARENT ? parent : child) * ((f32)value._unsigned_value / (f32)(2<<14)); break;\
     }
 
-static u32 dim_offsets[] = { offsetof(RenderedLayout, h), offsetof(RenderedLayout, w) };
-static u32 other_dim_offsets[] = { offsetof(RenderedLayout, w), offsetof(RenderedLayout, h) };
-static u32 max_dim_offsets[] = { offsetof(RenderedLayout, max_h), offsetof(RenderedLayout, max_w) };
-static u32 pos_offsets[] = { offsetof(RenderedLayout, y), offsetof(RenderedLayout, x) };
-static u32 other_pos_offsets[] = { offsetof(RenderedLayout, x), offsetof(RenderedLayout, y) };
-static u32 layout_dim_offsets[] = { offsetof(RippleElementLayoutConfig, height), offsetof(RippleElementLayoutConfig, width) };
-static u32 layout_other_dim_offsets[] = { offsetof(RippleElementLayoutConfig, width), offsetof(RippleElementLayoutConfig, height) };
-static u32 layout_pos_offsets[] = { offsetof(RippleElementLayoutConfig, y), offsetof(RippleElementLayoutConfig, x) };
-static u32 layout_other_pos_offsets[] = { offsetof(RippleElementLayoutConfig, x), offsetof(RippleElementLayoutConfig, y) };
-#define DIM(arg) (*(i32*)((u8*)(&arg) + dim_offsets[(u32)element->config.layout.direction]))
-#define OTHER_DIM(arg) (*(i32*)((u8*)(&arg) + other_dim_offsets[(u32)element->config.layout.direction]))
-#define MAX_DIM(arg) (*(i32*)((u8*)(&arg) + max_dim_offsets[(u32)element->config.layout.direction]))
-#define POS(arg) (*(i32*)((u8*)(&arg) + pos_offsets[(u32)element->config.layout.direction]))
-#define OTHER_POS(arg) (*(i32*)((u8*)(&arg) + other_pos_offsets[(u32)element->config.layout.direction]))
-#define LAYOUT_DIM(arg) (*(RippleSizingValue*)((u8*)(&arg) + layout_dim_offsets[(u32)element->config.layout.direction]))
-#define LAYOUT_OTHER_DIM(arg) (*(RippleSizingValue*)((u8*)(&arg) + layout_other_dim_offsets[(u32)element->config.layout.direction]))
-#define LAYOUT_POS(arg) (*(RippleSizingValue*)((u8*)(&arg) + layout_pos_offsets[(u32)element->config.layout.direction]))
-#define LAYOUT_OTHER_POS(arg) (*(RippleSizingValue*)((u8*)(&arg) + layout_other_pos_offsets[(u32)element->config.layout.direction]))
+#define DIM(arg) (*(element->config.layout.direction ? &(arg).w : &(arg).h))
+#define OTHER_DIM(arg) (*(element->config.layout.direction ? &(arg).h : &(arg).w))
+#define MAX_DIM(arg) (*(element->config.layout.direction ? &(arg).max_w : &(arg).max_h))
+#define POS(arg) (*(element->config.layout.direction ? &(arg).x : &(arg).y))
+#define OTHER_POS(arg) (*(element->config.layout.direction ? &(arg).y : &(arg).x))
+#define LAYOUT_DIM(arg) (*(element->config.layout.direction ? &(arg).width : &(arg).height))
+#define LAYOUT_OTHER_DIM(arg) (*(element->config.layout.direction ? &(arg).height : &(arg).width))
+#define LAYOUT_POS(arg) (*(element->config.layout.direction ? &(arg).x : &(arg).y))
+#define LAYOUT_OTHER_POS(arg) (*(element->config.layout.direction ? &(arg).y : &(arg).x))
 
 static RenderedLayout element_calculate_children_bounds(Window* window, ElementData* element)
 {
@@ -450,7 +438,7 @@ static void element_position_children(Window* window, ElementData* element)
     u32 offset = 0;
     _for_each_child(element) {
         if (child->config.layout.fixed) continue;
-        if (LAYOUT_POS(child->config)._type != SVT_GROW)
+        if (LAYOUT_POS(child->config.layout)._type != SVT_GROW)
         {
             POS(child->calculated_layout) += POS(element->calculated_layout);
         }
@@ -460,7 +448,7 @@ static void element_position_children(Window* window, ElementData* element)
             offset += DIM(child->calculated_layout);
         }
 
-        if (LAYOUT_OTHER_POS(child->config)._type != SVT_GROW)
+        if (LAYOUT_OTHER_POS(child->config.layout)._type != SVT_GROW)
         {
             OTHER_POS(child->calculated_layout) += OTHER_POS(element->calculated_layout);
         }
@@ -542,19 +530,28 @@ static void element_grow_children(Window* window, ElementData* element)
 
 static void update_element_state(Window* window, ElementState* state)
 {
-    state->state.hovered =
-        window->cursor_state.x >= state->layout.x && window->cursor_state.x < state->layout.x + state->layout.w &&
-        window->cursor_state.y >= state->layout.y && window->cursor_state.y < state->layout.y + state->layout.h;
-
-    if (!window->cursor_state.consumed)
+    if (window->cursor_state.consumed)
     {
-        state->state.clicked = state->state.hovered && window->cursor_state.left.pressed;
-        state->state.released = state->state.hovered && window->cursor_state.left.released;
+        state->state.clicked = false;
+        state->state.released = false;
+        state->state.hovered = false;
     }
-
-    if (state->state.clicked)
+    else
     {
-        window->cursor_state.consumed = true;
+        state->state.hovered =
+            window->cursor_state.x >= state->layout.x && window->cursor_state.x < state->layout.x + state->layout.w &&
+            window->cursor_state.y >= state->layout.y && window->cursor_state.y < state->layout.y + state->layout.h;
+
+        if (!window->cursor_state.consumed)
+        {
+            state->state.clicked = state->state.hovered && window->cursor_state.left.pressed;
+            state->state.released = state->state.hovered && window->cursor_state.left.released;
+        }
+
+        if (state->state.hovered)
+        {
+            window->cursor_state.consumed = true;
+        }
     }
 
     state->state.is_held      = (window->cursor_state.left.pressed && state->state.clicked) ||
@@ -562,21 +559,6 @@ static void update_element_state(Window* window, ElementState* state)
     state->state.is_weak_held = state->state.hovered &&
                                 ((window->cursor_state.left.pressed && state->state.clicked) ||
                                  (window->cursor_state.left.held && state->state.is_held));
-}
-
-static void update_element_state_recursive_reverse(Window* window, ElementData* element)
-{
-    for (u32 i = element->last_child; i != 0; i = window->elements.items[i].prev_sibling)
-    {
-        update_element_state_recursive_reverse(window, &window->elements.items[i]);
-    }
-
-    ElementState* state = mapa_get(window->elements_states, &element->id);
-    if (state)
-    {
-        state->layout = element->calculated_layout;
-        update_element_state(window, state);
-    }
 }
 
 static void finalize_element(Window* window, ElementData* element)
@@ -593,9 +575,16 @@ static void finalize_element(Window* window, ElementData* element)
 
     element_position_children(window, element);
 
-    _for_each_child(element)
+    for (u32 i = element->last_child; i != 0; i = window->elements.items[i].prev_sibling)
     {
-        finalize_element(window, child);
+        finalize_element(window, &window->elements.items[i]);
+    }
+
+    ElementState* state = mapa_get(window->elements_states, &element->id);
+    if (state)
+    {
+        state->layout = element->calculated_layout;
+        update_element_state(window, state);
     }
 }
 
@@ -619,56 +608,56 @@ static u64 generate_element_id(u64 base, u64 parent_id, u32 index)
 }
 
 // should be called before submit element
-void Ripple_push_id(u64 id)
+void ripple_push_id(Window* window, u64 id)
 {
-    ElementData* parent = &current_window->elements.items[current_window->current_element.index];
-    current_window->current_element.id = id ? generate_element_id(id, current_window->current_element.id, parent->n_children) : id;
+    ElementData* parent = &window->elements.items[window->current_element.index];
+    window->current_element.id = id ? generate_element_id(id, window->current_element.id, parent->n_children) : id;
 
-    vektor_add(current_window->elements, (ElementData){
-        .parent_element = current_window->current_element.index,
-        .id = current_window->current_element.id
+    vektor_add(window->elements, (ElementData){
+        .parent_element = window->current_element.index,
+        .id = window->current_element.id
     });
-    current_window->current_element.index = current_window->elements.n_items - 1;
+    window->current_element.index = window->elements.n_items - 1;
 }
 
-void Ripple_submit_element(RippleElementConfig config)
+void ripple_submit_element(Window* window, RippleElementConfig config)
 {
-    ElementData* element = &current_window->elements.items[current_window->current_element.index];
-    ElementData* parent = &current_window->elements.items[element->parent_element];
+    ElementData* element = &window->elements.items[window->current_element.index];
+    ElementData* parent = &window->elements.items[element->parent_element];
     if (parent->n_children++ > 0)
     {
-        ElementData* child = &current_window->elements.items[parent->last_child];
-        child->next_sibling = current_window->current_element.index;
+        ElementData* child = &window->elements.items[parent->last_child];
+        child->next_sibling = window->current_element.index;
     }
     element->prev_sibling = parent->last_child;
-    parent->last_child = current_window->current_element.index;
+    parent->last_child = window->current_element.index;
 
     // render_data is supposed to be set if render_data_size is also
     if (config.render_data_size)
-        config.render_data = allocator_make_copy(current_window->config.frame_allocator, config.render_data, config.render_data_size, 1);
+        config.render_data = allocator_make_copy(window->config.frame_allocator, config.render_data, config.render_data_size, 1);
 
     element->config = config;
 }
 
-void Ripple_pop_id(void)
+void ripple_pop_id(Window* window)
 {
-    ElementData *element = &current_window->elements.items[current_window->current_element.index];
-    ElementData *parent = &current_window->elements.items[element->parent_element];
+    ElementData *element = &window->elements.items[window->current_element.index];
+    ElementData *parent = &window->elements.items[element->parent_element];
 
     element_apply_sizing(element, SVT_GROW, (RenderedLayout){ 0 }, (RenderedLayout){ 0 });
     element_apply_sizing(element, SVT_PIXELS, (RenderedLayout){ 0 }, (RenderedLayout){ 0 });
-    RenderedLayout children = element_calculate_children_bounds(current_window, element);
+    RenderedLayout children = element_calculate_children_bounds(window, element);
     element_apply_sizing(element, SVT_RELATIVE_CHILD, (RenderedLayout){ 0 }, children);
 
-    current_window->current_element.index = element->parent_element;
-    current_window->current_element.id = parent->id;
+    window->current_element.index = element->parent_element;
+    window->current_element.id = parent->id;
 }
 
-void Ripple_begin(Allocator* allocator)
+void ripple_begin(Allocator* allocator)
 {
 }
 
-void Ripple_end(void)
+void ripple_end(void)
 {
 
 }
@@ -690,12 +679,13 @@ void Ripple_end(void)
 
 #ifdef RIPPLE_WIDGETS
 
-static ElementState* _get_or_insert_current_element_state()
+// TODO: cache this somehow
+static ElementState* _get_or_insert_current_element_state(Window* window)
 {
-    ElementState* state = mapa_get(current_window->elements_states, &current_window->current_element.id);
+    ElementState* state = mapa_get(window->elements_states, &window->current_element.id);
     if (!state)
     {
-        state = mapa_insert(current_window->elements_states, &current_window->current_element.id, (ElementState){ 0 });
+        state = mapa_insert(window->elements_states, &window->current_element.id, (ElementState){ 0 });
         state->state.first_render = true;
     }
     else
@@ -703,40 +693,39 @@ static ElementState* _get_or_insert_current_element_state()
         state->state.first_render = false;
     }
 
-    state->frame_color = current_window->frame_color;
+    state->frame_color = window->frame_color;
     return state;
 }
 
-static RippleElementState _get_current_element_state_state()
+static RippleElementState _get_current_element_state_state(Window* window)
 {
-    ElementState* state = _get_or_insert_current_element_state();
+    ElementState* state = _get_or_insert_current_element_state(window);
     return state ? state->state : (RippleElementState){ 0 };
 }
 
-static RenderedLayout _get_current_element_rendered_layout()
+static RenderedLayout _get_current_element_rendered_layout(Window* window)
 {
-    ElementState* state = _get_or_insert_current_element_state();
+    ElementState* state = _get_or_insert_current_element_state(window);
     return state ? state->layout : (RenderedLayout){ 0 };
 }
 
-#define STATE() (_get_current_element_state_state())
-
-#define SHAPE() (_get_current_element_rendered_layout())
+#define STATE() (_get_current_element_state_state(_ripple_context.current_window))
+#define SHAPE() (_get_current_element_rendered_layout(_ripple_context.current_window))
 
 #define RELATIVE(value, relation) { ._unsigned_value = (u32)((value) * (f32)(2<<14)), relation }
 #define PIXELS(value) { ._signed_value = value, ._type = SVT_PIXELS }
 #define GROW { ._type = SVT_GROW }
 
-#define SURFACE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_start_window((RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_finish_window(), LINE_UNIQUE_VAR(_rippleiter)++)
+#define SURFACE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (ripple_start_window((RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; ripple_finish_window(), LINE_UNIQUE_VAR(_rippleiter)++)
 
-#define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (Ripple_push_id(LINE_UNIQUE_HASH), Ripple_submit_element((RippleElementConfig) { ._dummy = 0, __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; Ripple_pop_id(), LINE_UNIQUE_VAR(_rippleiter)++)
+#define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (ripple_push_id(_ripple_context.current_window, LINE_UNIQUE_HASH), ripple_submit_element(_ripple_context.current_window, (RippleElementConfig) { ._dummy = 0, __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; ripple_pop_id(_ripple_context.current_window), LINE_UNIQUE_VAR(_rippleiter)++)
 
 #define FORM(...) .layout = { __VA_ARGS__ }
 
-#define OPEN_THE_VOID(allocator) Ripple_begin(allocator)
-#define CLOSE_THE_VOID() Ripple_end()
+#define OPEN_THE_VOID(allocator) ripple_begin(allocator)
+#define CLOSE_THE_VOID() ripple_end()
 
-#define CURSOR() current_window->cursor_state
+#define CURSOR() (_ripple_context.current_window->cursor_state)
 
 #define RIPPLE_RGB(v) (RippleColor){ .format = RCF_RGB, .value = v }
 #define RIPPLE_RGBA(v) (RippleColor){ .format = RCF_RGBA, .value = v }
@@ -756,7 +745,7 @@ void render_rectangle(RippleElementConfig config, RenderedLayout layout, void* w
     {
         rectangle_data.color1 = rectangle_data.color2 = rectangle_data.color3 = rectangle_data.color4 = rectangle_data.color;
     }
-    ripple_render_rect(layout.x, layout.y, layout.w, layout.h, rectangle_data.color1, rectangle_data.color2, rectangle_data.color3, rectangle_data.color4);
+    ripple_backend_render_rect(layout.x, layout.y, layout.w, layout.h, rectangle_data.color1, rectangle_data.color2, rectangle_data.color3, rectangle_data.color4);
 }
 
 #define RECTANGLE(...)\
@@ -771,7 +760,7 @@ typedef struct {
 void render_image(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {
     RippleImageConfig image_data = *(RippleImageConfig*)config.render_data;
-    ripple_render_image(layout.x, layout.y, layout.w, layout.h, image_data.image);
+    ripple_backend_render_image(layout.x, layout.y, layout.w, layout.h, image_data.image);
 }
 
 #define IMAGE(...)\
@@ -787,7 +776,7 @@ typedef struct {
 void render_text(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {
     RippleTextConfig text_data = *(RippleTextConfig*)config.render_data;
-    ripple_render_text(layout.x, layout.y, text_data.text, layout.h, text_data.color);
+    ripple_backend_render_text(layout.x, layout.y, text_data.text, layout.h, text_data.color);
 }
 
 #ifndef WORDS
@@ -813,8 +802,8 @@ void render_text(RippleElementConfig config, RenderedLayout layout, void* window
 } while (false)
 #define CENTERED(...) CENTERED_HORIZONTAL(CENTERED_VERTICAL(__VA_ARGS__);)
 
-#define RIPPLE_RENDER_BEGIN() Ripple_render_begin()
-#define RIPPLE_RENDER_END(context) Ripple_render_end(context)
+#define RIPPLE_RENDER_BEGIN() ripple_render_begin()
+#define RIPPLE_RENDER_END(_ripple_context) ripple_render_end(_ripple_context)
 
 #endif // RIPPLE_WIDGETS
 

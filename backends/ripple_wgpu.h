@@ -1,7 +1,6 @@
 #ifndef RIPPLE_WGPU_H
 #define RIPPLE_WGPU_H
 
-#include <webgpu/webgpu.h>
 #include <glfw/glfw3.h>
 #include <glfw3webgpu.h>
 
@@ -767,7 +766,7 @@ _Window create_window(u64 id, RippleWindowConfig config)
     return window;
 }
 
-void ripple_window_begin(u64 id, RippleWindowConfig config)
+void ripple_backend_window_begin(u64 id, RippleWindowConfig config)
 {
     if (!_context.initialized)
         ripple_backend_initialize(ripple_get_default_backend_config());
@@ -796,33 +795,33 @@ void ripple_window_begin(u64 id, RippleWindowConfig config)
     }
     else if (width_changed)
     {
-        u32 h; ripple_get_window_size(nullptr, &h);
+        u32 h; ripple_backend_get_window_size(nullptr, &h);
         glfwSetWindowSize(_context.current_window->window, config.width, h);
     }
     else if (height_changed)
     {
-        u32 w; ripple_get_window_size(&w, nullptr);
+        u32 w; ripple_backend_get_window_size(&w, nullptr);
         glfwSetWindowSize(_context.current_window->window, w, config.height);
     }
 
     _context.current_window->config = config;
 }
 
-void ripple_window_end()
+void ripple_backend_window_end()
 {
     _context.current_window = _context.current_window->parent_id ?
         mapa_get(_context.windows, &_context.current_window->parent_id) :
         nullptr;
 }
 
-void ripple_window_close(u64 id)
+void ripple_backend_window_close(u64 id)
 {
     _Window* window = mapa_get(_context.windows, &id);
     glfwDestroyWindow(window->window);
     mapa_remove(_context.windows, &id);
 }
 
-void ripple_get_window_size(u32* width, u32* height)
+void ripple_backend_get_window_size(u32* width, u32* height)
 {
     i32 w, h;
     glfwGetFramebufferSize(_context.current_window->window, &w, &h);
@@ -830,7 +829,7 @@ void ripple_get_window_size(u32* width, u32* height)
     if (height) *height = h;
 }
 
-RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWindowConfig config)
+RippleWindowState ripple_backend_update_window_state(RippleWindowState state, RippleWindowConfig config)
 {
     _Window* window = _context.current_window;
 
@@ -853,7 +852,7 @@ RippleWindowState ripple_update_window_state(RippleWindowState state, RippleWind
     return state;
 }
 
-RippleCursorState ripple_update_cursor_state(RippleCursorState state)
+RippleCursorState ripple_backend_update_cursor_state(RippleCursorState state)
 {
     double x, y; glfwGetCursorPos(_context.current_window->window, &x, &y);
     state.x = (i32)x;
@@ -875,14 +874,14 @@ RippleCursorState ripple_update_cursor_state(RippleCursorState state)
     return state;
 }
 
-RippleRenderData ripple_render_begin()
+RippleRenderData ripple_backend_render_begin()
 {
     return (RippleRenderData){
         .encoder = wgpuDeviceCreateCommandEncoder(_context.config.device, &(WGPUCommandEncoderDescriptor){ .label = "Command encoder"})
     };
 }
 
-void ripple_render_window_begin(u64 id, RippleRenderData render_data)
+void ripple_backend_render_window_begin(u64 id, RippleRenderData render_data)
 {
     unused render_data;
 
@@ -896,7 +895,7 @@ void ripple_render_window_begin(u64 id, RippleRenderData render_data)
     });
 }
 
-void ripple_render_window_end(RippleRenderData render_data)
+void ripple_backend_render_window_end(RippleRenderData render_data)
 {
     _Window* window = _context.current_window;
 
@@ -990,7 +989,7 @@ void ripple_render_window_end(RippleRenderData render_data)
     }
 }
 
-void ripple_render_end(RippleRenderData render_data)
+void ripple_backend_render_end(RippleRenderData render_data)
 {
     WGPUCommandBuffer command = wgpuCommandEncoderFinish(render_data.encoder, &(WGPUCommandBufferDescriptor){ .label = "Command buffer" });
     wgpuCommandEncoderRelease(render_data.encoder);
@@ -1008,7 +1007,7 @@ void ripple_render_end(RippleRenderData render_data)
     }
 }
 
-static void _ripple_color_to_color(RippleColor color, f32 out_color[4])
+static void _ripple_backend_color_to_color(RippleColor color, f32 out_color[4])
 {
     if (color.format == RCF_RGB)
     {
@@ -1026,7 +1025,7 @@ static void _ripple_color_to_color(RippleColor color, f32 out_color[4])
     }
 }
 
-void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4)
+void ripple_backend_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4)
 {
     RippleWGPUInstance instance = {
         .pos = { (f32)x, (f32)y },
@@ -1034,14 +1033,14 @@ void ripple_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleCo
         .uv = { 0.0f, 0.0f, 1.0f, 1.0f },
         .image_index = 0
     };
-    _ripple_color_to_color(color1, instance.color1);
-    _ripple_color_to_color(color2, instance.color2);
-    _ripple_color_to_color(color3, instance.color3);
-    _ripple_color_to_color(color4, instance.color4);
+    _ripple_backend_color_to_color(color1, instance.color1);
+    _ripple_backend_color_to_color(color2, instance.color2);
+    _ripple_backend_color_to_color(color3, instance.color3);
+    _ripple_backend_color_to_color(color4, instance.color4);
     vektor_add(_context.current_window->instances, instance);
 }
 
-void ripple_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
+void ripple_backend_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
 {
     _Window *window = _context.current_window;
 
@@ -1106,10 +1105,10 @@ void ripple_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h)
     if (out_h) *out_h = (i32)(font_size);
 }
 
-void ripple_render_text(i32 pos_x, i32 pos_y, s8 text, f32 font_size, RippleColor color)
+void ripple_backend_render_text(i32 pos_x, i32 pos_y, s8 text, f32 font_size, RippleColor color)
 {
     f32 scale = font_size / FONT_SIZE;
-    f32 color_arr[4]; _ripple_color_to_color(color, color_arr);
+    f32 color_arr[4]; _ripple_backend_color_to_color(color, color_arr);
     pos_y += font_size * 0.75f;
     f32 x = 0.0f;
     f32 y = 0.0f;
