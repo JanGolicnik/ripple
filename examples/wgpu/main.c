@@ -2,8 +2,7 @@
 
 #define RIPPLE_IMPLEMENTATION
 #define RIPPLE_WIDGETS
-#define RIPPLE_BACKEND_WGPU
-#include "backends/ripple_wgpu.h"
+#include "ripple.h"
 
 #define CGLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <cglm/struct.h>

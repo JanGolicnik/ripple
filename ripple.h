@@ -68,6 +68,15 @@ typedef struct {
     };
 } RippleWindowConfig;
 
+#define RIPPLE_WGPU 1
+#define RIPPLE_RAYLIB 2
+
+#ifndef RIPPLE_BACKED
+#define RIPPLE_BACKEND RIPPLE_WGPU
+#endif // RIPPLE_BACKEND
+
+#include "backends/ripple_wgpu.h"
+
 typedef enum {
     SVT_GROW = 0,
     SVT_PIXELS = 1,
@@ -152,26 +161,6 @@ void ripple_end(void);
 
 RippleRenderData ripple_render_begin();
 void ripple_render_end(RippleRenderData user_data);
-
-// backend functions
-void ripple_backend_initialize(RippleBackendConfig config);
-RippleBackendConfig ripple_get_default_backend_config();
-
-void ripple_backend_window_begin(u64 id, RippleWindowConfig config);
-void ripple_backend_window_end();
-void ripple_backend_window_close(u64 id);
-void ripple_backend_get_window_size(u32* width, u32* height);
-RippleWindowState ripple_backend_update_window_state(RippleWindowState state, RippleWindowConfig config);
-RippleCursorState ripple_backend_update_cursor_state(RippleCursorState state);
-
-RippleRenderData ripple_backend_render_begin();
-    void ripple_backend_render_window_begin(u64, RippleRenderData);
-        void ripple_backend_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4);
-        void ripple_backend_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image);
-        void ripple_backend_render_text(i32 x, i32 y, s8 text, f32 font_size, RippleColor color);
-        void ripple_backend_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h);
-    void ripple_backend_render_window_end(RippleRenderData);
-void ripple_backend_render_end(RippleRenderData);
 
 #ifdef RIPPLE_IMPLEMENTATION
 #undef RIPPLE_IMPLEMENTATION

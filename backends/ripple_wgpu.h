@@ -27,8 +27,6 @@ typedef struct {
 
 typedef WGPUTextureView RippleImage;
 
-#include "../ripple.h"
-
 const f32 FONT_SIZE = 128.0f;
 const u32 BITMAP_SIZE = 1024;
 
@@ -766,6 +764,14 @@ _Window create_window(u64 id, RippleWindowConfig config)
     return window;
 }
 
+void ripple_backend_get_window_size(u32* width, u32* height)
+{
+    i32 w, h;
+    glfwGetFramebufferSize(_context.current_window->window, &w, &h);
+    if (width) *width = w;
+    if (height) *height = h;
+}
+
 void ripple_backend_window_begin(u64 id, RippleWindowConfig config)
 {
     if (!_context.initialized)
@@ -819,14 +825,6 @@ void ripple_backend_window_close(u64 id)
     _Window* window = mapa_get(_context.windows, &id);
     glfwDestroyWindow(window->window);
     mapa_remove(_context.windows, &id);
-}
-
-void ripple_backend_get_window_size(u32* width, u32* height)
-{
-    i32 w, h;
-    glfwGetFramebufferSize(_context.current_window->window, &w, &h);
-    if (width) *width = w;
-    if (height) *height = h;
 }
 
 RippleWindowState ripple_backend_update_window_state(RippleWindowState state, RippleWindowConfig config)
