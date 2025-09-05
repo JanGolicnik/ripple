@@ -84,11 +84,10 @@ typedef enum {
     SVT_RELATIVE_PARENT = 3,
 } RippleSizingValueType;
 
+#define RIPPLE_FLOAT_PRECISION 25
+
 typedef struct {
-    union{
-        u32 _unsigned_value : 30;
-        i32 _signed_value : 30;
-    };
+    i32 _value : 30;
     RippleSizingValueType _type : 2;
 } RippleSizingValue;
 
@@ -178,13 +177,13 @@ typedef struct {
     RippleElementConfig config;
     RenderedLayout calculated_layout;
 
-    bool update_state;
-
     u32 parent_element;
     u32 n_children;
     u32 last_child;
     u32 next_sibling;
     u32 prev_sibling; // equals parent index if first sibling
+
+    bool update_state;
 } ElementData;
 
 typedef struct Window {
@@ -203,6 +202,7 @@ typedef struct Window {
     struct {
         u64 id;
         u32 index;
+        ElementState* state;
     } current_element;
 
     void* user_data;
@@ -376,9 +376,9 @@ void ripple_render_end(RippleRenderData render_data)
 if (value._type == type)\
     switch(type){\
         case SVT_GROW: var = grow; break;\
-        case SVT_PIXELS: var = value._signed_value; break;\
+        case SVT_PIXELS: var = value._value; break;\
         case SVT_RELATIVE_CHILD: case SVT_RELATIVE_PARENT:\
-            var = (type == SVT_RELATIVE_PARENT ? parent : child) * ((f32)value._unsigned_value / (f32)(2<<14)); break;\
+            var = (type == SVT_RELATIVE_PARENT ? parent : child) * ((f32)value._value / (f32)(2<<RIPPLE_FLOAT_PRECISION)); break;\
     }
 
 #define DIM(arg) (*(element->config.layout.direction ? &(arg).w : &(arg).h))
@@ -519,28 +519,17 @@ static void element_grow_children(Window* window, ElementData* element)
 
 static void update_element_state(Window* window, ElementState* state)
 {
-    if (window->cursor_state.consumed)
-    {
-        state->state.clicked = false;
-        state->state.released = false;
-        state->state.hovered = false;
-    }
-    else
-    {
-        state->state.hovered =
-            window->cursor_state.x >= state->layout.x && window->cursor_state.x < state->layout.x + state->layout.w &&
-            window->cursor_state.y >= state->layout.y && window->cursor_state.y < state->layout.y + state->layout.h;
+    state->state.hovered = !window->cursor_state.consumed && (
+        window->cursor_state.x >= state->layout.x && window->cursor_state.x < state->layout.x + state->layout.w &&
+        window->cursor_state.y >= state->layout.y && window->cursor_state.y < state->layout.y + state->layout.h
+    );
 
-        if (!window->cursor_state.consumed)
-        {
-            state->state.clicked = state->state.hovered && window->cursor_state.left.pressed;
-            state->state.released = state->state.hovered && window->cursor_state.left.released;
-        }
+    state->state.clicked = state->state.hovered && window->cursor_state.left.pressed;
+    state->state.released = state->state.hovered && window->cursor_state.left.released;
 
-        if (state->state.hovered)
-        {
-            window->cursor_state.consumed = true;
-        }
+    if (state->state.hovered)
+    {
+        window->cursor_state.consumed = true;
     }
 
     state->state.is_held      = (window->cursor_state.left.pressed && state->state.clicked) ||
@@ -569,11 +558,14 @@ static void finalize_element(Window* window, ElementData* element)
         finalize_element(window, &window->elements.items[i]);
     }
 
-    ElementState* state = mapa_get(window->elements_states, &element->id);
-    if (state)
+    if (element->update_state)
     {
-        state->layout = element->calculated_layout;
-        update_element_state(window, state);
+        ElementState* state = mapa_get(window->elements_states, &element->id);
+        if (state)
+        {
+            state->layout = element->calculated_layout;
+            update_element_state(window, state);
+        }
     }
 }
 
@@ -640,6 +632,7 @@ void ripple_pop_id(Window* window)
 
     window->current_element.index = element->parent_element;
     window->current_element.id = parent->id;
+    window->current_element.state = nullptr;
 }
 
 void ripple_begin(Allocator* allocator)
@@ -665,12 +658,12 @@ void ripple_end(void)
 
 #endif // RIPPLE_IMPLEMENTATION
 
-
-#ifdef RIPPLE_WIDGETS
-
 // TODO: cache this somehow
 static ElementState* _get_or_insert_current_element_state(Window* window)
 {
+    if (window->current_element.state)
+        return window->current_element.state;
+
     ElementState* state = mapa_get(window->elements_states, &window->current_element.id);
     if (!state)
     {
@@ -682,6 +675,8 @@ static ElementState* _get_or_insert_current_element_state(Window* window)
         state->state.first_render = false;
     }
 
+    window->elements.items[window->current_element.index].update_state = true;
+    window->current_element.state = state;
     state->frame_color = window->frame_color;
     return state;
 }
@@ -701,8 +696,8 @@ static RenderedLayout _get_current_element_rendered_layout(Window* window)
 #define STATE() (_get_current_element_state_state(_ripple_context.current_window))
 #define SHAPE() (_get_current_element_rendered_layout(_ripple_context.current_window))
 
-#define RELATIVE(value, relation) { ._unsigned_value = (u32)((value) * (f32)(2<<14)), relation }
-#define PIXELS(value) { ._signed_value = value, ._type = SVT_PIXELS }
+#define RELATIVE(value, relation) { ._value = (i32)((value) * (f32)(2<<RIPPLE_FLOAT_PRECISION)), relation }
+#define PIXELS(value) { ._value = value, ._type = SVT_PIXELS }
 #define GROW { ._type = SVT_GROW }
 
 #define SURFACE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (ripple_start_window((RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; ripple_finish_window(), LINE_UNIQUE_VAR(_rippleiter)++)
@@ -793,7 +788,5 @@ void render_text(RippleElementConfig config, RenderedLayout layout, void* window
 
 #define RIPPLE_RENDER_BEGIN() ripple_render_begin()
 #define RIPPLE_RENDER_END(_ripple_context) ripple_render_end(_ripple_context)
-
-#endif // RIPPLE_WIDGETS
 
 #endif // RIPPLE_H

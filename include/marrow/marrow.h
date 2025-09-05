@@ -278,40 +278,46 @@ u32 value_to_rgb(f32 value)
     return ((u8)(value * 0xff) << 16) | ((u8)(value * 0xff) << 8) | (u8)(value * 0xff);
 }
 
-u32 hsv_to_rgb(f32 hue, f32 saturation, f32 value) {
-    f32 h = wrap_float(hue, 360.0f);
-    f32 s = clamp(saturation, 0.0f, 1.0f);
-    f32 v = clamp(value, 0.0f, 1.0f);
-
-    f32 r, g, b;
-
-    if (s == 0.f) {
-        r = g = b = v;
-    } else {
-        f32 c = v * s;
-        f32 hp = h / 60.f;
-        f32 x  = c * (1.f - fabsf(fmodf(hp, 2.f) - 1.f));
-        f32 r1=0.f, g1=0.f, b1=0.f;
-
-        if      (0.f <= hp && hp < 1.f) { r1 = c; g1 = x; b1 = 0.f; }
-        else if (1.f <= hp && hp < 2.f) { r1 = x; g1 = c; b1 = 0.f; }
-        else if (2.f <= hp && hp < 3.f) { r1 = 0.f; g1 = c; b1 = x; }
-        else if (3.f <= hp && hp < 4.f) { r1 = 0.f; g1 = x; b1 = c; }
-        else if (4.f <= hp && hp < 5.f) { r1 = x; g1 = 0.f; b1 = c; }
-        else                             { r1 = c; g1 = 0.f; b1 = x; }
-
-        f32 m = v - c;
-        r = r1 + m; g = g1 + m; b = b1 + m;
-    }
-
-    u32 R = (u32)lroundf(fmaxf(0.f, fminf(r, 1.f)) * 255.f);
-    u32 G = (u32)lroundf(fmaxf(0.f, fminf(g, 1.f)) * 255.f);
-    u32 B = (u32)lroundf(fmaxf(0.f, fminf(b, 1.f)) * 255.f);
-
-    return (R << 16) | (G << 8) | B;
+u32 to_byte(f32 x){
+    // x in [0,1], round to nearest and clamp
+    int v = (int)lrintf(x * 255.0f);
+    if (v < 0) v = 0; else if (v > 255) v = 255;
+    return (u32)v;
 }
 
-void rgb_to_hsv(u32 color, f32* hue, f32* saturation, f32* value) {
+typedef struct {
+    f32 hue;
+    f32 saturation;
+    f32 value;
+} HSV;
+
+u32 hsv_to_rgb(HSV hsv)
+{
+    hsv.value = clamp(hsv.value, 0.0f, 1.0f);
+    hsv.saturation = clamp(hsv.saturation, 0.0f, 1.0f);
+    if (!isfinite(hsv.hue)) hsv.hue = 0; // hue irrelevant when S==0 or V==0; pick any
+    hsv.hue = wrap_float(hsv.hue, 360.0f);
+
+    f32 c = hsv.value * hsv.saturation;
+    f32 h6 = hsv.hue / 60.0f;         // 0..6
+    f32 x = c * (1.0f - fabsf(fmodf(h6, 2.0f) - 1.0f));
+    f32 m = hsv.value - c;
+
+    f32 r=0, g=0, b=0;
+    if      (h6 < 1) { r=c; g=x; b=0; }
+    else if (h6 < 2) { r=x; g=c; b=0; }
+    else if (h6 < 3) { r=0; g=c; b=x; }
+    else if (h6 < 4) { r=0; g=x; b=c; }
+    else if (h6 < 5) { r=x; g=0; b=c; }
+    else             { r=c; g=0; b=x; }
+
+    u32 R = to_byte(r + m);
+    u32 G = to_byte(g + m);
+    u32 B = to_byte(b + m);
+    return (R << 16) | (G << 8) | B;   // 0xRRGGBB
+}
+
+HSV rgb_to_hsv(u32 color) {
     f32 r = (f32)((color >> 16) & 0xFF) / 255.f;
     f32 g = (f32)((color >>  8) & 0xFF) / 255.f;
     f32 b = (f32)( color        & 0xFF) / 255.f;
@@ -336,9 +342,7 @@ void rgb_to_hsv(u32 color, f32* hue, f32* saturation, f32* value) {
         H = 60.f * (((r - g) / delta) + 4.f);
     }
 
-    if (hue)        *hue = wrap_float(H, 360.0f);
-    if (saturation) *saturation = clamp(S, 0.0f, 1.0f);
-    if (value)      *value = clamp(V, 0.0f, 1.0f);
+    return (HSV){wrap_float(H, 360.0f), clamp(S, 0.0f, 1.0f), clamp(V, 0.0f, 1.0f)};
 }
 
 #endif // MARROW_H

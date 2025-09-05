@@ -1,7 +1,6 @@
 #include <marrow/marrow.h>
 
 #define RIPPLE_IMPLEMENTATION
-#define RIPPLE_WIDGETS
 #include "ripple.h"
 
 #define CGLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -563,14 +562,79 @@ void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allo
     }
 }
 
-void color_picker(s8 label, bool* open, u32 color)
+bool color_selector(HSV* color)
 {
+    bool is_interacted = false;
+
+    RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .direction = cld_HORIZONTAL ) )
+    {
+        u32 full_color = hsv_to_rgb((HSV){ color->hue, 1.0f, 1.0f });
+        RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(300) ),
+                RECTANGLE( .color1 = {0x0}, .color2 = {0x0}, .color3 = {0xffffff}, .color4 = RIPPLE_RGB(full_color) ) )
+        {
+            if (STATE().is_held)
+            {
+                i32 x = SHAPE().x;
+                i32 y = SHAPE().y;
+                i32 w = SHAPE().w;
+                i32 h = SHAPE().h;
+
+                color->saturation = clamp((f32)(CURSOR().x - x) / w, 0.0f, 1.0f);
+                color->value = clamp(1.0f - ((f32)(CURSOR().y - y) / h), 0.0f, 1.0f);
+            }
+
+            is_interacted |= STATE().hovered;
+
+            RIPPLE( FORM( .width = PIXELS(0), .height = PIXELS(0), .x = RELATIVE(color->saturation, SVT_RELATIVE_PARENT), .y = RELATIVE(1.0f - color->value, SVT_RELATIVE_PARENT) ) )
+            {
+                RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(-5), .y = PIXELS(-5)), RECTANGLE( .color = {0xff0000} ) );
+            }
+        }
+
+        RIPPLE( FORM( .width = PIXELS(16), .height = RELATIVE(1.0f, SVT_RELATIVE_PARENT) ) )
+        {
+            i32 y = SHAPE().y;
+            i32 h = SHAPE().h;
+
+            if (STATE().is_held)
+            {
+                color->hue = clamp((f32)(CURSOR().y - y) / h, 0.0f, 1.0f) * 360.0f;
+            }
+
+            is_interacted |= STATE().hovered;
+
+            const u32 n = 6;
+            for (u32 i = 0; i < n; i++)
+            {
+                u32 color1 = hsv_to_rgb((HSV){((f32)i/n) * 360.0f, 1.0f, 1.0f});
+                u32 color2 = hsv_to_rgb((HSV){((f32)(i+1)/n) * 360.0f, 1.0f, 1.0f});
+                RIPPLE( FORM( .height = RELATIVE(1.0f / n, SVT_RELATIVE_PARENT) ),
+                        RECTANGLE(  .color1 = RIPPLE_RGB(color2),
+                                    .color2 = RIPPLE_RGB(color2),
+                                    .color3 = RIPPLE_RGB(color1),
+                                    .color4 = RIPPLE_RGB(color1)
+                ));
+            }
+
+            RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(3), .y = PIXELS((color->hue / 360.0f) * h - 5)),
+                    RECTANGLE( .color = {0xff0000} ) );
+
+        }
+    }
+
+    return is_interacted;
+}
+
+void color_picker(s8 label, bool* open, HSV* color)
+{
+    u32 rgb_color = hsv_to_rgb(*color);
+
     f32 font_size = 32.0f;
     bool should_close = false;
 
-    RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
+    RIPPLE( FORM( .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
     {
-        RIPPLE( FORM( .width = PIXELS(font_size) ), RECTANGLE( .color = RIPPLE_RGB(color) ) )
+        RIPPLE( FORM( .width = PIXELS(font_size) ), RECTANGLE( .color = RIPPLE_RGB(rgb_color) ) )
         {
             if (CURSOR().left.pressed && !STATE().hovered)
             {
@@ -588,11 +652,9 @@ void color_picker(s8 label, bool* open, u32 color)
 
         if (*open)
         {
-            RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(300), .x = PIXELS(0), .y = PIXELS(-300) ),
-                    RECTANGLE( .color1 = {0x0}, .color2 = {0x0}, .color3 = {0xffffff}, .color4 = RIPPLE_RGB(color) ) )
+            RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .x = PIXELS(0), .y = RELATIVE(-1.0f, SVT_RELATIVE_CHILD)) )
             {
-                if (STATE().hovered)
-                {
+                if (color_selector(color)) {
                     should_close = false;
                 }
             }
@@ -735,7 +797,8 @@ int main(int argc, char* argv[])
             }
 
             static bool color_picker_state = false;
-            color_picker(S8("color pixer"), &color_picker_state, 0x00ff00);
+            static HSV color_picker_color = { 0 };
+            color_picker(S8("color pixer"), &color_picker_state, &color_picker_color);
         }
 
         wgpuQueueWriteBuffer(queue, ctx.shader_data.buffer, 0, &shader_data, sizeof(shader_data));
