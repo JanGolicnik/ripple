@@ -434,134 +434,6 @@ Context create_context(WGPUDevice device, WGPUQueue queue)
     return ctx;
 }
 
-#define STOP_RAMP_BODY(lerp, to_rgb)\
-bool changed = false;\
-u32 stop_w = 10;\
-u32 sorted[n_stops];\
-array_get_sorted_indices(sorted, stops, n_stops, a->t < b->t);\
-RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZONTAL)) {\
-    u32 x = SHAPE().x;\
-    u32 w = SHAPE().w;\
-    f32 t = 0.0f;\
-    for (i32 i = 0; i < (i32)n_stops; i++) {\
-        u32 color = to_rgb(stops[sorted[i]].value);\
-        u32 prev_color = to_rgb(stops[sorted[max(i - 1, 0)]].value);\
-        RIPPLE( FORM( .x = RELATIVE(t, SVT_RELATIVE_PARENT),\
-                      .width = RELATIVE(stops[sorted[i]].t - t + 3.0f / 300.0f, SVT_RELATIVE_PARENT)), \
-            RECTANGLE(\
-                .color1 = {prev_color}, .color3 = {prev_color},\
-                .color2 = {color},      .color4 = {color},\
-            ) );\
-        t = stops[sorted[i]].t;\
-    }\
-    RIPPLE( FORM( .x = RELATIVE(stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT), .width = RELATIVE(1.0f - stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT)),\
-            RECTANGLE( .color = {value_to_rgb(stops[sorted[n_stops - 1]].value)} )\
-    );\
-    changed = STATE().first_render;\
-    CENTERED_VERTICAL(\
-    RIPPLE( FORM( .direction = cld_HORIZONTAL ) ) {\
-        for (u32 i = 0; i < n_stops; i++) {\
-            RIPPLE( FORM( .x = PIXELS(stops[i].t * (w - stop_w)), .width = PIXELS(stop_w), .height = PIXELS(10) ), RECTANGLE( .color = {0xff00ff}) ) {\
-                if (!changed && STATE().is_held) {\
-                    stops[i].t = clamp(((f32)CURSOR().x - (f32)x) / (f32)w, 0.0f, 1.0f);\
-                    changed = true;\
-                }\
-            }\
-        }\
-    }\
-    );\
-}\
-if (!changed) return false;\
-u32 buffer_i = 0;\
-for (u32 i = 0; i < n_stops + 1; i++)\
-{\
-    typeof(*stops) v0 = i == 0 ? (typeof(*stops)){ 0.0f, stops[sorted[0]].value } : stops[sorted[i - 1]];\
-    typeof(*stops) v1 = i == n_stops ? (typeof(*stops)){ 1.0f, stops[sorted[i - 1]].value } : stops[sorted[i]];\
-    i32 n_steps = ceil((f32)buffer_len * (v1.t - v0.t));\
-    for (i32 j = 0; j < n_steps; j++)\
-    {\
-        f32 t = (f32)j / (f32)n_steps;\
-        buffer[buffer_i++] = lerp;\
-    }\
-}\
-return true
-
-typedef struct {
-    f32 t;
-    f32 value;
-} FloatRampStop;
-bool float_ramp(FloatRampStop* stops, u32 n_stops, f32* buffer, u32 buffer_len)
-{
-    STOP_RAMP_BODY(v0.value * (1.0f - t) + v1.value * t, value_to_rgb);
-}
-
-u32 lerp_color(u32 a, u32 b, f32 t)
-{
-    t = clamp(t, 0.0f, 1.0f);
-    f32 t2 = 1.0f - t;
-
-    f32 ar = (f32)((a >> 16) & 0xFF);
-    f32 ag = (f32)((a >>  8) & 0xFF);
-    f32 ab = (f32)(a & 0xFF);
-    f32 br = (f32)((b >> 16) & 0xFF);
-    f32 bg = (f32)((b >>  8) & 0xFF);
-    f32 bb = (f32)(b & 0xFF);
-
-    uint32_t r = min((uint32_t)(ar * t2 + br * t), 0xff);
-    uint32_t g = min((uint32_t)(ag * t2 + bg * t), 0xff);
-    uint32_t bl= min((uint32_t)(ab * t2 + bb * t), 0xff);
-
-    return (0xff << 24) | (bl << 16) | (g << 8) | r;
-}
-
-typedef struct {
-    f32 t;
-    u32 value;
-} ColorRampStop;
-bool color_ramp(ColorRampStop* stops, u32 n_stops, u32* buffer, u32 buffer_len)
-{
-    STOP_RAMP_BODY(lerp_color(v0.value, v1.value, t), (u32));
-    return false;
-}
-
-void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allocator)
-{
-    f32 font_size = 32.0f;
-
-    RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
-    {
-        RIPPLE( FORM( .width = PIXELS(315), .direction = cld_HORIZONTAL ))
-        {
-            f32 range = max - min;
-            f32 t = clamp(( *value - min ) / range, 0.0f, 1.0f);
-            u32 w = SHAPE().w;
-            u32 x = SHAPE().x;
-
-            CENTERED_VERTICAL(
-                RIPPLE( FORM( .width = PIXELS((1.0f - t) * (w - 15)) , .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = { 0 } ) );
-            );
-
-            RIPPLE( FORM( .width = PIXELS(15)), RECTANGLE( .color = { 0xff0000 } ) )
-            {
-                if (STATE().is_held)
-                {
-                    *value = (1.0f - (clamp((f32)CURSOR().x - (f32)x, 0.0f, (f32)w) / (f32)w)) * range + min;
-                }
-            }
-
-            CENTERED_VERTICAL(
-                RIPPLE( FORM( .width = PIXELS(t * (w - 15)), .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = { 0 } ) );
-            );
-        }
-
-        RIPPLE( FORM( .width = PIXELS(5) ) );
-
-        s8 text = format("{}: {.2f}", str_allocator, label, *value);
-        i32 width; ripple_measure_text(text, font_size, &width, nullptr);
-        RIPPLE( FORM( .width = PIXELS(width) ), WORDS( .text = text ));
-    }
-}
-
 bool color_selector(HSV* color)
 {
     bool is_interacted = false;
@@ -625,16 +497,15 @@ bool color_selector(HSV* color)
     return is_interacted;
 }
 
-void color_picker(s8 label, bool* open, HSV* color)
+void color_picker(s8 label, HSV* color)
 {
-    u32 rgb_color = hsv_to_rgb(*color);
-
     f32 font_size = 32.0f;
     bool should_close = false;
 
     RIPPLE( FORM( .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
     {
-        RIPPLE( FORM( .width = PIXELS(font_size) ), RECTANGLE( .color = RIPPLE_RGB(rgb_color) ) )
+        bool* open = &STATE_USER(bool);
+        RIPPLE( FORM( .width = PIXELS(font_size) ), RECTANGLE( .color = RIPPLE_RGB(hsv_to_rgb(*color)) ) )
         {
             if (CURSOR().left.pressed && !STATE().hovered)
             {
@@ -659,16 +530,144 @@ void color_picker(s8 label, bool* open, HSV* color)
                 }
             }
         }
-    }
 
-    if (should_close)
-        *open = false;
+        if (should_close)
+            *open = false;
+    }
+}
+
+#define STOP_RAMP_BODY(lerp, to_rgb, selector)\
+bool changed = false;\
+u32 stop_w = 10;\
+u32 sorted[n_stops];\
+array_get_sorted_indices(sorted, stops, n_stops, a->t < b->t);\
+RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZONTAL)) {\
+    u32 x = SHAPE().x;\
+    u32 w = SHAPE().w;\
+    f32 t = 0.0f;\
+    for (i32 i = 0; i < (i32)n_stops; i++) {\
+        u32 color = to_rgb(stops[sorted[i]].value);\
+        u32 prev_color = to_rgb(stops[sorted[max(i - 1, 0)]].value);\
+        RIPPLE( FORM( .x = RELATIVE(t, SVT_RELATIVE_PARENT),\
+                      .width = RELATIVE(stops[sorted[i]].t - t + 3.0f / 300.0f, SVT_RELATIVE_PARENT)), \
+            RECTANGLE(\
+                .color1 = {prev_color}, .color3 = {prev_color},\
+                .color2 = {color},      .color4 = {color},\
+            ) );\
+        t = stops[sorted[i]].t;\
+    }\
+    RIPPLE( FORM( .x = RELATIVE(stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT), .width = RELATIVE(1.0f - stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT)),\
+            RECTANGLE( .color = {value_to_rgb(stops[sorted[n_stops - 1]].value)} )\
+    );\
+    changed = STATE().first_render;\
+    CENTERED_VERTICAL(\
+    RIPPLE( FORM( .direction = cld_HORIZONTAL ) ) {\
+        for (u32 i = 0; i < n_stops; i++) {\
+            RIPPLE( FORM( .x = PIXELS(stops[i].t * (w - stop_w)), .width = PIXELS(stop_w), .height = PIXELS(10) ), RECTANGLE( .color = {0xff00ff}) ) {\
+                if (!changed && STATE().is_held) {\
+                    stops[i].t = clamp(((f32)CURSOR().x - (f32)x) / (f32)w, 0.0f, 1.0f);\
+                    changed = true;\
+                }\
+            }\
+        }\
+    }\
+    );\
+}\
+if (!changed) return false;\
+u32 buffer_i = 0;\
+for (u32 i = 0; i < n_stops + 1; i++)\
+{\
+    typeof(*stops) v0 = i == 0 ? (typeof(*stops)){ 0.0f, stops[sorted[0]].value } : stops[sorted[i - 1]];\
+    typeof(*stops) v1 = i == n_stops ? (typeof(*stops)){ 1.0f, stops[sorted[i - 1]].value } : stops[sorted[i]];\
+    i32 n_steps = ceil((f32)buffer_len * (v1.t - v0.t));\
+    for (i32 j = 0; j < n_steps; j++)\
+    {\
+        f32 t = (f32)j / (f32)n_steps;\
+        buffer[buffer_i++] = lerp;\
+    }\
+}\
+return true
+
+typedef struct {
+    f32 t;
+    f32 value;
+} FloatRampStop;
+bool float_ramp(FloatRampStop* stops, u32 n_stops, f32* buffer, u32 buffer_len)
+{
+    STOP_RAMP_BODY(v0.value * (1.0f - t) + v1.value * t, value_to_rgb, (void));
+}
+
+u32 lerp_color(u32 a, u32 b, f32 t)
+{
+    t = clamp(t, 0.0f, 1.0f);
+    f32 t2 = 1.0f - t;
+
+    f32 ar = (f32)((a >> 16) & 0xFF);
+    f32 ag = (f32)((a >>  8) & 0xFF);
+    f32 ab = (f32)(a & 0xFF);
+    f32 br = (f32)((b >> 16) & 0xFF);
+    f32 bg = (f32)((b >>  8) & 0xFF);
+    f32 bb = (f32)(b & 0xFF);
+
+    uint32_t r = min((uint32_t)(ar * t2 + br * t), 0xff);
+    uint32_t g = min((uint32_t)(ag * t2 + bg * t), 0xff);
+    uint32_t bl= min((uint32_t)(ab * t2 + bb * t), 0xff);
+
+    return (0xff << 24) | (bl << 16) | (g << 8) | r;
+}
+
+typedef struct {
+    f32 t;
+    u32 value;
+} ColorRampStop;
+bool color_ramp(ColorRampStop* stops, u32 n_stops, u32* buffer, u32 buffer_len)
+{
+    STOP_RAMP_BODY(lerp_color(v0.value, v1.value, t), (u32), color_selector);
+    return false;
+}
+
+void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allocator)
+{
+    f32 font_size = 32.0f;
+
+    RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
+    {
+        RIPPLE( FORM( .width = PIXELS(315), .direction = cld_HORIZONTAL ))
+        {
+            f32 range = max - min;
+            f32 t = clamp(( *value - min ) / range, 0.0f, 1.0f);
+            u32 w = SHAPE().w;
+            u32 x = SHAPE().x;
+
+            CENTERED_VERTICAL(
+                RIPPLE( FORM( .width = PIXELS((1.0f - t) * (w - 15)) , .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = { 0 } ) );
+            );
+
+            RIPPLE( FORM( .width = PIXELS(15)), RECTANGLE( .color = { 0xff0000 } ) )
+            {
+                if (STATE().is_held)
+                {
+                    *value = (1.0f - (clamp((f32)CURSOR().x - (f32)x, 0.0f, (f32)w) / (f32)w)) * range + min;
+                }
+            }
+
+            CENTERED_VERTICAL(
+                RIPPLE( FORM( .width = PIXELS(t * (w - 15)), .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = { 0 } ) );
+            );
+        }
+
+        RIPPLE( FORM( .width = PIXELS(5) ) );
+
+        s8 text = format("{}: {.2f}", str_allocator, label, *value);
+        i32 width; ripple_measure_text(text, font_size, &width, nullptr);
+        RIPPLE( FORM( .width = PIXELS(width) ), WORDS( .text = text ));
+    }
 }
 
 int main(int argc, char* argv[])
 {
-    RippleBackendConfig config = ripple_get_default_backend_config();
-    ripple_backend_initialize(config);
+    RippleBackendRendererConfig config = ripple_backend_renderer_default_config();
+    ripple_initialize(ripple_backend_window_default_config(), config);
 
     WGPUQueue queue = wgpuDeviceGetQueue(config.device);
 
@@ -796,9 +795,8 @@ int main(int argc, char* argv[])
                 );
             }
 
-            static bool color_picker_state = false;
             static HSV color_picker_color = { 0 };
-            color_picker(S8("color pixer"), &color_picker_state, &color_picker_color);
+            color_picker(S8("color pixer"), &color_picker_color);
         }
 
         wgpuQueueWriteBuffer(queue, ctx.shader_data.buffer, 0, &shader_data, sizeof(shader_data));

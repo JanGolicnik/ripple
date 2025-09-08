@@ -69,13 +69,22 @@ typedef struct {
 } RippleWindowConfig;
 
 #define RIPPLE_WGPU 1
-#define RIPPLE_RAYLIB 2
+#define RIPPLE_GLFW 2
+#define RIPPLE_SDL 3
 
-#ifndef RIPPLE_BACKED
-#define RIPPLE_BACKEND RIPPLE_WGPU
+#ifndef RIPPLE_BACKEND
+#define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_GLFW
 #endif // RIPPLE_BACKEND
 
+struct RippleBackendWindow;
+struct RippleBackendWindow* _ripple_get_window_impl(u64 id);
+
+#if (RIPPLE_BACKEND) & RIPPLE_GLFW
+#include "backends/ripple_glfw.h"
+#endif
+#if (RIPPLE_BACKEND) & RIPPLE_WGPU
 #include "backends/ripple_wgpu.h"
+#endif
 
 typedef enum {
     SVT_GROW = 0,
@@ -123,7 +132,7 @@ typedef struct {
 } RippleElementLayoutConfig;
 
 struct RippleElementConfig;
-typedef void (render_func_t)(struct RippleElementConfig, RenderedLayout, void*, RippleRenderData);
+typedef void (render_func_t)(struct RippleBackendWindowRenderer*, struct RippleElementConfig, RenderedLayout, void*, RippleRenderData);
 
 typedef struct RippleElementConfig {
     RippleElementLayoutConfig layout;
@@ -138,12 +147,15 @@ typedef struct RippleElementConfig {
 } RippleElementConfig;
 
 typedef struct {
-    u8 clicked : 1; // left click pressed and hovered
-    u8 released : 1; // left click released and hovered
-    u8 hovered : 1; // as long as cursor is in bounds
-    u8 is_held : 1; // if was clicked and until button is released regardless of hovered
-    u8 is_weak_held : 1; // cancelled when loses hover
-    u8 first_render : 1; // when called after not existing the previous frame
+    struct {
+        u8 _frame_color : 1;
+        u8 clicked : 1; // left click pressed and hovered
+        u8 released : 1; // left click released and hovered
+        u8 hovered : 1; // as long as cursor is in bounds
+        u8 is_held : 1; // if was clicked and until button is released regardless of hovered
+        u8 is_weak_held : 1; // cancelled when loses hover
+        u8 first_render : 1; // when called after not existing the previous frame
+    };
 } RippleElementState;
 
 struct Window;
@@ -167,8 +179,9 @@ void ripple_render_end(RippleRenderData user_data);
 typedef struct {
     RenderedLayout layout;
     RippleElementState state;
-    struct {
-        u8 frame_color : 1;
+    union {
+        u64 user_data;
+        void* user_ptr;
     };
 } ElementState;
 
@@ -206,6 +219,9 @@ typedef struct Window {
     } current_element;
 
     void* user_data;
+
+    RippleBackendWindow window_impl;
+    RippleBackendWindowRenderer window_renderer_impl;
 } Window;
 
 thread_local struct {
@@ -217,15 +233,24 @@ thread_local struct {
     u32 current_frame_color;
 } _ripple_context;
 
+void ripple_initialize(RippleBackendWindowConfig window_config, RippleBackendRendererConfig renderer_config)
+{
+    _ripple_context.frame_allocator = bump_allocator_create();
+
+    // this should use an allocator
+    mapa_init(_ripple_context.windows, mapa_hash_u64, mapa_cmp_bytes, nullptr);
+
+    ripple_backend_window_initialize(window_config);
+    ripple_backend_renderer_initialize(renderer_config);
+
+    _ripple_context.initialized = true;
+}
+
 void ripple_start_window(RippleWindowConfig config)
 {
     if (!_ripple_context.initialized)
     {
-        _ripple_context.frame_allocator = bump_allocator_create();
-
-        mapa_init(_ripple_context.windows, mapa_hash_u64, mapa_cmp_bytes, config.allocator);
-
-        _ripple_context.initialized = true;
+        ripple_initialize(ripple_backend_window_default_config(), ripple_backend_renderer_default_config());
     }
 
     if (!config.frame_allocator)
@@ -238,21 +263,25 @@ void ripple_start_window(RippleWindowConfig config)
     u64 window_id = hash_buf(config.title);
     Window* window = _ripple_context.current_window = mapa_get(_ripple_context.windows, &window_id);
     if (!window)
+    {
         window = _ripple_context.current_window = mapa_insert(_ripple_context.windows, &window_id, (Window){ .id = window_id });
+        window->window_impl = ripple_backend_window_create(window_id, config);
+        window->window_renderer_impl = ripple_backend_window_renderer_create(window_id, config, &window->window_impl);
+    }
 
     window->parent_id = parent_id;
-
     window->config = config;
 
     // update backend and state
     {
-        ripple_backend_window_begin(window_id, config);
+        ripple_backend_window_update(&window->window_impl, config);
 
-        ripple_backend_get_window_size(&window->config.width, &window->config.height);
+        ripple_backend_get_window_size(&window->window_impl, &window->config.width, &window->config.height);
 
-        window->state = ripple_backend_update_window_state(window->state, window->config);
+        window->state = ripple_backend_window_update_state(&window->window_impl, window->state, window->config);
 
-        if (config.is_open) *config.is_open = window->state.is_open;
+        if (config.is_open)
+            *config.is_open = window->state.is_open;
 
         window->cursor_state.left.held |= window->cursor_state.left.pressed;
         window->cursor_state.right.held |= window->cursor_state.right.pressed;
@@ -260,7 +289,7 @@ void ripple_start_window(RippleWindowConfig config)
 
         window->cursor_state.consumed = false;
 
-        window->cursor_state = ripple_backend_update_cursor_state(window->cursor_state);
+        window->cursor_state = ripple_backend_window_update_cursor(&window->window_impl, window->cursor_state);
 
         if (window->cursor_state.left.released) window->cursor_state.left.held = 0;
         if (window->cursor_state.right.released) window->cursor_state.right.held = 0;
@@ -290,9 +319,13 @@ void ripple_start_window(RippleWindowConfig config)
     }
 }
 
+struct RippleBackendWindow* _ripple_get_window_impl(u64 id)
+{
+    return &mapa_get(_ripple_context.windows, &id)->window_impl;
+}
+
 void ripple_finish_window()
 {
-    ripple_backend_window_end();
     _ripple_context.current_window = _ripple_context.current_window->parent_id ?
         mapa_get(_ripple_context.windows, &_ripple_context.current_window->parent_id) :
         nullptr;
@@ -311,20 +344,13 @@ static void update_window(Window* window)
         ElementState* state = mapa_get_at_index(window->elements_states, (u64)element_i);
         if(!state) continue;
 
-        if (state->frame_color != window->frame_color)
+        if (state->state._frame_color != window->frame_color)
         {
             mapa_remove_at_index(window->elements_states, (u64)element_i);
             element_i--;
             continue;
         }
     }
-}
-
-static void close_window(Window* window)
-{
-    ripple_backend_window_close(window->id);
-    vektor_free(window->elements);
-    mapa_free(window->elements_states);
 }
 
 RippleRenderData ripple_render_begin()
@@ -336,7 +362,10 @@ RippleRenderData ripple_render_begin()
 
         if (window->frame_color != _ripple_context.current_frame_color)
         {
-            close_window(window);
+            ripple_backend_window_close(&window->window_impl);
+            vektor_free(window->elements);
+            mapa_free(window->elements_states);
+
             mapa_remove_at_index(_ripple_context.windows, (u64)window_i);
             window_i--;
             continue;
@@ -357,16 +386,23 @@ void ripple_render_end(RippleRenderData render_data)
         Window* window = mapa_get_at_index(_ripple_context.windows, window_i);
         if (!window) continue;
 
-        ripple_backend_render_window_begin(window->id, render_data);
+        ripple_backend_render_window_begin(&window->window_impl, &window->window_renderer_impl, render_data);
         if (window->elements.n_items){
             render_element(window, &window->elements.items[0], window->user_data, render_data);
         }
-        ripple_backend_render_window_end(render_data);
+        ripple_backend_render_window_end(&window->window_renderer_impl, render_data);
     }
 
     bump_allocator_reset(&_ripple_context.frame_allocator);
 
     ripple_backend_render_end(render_data);
+
+    for (u32 window_i = 0; window_i < _ripple_context.windows.size; window_i++)
+    {
+        Window* window = mapa_get_at_index(_ripple_context.windows, window_i);
+        if (!window) continue;
+        ripple_backend_window_present(&window->window_renderer_impl);
+    }
 }
 
 #define _I1 LINE_UNIQUE_VAR(_i)
@@ -573,7 +609,7 @@ static void finalize_element(Window* window, ElementData* element)
 static void render_element(Window* window, ElementData* element, void* window_user_data, RippleRenderData render_data)
 {
     if (element->config.render_func)
-        element->config.render_func(element->config, element->calculated_layout, window_user_data, render_data);
+        element->config.render_func(&window->window_renderer_impl, element->config, element->calculated_layout, window_user_data, render_data);
 
     allocator_free(window->config.frame_allocator, element->config.render_data, element->config.render_data_size);
 
@@ -677,24 +713,15 @@ static ElementState* _get_or_insert_current_element_state(Window* window)
 
     window->elements.items[window->current_element.index].update_state = true;
     window->current_element.state = state;
-    state->frame_color = window->frame_color;
+    state->state._frame_color = window->frame_color;
     return state;
 }
 
-static RippleElementState _get_current_element_state_state(Window* window)
-{
-    ElementState* state = _get_or_insert_current_element_state(window);
-    return state ? state->state : (RippleElementState){ 0 };
-}
-
-static RenderedLayout _get_current_element_rendered_layout(Window* window)
-{
-    ElementState* state = _get_or_insert_current_element_state(window);
-    return state ? state->layout : (RenderedLayout){ 0 };
-}
-
-#define STATE() (_get_current_element_state_state(_ripple_context.current_window))
-#define SHAPE() (_get_current_element_rendered_layout(_ripple_context.current_window))
+// the underlying field is a u64 so dont expect too much
+#define STATE_USER(type) *((type*)&_get_or_insert_current_element_state(_ripple_context.current_window)->user_data)
+#define STATE_PTR() (_get_or_insert_current_element_state(_ripple_context.current_window)->user_ptr)
+#define STATE() (_get_or_insert_current_element_state(_ripple_context.current_window)->state)
+#define SHAPE() (_get_or_insert_current_element_state(_ripple_context.current_window)->layout)
 
 #define RELATIVE(value, relation) { ._value = (i32)((value) * (f32)(2<<RIPPLE_FLOAT_PRECISION)), relation }
 #define PIXELS(value) { ._value = value, ._type = SVT_PIXELS }
@@ -722,14 +749,14 @@ typedef struct {
     RippleColor color4;
 } RippleRectangleConfig;
 
-void render_rectangle(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
+void render_rectangle(RippleBackendWindowRenderer* renderer, RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {
     RippleRectangleConfig rectangle_data = *(RippleRectangleConfig*)config.render_data;
     if (rectangle_data.color.value != 0 || rectangle_data.color.format != 0)
     {
         rectangle_data.color1 = rectangle_data.color2 = rectangle_data.color3 = rectangle_data.color4 = rectangle_data.color;
     }
-    ripple_backend_render_rect(layout.x, layout.y, layout.w, layout.h, rectangle_data.color1, rectangle_data.color2, rectangle_data.color3, rectangle_data.color4);
+    ripple_backend_render_rect(renderer, layout.x, layout.y, layout.w, layout.h, rectangle_data.color1, rectangle_data.color2, rectangle_data.color3, rectangle_data.color4);
 }
 
 #define RECTANGLE(...)\
@@ -741,10 +768,10 @@ typedef struct {
     RippleImage image;
 } RippleImageConfig;
 
-void render_image(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
+void render_image(RippleBackendWindowRenderer* renderer, RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {
     RippleImageConfig image_data = *(RippleImageConfig*)config.render_data;
-    ripple_backend_render_image(layout.x, layout.y, layout.w, layout.h, image_data.image);
+    ripple_backend_render_image(renderer, layout.x, layout.y, layout.w, layout.h, image_data.image);
 }
 
 #define IMAGE(...)\
@@ -757,10 +784,10 @@ typedef struct {
     s8 text;
 } RippleTextConfig;
 
-void render_text(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
+void render_text(RippleBackendWindowRenderer* renderer, RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {
     RippleTextConfig text_data = *(RippleTextConfig*)config.render_data;
-    ripple_backend_render_text(layout.x, layout.y, text_data.text, layout.h, text_data.color);
+    ripple_backend_render_text(renderer, layout.x, layout.y, text_data.text, layout.h, text_data.color);
 }
 
 #ifndef WORDS
