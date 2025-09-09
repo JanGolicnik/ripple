@@ -1,7 +1,12 @@
 #ifndef RIPPLE_WGPU_H
 #define RIPPLE_WGPU_H
 
+#if (RIPPLE_BACKEND) & RIPPLE_GLFW
 #include <glfw3webgpu.h>
+#endif // RIPPLE_GLFW
+#if (RIPPLE_BACKEND) & RIPPLE_SDL
+#include <sdl2webgpu.h>
+#endif // RIPPLE_SDL
 
 #ifndef STB_TRUETYPE_IMPLEMENTATION
 #define STB_TRUETYPE_IMPLEMENTATION
@@ -625,7 +630,13 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
 RippleBackendWindowRenderer ripple_backend_window_renderer_create(u64 id, RippleWindowConfig config, const RippleBackendWindow* window)
 {
     RippleBackendWindowRenderer renderer = { 0 };
-    renderer.surface = glfwGetWGPUSurface(_context.config.instance, window->window);
+    renderer.surface =
+#if (RIPPLE_BACKEND) & RIPPLE_GLFW
+        glfwGetWGPUSurface(_context.config.instance, window->window);
+#endif // RIPPLE_GLFW
+#if (RIPPLE_BACKEND) & RIPPLE_SDL
+        SDL_GetWGPUSurface(_context.config.instance, window->window);
+#endif // RIPPLE_SDL
     renderer.surface_format = wgpuSurfaceGetPreferredFormat(renderer.surface, _context.config.adapter);
 
     renderer.uniform_buffer = wgpuDeviceCreateBuffer(_context.config.device, &(WGPUBufferDescriptor){
@@ -658,13 +669,12 @@ RippleRenderData ripple_backend_render_begin()
 
 void ripple_backend_render_window_begin(RippleBackendWindow* window, RippleBackendWindowRenderer* renderer, RippleRenderData render_data)
 {
-    unused render_data;
+    (void) render_data;
 
     if (window->resized)
     {
-        u32 w, h; ripple_backend_get_window_size(window, &w, &h);
-        renderer->shader_data.resolution[0] = w;
-        renderer->shader_data.resolution[1] = h;
+        renderer->shader_data.resolution[0] = window->config.width;
+        renderer->shader_data.resolution[1] = window->config.height;
         configure_surface(_context.config.device, renderer->surface, renderer->surface_format, renderer->shader_data.resolution[0], renderer->shader_data.resolution[1]);
         window->resized = false;
     }

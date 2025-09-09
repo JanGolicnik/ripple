@@ -115,7 +115,7 @@ void _internal_mapa_grow(_MAPA2* mapa, u32 new_size, u32 key_size, u32 v_size, u
 }
 
 thread_local u64 _mapa_tmp_index = -1;
-#define mapa_insert(m, key_ptr, _value) ( \
+#define mapa_insert(m, key_ptr, _value)(void*)( \
     m.n_entries >= m.size * 0.55 ? \
         _internal_mapa_grow((void*)&m, m.size * 2 + 1, sizeof((m).entries[0]._v.key), sizeof((m).entries[0]._v), sizeof((m).entries[0])) : \
             (void)0, \

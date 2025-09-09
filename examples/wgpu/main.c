@@ -1,6 +1,7 @@
 #include <marrow/marrow.h>
 
 #define RIPPLE_IMPLEMENTATION
+#define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_SDL
 #include "ripple.h"
 
 #define CGLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -658,7 +659,7 @@ void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allo
 
         RIPPLE( FORM( .width = PIXELS(5) ) );
 
-        s8 text = format("{}: {.2f}", str_allocator, label, *value);
+        s8 text = marrow_format("{}: {.2f}", str_allocator, label, *value);
         i32 width; ripple_measure_text(text, font_size, &width, nullptr);
         RIPPLE( FORM( .width = PIXELS(width) ), WORDS( .text = text ));
     }
@@ -672,7 +673,7 @@ int main(int argc, char* argv[])
     WGPUQueue queue = wgpuDeviceGetQueue(config.device);
 
     Context ctx = create_context(config.device, queue);
-    unused ctx;
+    (void) ctx;
 
     bool main_is_open = true;
 
@@ -710,7 +711,7 @@ int main(int argc, char* argv[])
     f32 zoom = 5.0f;
 
     while (main_is_open) {
-        f32 time = shader_data.time = glfwGetTime();
+        f32 time = shader_data.time = (f32)SDL_GetTicks() / 1000.0f;
         f32 dt = shader_data.time - prev_time;
         if ((dt_accum += dt) > 1.0f)
         {
@@ -748,7 +749,7 @@ int main(int argc, char* argv[])
         if (debug_window_open)
         SURFACE( .title = S8("debug"), .width = 400, .height = 400, .is_open = &debug_window_open )
         {
-            s8 text = format("fps rn is: {.2f}", &str_allocator, 1.0f / (dt_accum / dt_samples));
+            s8 text = marrow_format("fps rn is: {.2f}", &str_allocator, 1.0f / (dt_accum / dt_samples));
             i32 w, h; ripple_measure_text(text, 32.0f, &w, &h);
             RIPPLE( FORM( .width = PIXELS(w), .height = PIXELS(h) ), WORDS( .text = text ));
 

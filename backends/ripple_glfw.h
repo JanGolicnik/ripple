@@ -45,7 +45,7 @@ void ripple_backend_window_initialize(RippleBackendWindowConfig config)
 
 void mouse_button_callback(GLFWwindow* glfw_window, i32 button, i32 action, i32 mods)
 {
-    unused mods;
+    (void) mods;
 
     u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
     RippleBackendWindow* window = _ripple_get_window_impl(window_id);
@@ -84,7 +84,7 @@ void window_pos_callback(GLFWwindow* glfw_window, i32 x, i32 y)
 
 void on_window_resized(GLFWwindow* glfw_window, i32 w, i32 h)
 {
-    unused w; unused h;
+    (void) w; (void) h;
 
     u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
     RippleBackendWindow* window = _ripple_get_window_impl(window_id);
@@ -122,74 +122,71 @@ RippleBackendWindow ripple_backend_window_create(u64 id, RippleWindowConfig conf
     return window;
 }
 
-void ripple_backend_get_window_size(RippleBackendWindow* window, u32* width, u32* height)
+void ripple_backend_window_update(RippleBackendWindow* window, RippleWindowConfig* config, RippleWindowState* window_state, RippleCursorState* cursor_state)
 {
-    i32 w, h;
-    glfwGetFramebufferSize(window->window, &w, &h);
-    if (width) *width = w;
-    if (height) *height = h;
-}
+    glfwPollEvents();
 
-void ripple_backend_window_update(RippleBackendWindow* window, RippleWindowConfig config)
-{
-    if ((config.x && window->prev_config.x != *config.x) ||
-        (config.y && window->prev_config.y != *config.y))
+    if ((config->x && window->prev_config.x != *config->x) ||
+        (config->y && window->prev_config.y != *config->y))
     {
-        glfwSetWindowPos(window->window, *config.x, *config.y);
+        glfwSetWindowPos(window->window, *config->x, *config->y);
+        if (config->x) window->prev_config.x = *config->x;
+        if (config->y) window->prev_config.y = *config->y;
     }
 
-    bool width_changed = window->config.width != config.width;
-    bool height_changed = window->config.height != config.height;
+    bool width_changed = window->config.width != config->width;
+    bool height_changed = window->config.height != config->height;
     if (width_changed && height_changed)
     {
-        glfwSetWindowSize(window->window, config.width, config.height);
+        glfwSetWindowSize(window->window, config->width, config->height);
     }
     else if (width_changed)
     {
-        u32 h; ripple_backend_get_window_size(window, nullptr, &h);
-        glfwSetWindowSize(window->window, config.width, h);
+        i32 h; glfwGetFramebufferSize(window->window, nullptr, &h);
+        glfwSetWindowSize(window->window, config->width, h);
     }
     else if (height_changed)
     {
-        u32 w; ripple_backend_get_window_size(window, &w, nullptr);
-        glfwSetWindowSize(window->window, w, config.height);
+        i32 w; glfwGetFramebufferSize(window->window, &w, nullptr);
+        glfwSetWindowSize(window->window, w, config->height);
     }
 
-    window->config = config;
+    { // config
+        i32 w, h;
+        glfwGetFramebufferSize(window->window, &w, &h);
+        config->width = w;
+        config->height = h;
+    }
+
+    { // window
+        window_state->is_open = !glfwWindowShouldClose(window->window);
+    }
+
+    { // cursor
+        double x, y; glfwGetCursorPos(window->window, &x, &y);
+        cursor_state->x = (i32)x;
+        cursor_state->y = (i32)y;
+        cursor_state->left.pressed = window->left_pressed;
+        cursor_state->right.pressed = window->right_pressed;
+        cursor_state->middle.pressed = window->middle_pressed;
+        cursor_state->left.released = window->left_released;
+        cursor_state->right.released = window->right_released;
+        cursor_state->middle.released = window->middle_released;
+
+        window->left_pressed = false;
+        window->right_pressed = false;
+        window->middle_pressed = false;
+        window->left_released = false;
+        window->right_released = false;
+        window->middle_released = false;
+    }
+
+    window->config = *config;
 }
 
 void ripple_backend_window_close(RippleBackendWindow* window)
 {
     glfwDestroyWindow(window->window);
-}
-
-RippleWindowState ripple_backend_window_update_state(RippleBackendWindow* window, RippleWindowState state, RippleWindowConfig config)
-{
-    state.is_open = !glfwWindowShouldClose(window->window);
-    glfwPollEvents();
-    return state;
-}
-
-RippleCursorState ripple_backend_window_update_cursor(RippleBackendWindow* window, RippleCursorState state)
-{
-    double x, y; glfwGetCursorPos(window->window, &x, &y);
-    state.x = (i32)x;
-    state.y = (i32)y;
-    state.left.pressed = window->left_pressed;
-    state.right.pressed = window->right_pressed;
-    state.middle.pressed = window->middle_pressed;
-    state.left.released = window->left_released;
-    state.right.released = window->right_released;
-    state.middle.released = window->middle_released;
-
-    window->left_pressed = false;
-    window->right_pressed = false;
-    window->middle_pressed = false;
-    window->left_released = false;
-    window->right_released = false;
-    window->middle_released = false;
-
-    return state;
 }
 
 #endif // RIPPLE_GLFW_IMPLEMENTATION

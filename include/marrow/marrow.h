@@ -61,9 +61,9 @@ const i64 I64_MAX =  (i64) ((1ull << 63) - 1);
 #define loop while(true)
 #endif // loop
 
-#ifndef unused
-#define unused (void)
-#endif //unused
+#ifndef marrow_unused
+#define marrow_unused (void)
+#endif // marrow_unused
 
 #ifndef alignof
 #define alignof _Alignof
@@ -142,16 +142,16 @@ typedef struct {
 
 #else // MARROW_NO_PRINTCCY
 
-#ifndef format
+#ifndef marrow_format
 thread_local s8 _format_buf;
-#define format(f, allocator, ...)\
+#define marrow_format(f, allocator, ...)\
 (\
     _format_buf.size = print(0, 0, f, __VA_ARGS__),\
     _format_buf.ptr = allocator_alloc((Allocator*)allocator, _format_buf.size + 1, 1),\
     (void)print((char*)_format_buf.ptr, _format_buf.size, f, __VA_ARGS__),\
     _format_buf\
 )
-#endif // format
+#endif // marrow_format
 
 #ifndef debug
 #define debug(f, ...) do { printfb(stderr, debug_color "[DEBUG]" text_color " {} on line {}: \x1b[0m" f "\n", __FILE__, __LINE__ ,##__VA_ARGS__); push_stream(stderr); } while(0)

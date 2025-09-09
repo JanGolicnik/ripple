@@ -68,9 +68,9 @@ typedef struct {
     };
 } RippleWindowConfig;
 
-#define RIPPLE_WGPU 1
-#define RIPPLE_GLFW 2
-#define RIPPLE_SDL 3
+#define RIPPLE_WGPU 1 << 0
+#define RIPPLE_GLFW 1 << 1
+#define RIPPLE_SDL  1 << 2
 
 #ifndef RIPPLE_BACKEND
 #define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_GLFW
@@ -81,6 +81,9 @@ struct RippleBackendWindow* _ripple_get_window_impl(u64 id);
 
 #if (RIPPLE_BACKEND) & RIPPLE_GLFW
 #include "backends/ripple_glfw.h"
+#endif
+#if (RIPPLE_BACKEND) & RIPPLE_SDL
+#include "backends/ripple_sdl.h"
 #endif
 #if (RIPPLE_BACKEND) & RIPPLE_WGPU
 #include "backends/ripple_wgpu.h"
@@ -264,9 +267,10 @@ void ripple_start_window(RippleWindowConfig config)
     Window* window = _ripple_context.current_window = mapa_get(_ripple_context.windows, &window_id);
     if (!window)
     {
-        window = _ripple_context.current_window = mapa_insert(_ripple_context.windows, &window_id, (Window){ .id = window_id });
-        window->window_impl = ripple_backend_window_create(window_id, config);
-        window->window_renderer_impl = ripple_backend_window_renderer_create(window_id, config, &window->window_impl);
+        RippleBackendWindow window_impl = ripple_backend_window_create(window_id, config);
+        RippleBackendWindowRenderer window_renderer_impl = ripple_backend_window_renderer_create(window_id, config, &window_impl);
+        window = _ripple_context.current_window =
+            mapa_insert(_ripple_context.windows, &window_id, ((Window){ .id = window_id, .window_impl = window_impl, .window_renderer_impl = window_renderer_impl }));
     }
 
     window->parent_id = parent_id;
@@ -274,22 +278,16 @@ void ripple_start_window(RippleWindowConfig config)
 
     // update backend and state
     {
-        ripple_backend_window_update(&window->window_impl, config);
-
-        ripple_backend_get_window_size(&window->window_impl, &window->config.width, &window->config.height);
-
-        window->state = ripple_backend_window_update_state(&window->window_impl, window->state, window->config);
-
-        if (config.is_open)
-            *config.is_open = window->state.is_open;
-
         window->cursor_state.left.held |= window->cursor_state.left.pressed;
         window->cursor_state.right.held |= window->cursor_state.right.pressed;
         window->cursor_state.middle.held |= window->cursor_state.middle.pressed;
 
         window->cursor_state.consumed = false;
 
-        window->cursor_state = ripple_backend_window_update_cursor(&window->window_impl, window->cursor_state);
+        ripple_backend_window_update(&window->window_impl, &config, &window->state, &window->cursor_state);
+
+        if (config.is_open)
+            *config.is_open = window->state.is_open;
 
         if (window->cursor_state.left.released) window->cursor_state.left.held = 0;
         if (window->cursor_state.right.released) window->cursor_state.right.held = 0;
