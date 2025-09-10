@@ -673,8 +673,9 @@ void ripple_backend_render_window_begin(RippleBackendWindow* window, RippleBacke
 
     if (window->resized)
     {
-        renderer->shader_data.resolution[0] = window->config.width;
-        renderer->shader_data.resolution[1] = window->config.height;
+        debug("window->config.width: {}", window->config.width);
+        renderer->shader_data.resolution[0] = window->width;
+        renderer->shader_data.resolution[1] = window->height;
         configure_surface(_context.config.device, renderer->surface, renderer->surface_format, renderer->shader_data.resolution[0], renderer->shader_data.resolution[1]);
         window->resized = false;
     }

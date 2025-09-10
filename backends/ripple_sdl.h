@@ -20,6 +20,11 @@ typedef struct RippleBackendWindow {
     } mouse;
 
     struct {
+        i32 width;
+        i32 height;
+    };
+
+    struct {
         i32 x;
         i32 y;
     } prev_config;
@@ -83,9 +88,6 @@ RippleBackendWindow ripple_backend_window_create(u64 id, RippleWindowConfig conf
 {
     RippleBackendWindow window = (RippleBackendWindow){ .resized = true, .config = config };
 
-    u32 flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_RESIZABLE;
-    if (config.not_resizable) flags &= ~SDL_WINDOW_RESIZABLE;
-
     char null_terminated_title[config.title.size + 1];
     buf_copy(null_terminated_title, config.title.ptr, config.title.size);
 
@@ -94,7 +96,7 @@ RippleBackendWindow ripple_backend_window_create(u64 id, RippleWindowConfig conf
         config.set_position ? (u32)*config.x : SDL_WINDOWPOS_CENTERED,
         config.set_position ? (u32)*config.y : SDL_WINDOWPOS_CENTERED,
         config.width, config.height,
-        flags
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALLOW_HIGHDPI
     );
 
     if (!window.window)
@@ -108,6 +110,9 @@ RippleBackendWindow ripple_backend_window_create(u64 id, RippleWindowConfig conf
 
     u32 real_id = SDL_GetWindowID(window.window);
     mapa_insert(_ripple_window_context.windows, &real_id, id);
+
+    SDL_SetWindowBordered(window.window, SDL_FALSE);
+    SDL_SetWindowResizable(window.window, SDL_TRUE);
 
     return window;
 }
@@ -135,7 +140,9 @@ void ripple_backend_poll_events()
     while (SDL_PollEvent(&e))
     {
         u32 window_id = ripple_backend_event_window_id(&e);
-        RippleBackendWindow* window = _ripple_get_window_impl(*mapa_get(_ripple_window_context.windows, &window_id));
+        u64* id = mapa_get(_ripple_window_context.windows, &window_id);
+        if (!id) continue;
+        RippleBackendWindow* window = _ripple_get_window_impl(*id);
         switch (e.type)
         {
             case SDL_WINDOWEVENT:
@@ -178,10 +185,9 @@ void ripple_backend_window_update(RippleBackendWindow* window, RippleWindowConfi
         if (config->y) window->prev_config.y = *config->y;
     }
 
-    i32 w, h;
-    SDL_GetWindowSize(window->window, &w, &h);
+    SDL_GetWindowSize(window->window, &window->width, &window->height);
 
-    bool width_changed = window->config.width != config->width;
+    bool width_changed  = window->config.width  != config->width;
     bool height_changed = window->config.height != config->height;
     if (width_changed && height_changed)
     {
@@ -189,17 +195,18 @@ void ripple_backend_window_update(RippleBackendWindow* window, RippleWindowConfi
     }
     else if (width_changed)
     {
-        SDL_SetWindowSize(window->window, config->width, h);
+        SDL_SetWindowSize(window->window, config->width, window->height);
     }
     else if (height_changed)
     {
-        SDL_SetWindowSize(window->window, w, config->height);
+        SDL_SetWindowSize(window->window, window->width, config->height);
     }
 
+    window->config = *config;
+
     { // config
-        SDL_GetWindowSize(window->window, &w, &h);
-        config->width = w;
-        config->height = h;
+        config->width = window->width;
+        config->height = window->height;
     }
 
     { // window
@@ -223,8 +230,6 @@ void ripple_backend_window_update(RippleBackendWindow* window, RippleWindowConfi
         window->right_released = false;
         window->middle_released = false;
     }
-
-    window->config = *config;
 }
 
 void ripple_backend_window_close(RippleBackendWindow* window)

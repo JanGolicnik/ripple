@@ -15,6 +15,11 @@ typedef struct RippleBackendWindow {
     RippleWindowConfig config;
 
     struct {
+        i32 width;
+        i32 height;
+    };
+
+    struct {
         i32 x;
         i32 y;
     } prev_config;
@@ -134,6 +139,8 @@ void ripple_backend_window_update(RippleBackendWindow* window, RippleWindowConfi
         if (config->y) window->prev_config.y = *config->y;
     }
 
+    glfwGetFramebufferSize(window->window, &window->width, &window->height);
+
     bool width_changed = window->config.width != config->width;
     bool height_changed = window->config.height != config->height;
     if (width_changed && height_changed)
@@ -142,20 +149,18 @@ void ripple_backend_window_update(RippleBackendWindow* window, RippleWindowConfi
     }
     else if (width_changed)
     {
-        i32 h; glfwGetFramebufferSize(window->window, nullptr, &h);
-        glfwSetWindowSize(window->window, config->width, h);
+        glfwSetWindowSize(window->window, config->width, window->height);
     }
     else if (height_changed)
     {
-        i32 w; glfwGetFramebufferSize(window->window, &w, nullptr);
-        glfwSetWindowSize(window->window, w, config->height);
+        glfwSetWindowSize(window->window, window->width, config->height);
     }
 
+    window->config = *config;
+
     { // config
-        i32 w, h;
-        glfwGetFramebufferSize(window->window, &w, &h);
-        config->width = w;
-        config->height = h;
+        config->width = window->width;
+        config->height = window->height;
     }
 
     { // window
@@ -180,8 +185,6 @@ void ripple_backend_window_update(RippleBackendWindow* window, RippleWindowConfi
         window->right_released = false;
         window->middle_released = false;
     }
-
-    window->config = *config;
 }
 
 void ripple_backend_window_close(RippleBackendWindow* window)

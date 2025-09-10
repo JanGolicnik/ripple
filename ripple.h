@@ -284,8 +284,11 @@ void ripple_start_window(RippleWindowConfig config)
 
         window->cursor_state.consumed = false;
 
-        ripple_backend_window_update(&window->window_impl, &config, &window->state, &window->cursor_state);
-
+        ripple_backend_window_update(&window->window_impl, &window->config, &window->state, &window->cursor_state);
+        if (window->window_impl.resized)
+        {
+            debug("width: {}", window->config.width);
+        }
         if (config.is_open)
             *config.is_open = window->state.is_open;
 

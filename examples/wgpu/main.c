@@ -1,7 +1,7 @@
 #include <marrow/marrow.h>
 
 #define RIPPLE_IMPLEMENTATION
-#define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_SDL
+#define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_GLFW
 #include "ripple.h"
 
 #define CGLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -711,7 +711,7 @@ int main(int argc, char* argv[])
     f32 zoom = 5.0f;
 
     while (main_is_open) {
-        f32 time = shader_data.time = (f32)SDL_GetTicks() / 1000.0f;
+        f32 time = shader_data.time = glfwGetTime();//(f32)SDL_GetTicks() / 1000.0f;
         f32 dt = shader_data.time - prev_time;
         if ((dt_accum += dt) > 1.0f)
         {
