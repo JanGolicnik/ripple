@@ -200,12 +200,17 @@ void buf_set(void* dst, u8 value, usize len)
 #define LINE_UNIQUE_I LINE_UNIQUE_VAR(i)
 #endif //LINE_UNIQUE_VAR
 
+
+#ifndef for_each_n
+#define for_each_n(el, ptr, n) u32 LINE_UNIQUE_I = 0; for(typeof(*(ptr))* el = &ptr[LINE_UNIQUE_I]; LINE_UNIQUE_I < n; LINE_UNIQUE_I++, el = &ptr[LINE_UNIQUE_I])
+#endif // for_each_n
+
 #ifndef for_each
-#define for_each(el, ptr, n) u32 LINE_UNIQUE_I = 0; for(typeof(*(ptr))* el = &ptr[LINE_UNIQUE_I]; LINE_UNIQUE_I < n; LINE_UNIQUE_I++, el = &ptr[LINE_UNIQUE_I])
+#define for_each(el, ptr) u32 LINE_UNIQUE_I = 0; for(typeof(*(ptr))* el = &ptr[LINE_UNIQUE_I]; LINE_UNIQUE_I < array_len(ptr); LINE_UNIQUE_I++, el = &ptr[LINE_UNIQUE_I])
 #endif // for_each
 
 #ifndef for_each_i
-#define for_each_i(el, ptr, n, i) for(u32 i = 0, LINE_UNIQUE_I = 1; i < n; i++, LINE_UNIQUE_I = 1) for(typeof(*(ptr)) *el = &ptr[i]; LINE_UNIQUE_I ; LINE_UNIQUE_I = 0)
+#define for_each_i(el, ptr, i) for(u32 i = 0, LINE_UNIQUE_I = 1; i < array_len(ptr); i++, LINE_UNIQUE_I = 1) for(typeof(*(ptr)) *el = &ptr[i]; LINE_UNIQUE_I ; LINE_UNIQUE_I = 0)
 #endif // for_each_i
 
 u64 hash_buf(s8 buf)

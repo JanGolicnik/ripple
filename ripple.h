@@ -61,6 +61,8 @@ typedef struct {
     u32 width;
     u32 height;
 
+    RippleColor clear_color;
+
     struct {
         bool not_resizable : 1;
         bool hide_title : 1;
@@ -130,6 +132,7 @@ typedef struct {
     RippleSizingValue max_height;
     struct {
         bool fixed : 1;
+        bool keep_inside : 1;
         RippleChildLayoutDirection direction : 1;
     };
 } RippleElementLayoutConfig;
@@ -208,6 +211,7 @@ typedef struct Window {
     RippleWindowConfig config;
     RippleWindowState state;
     RippleCursorState cursor_state;
+    RippleCursorState prev_cursor_state;
 
     struct {
         u8 frame_color : 1;
@@ -278,6 +282,8 @@ void ripple_start_window(RippleWindowConfig config)
 
     // update backend and state
     {
+        window->prev_cursor_state = window->cursor_state;
+
         window->cursor_state.left.held |= window->cursor_state.left.pressed;
         window->cursor_state.right.held |= window->cursor_state.right.pressed;
         window->cursor_state.middle.held |= window->cursor_state.middle.pressed;
@@ -391,7 +397,7 @@ void ripple_render_end(RippleRenderData render_data)
         if (window->elements.n_items){
             render_element(window, &window->elements.items[0], window->user_data, render_data);
         }
-        ripple_backend_render_window_end(&window->window_renderer_impl, render_data);
+        ripple_backend_render_window_end(&window->window_renderer_impl, render_data, window->config.clear_color);
     }
 
     bump_allocator_reset(&_ripple_context.frame_allocator);
@@ -584,6 +590,12 @@ static void finalize_element(Window* window, ElementData* element)
 
         child->calculated_layout.w = clamp(child->calculated_layout.w, child->calculated_layout.min_w, child->calculated_layout.max_w);
         child->calculated_layout.h = clamp(child->calculated_layout.h, child->calculated_layout.min_h, child->calculated_layout.max_h);
+
+        if (element->config.layout.keep_inside)
+        {
+            element->calculated_layout.x = clamp(element->calculated_layout.x, 0, (i32)window->config.width - element->calculated_layout.w);
+            element->calculated_layout.y = clamp(element->calculated_layout.y, 0, (i32)window->config.height - element->calculated_layout.h);
+        }
     }
 
     element_grow_children(window, element);
@@ -602,6 +614,10 @@ static void finalize_element(Window* window, ElementData* element)
         {
             state->layout = element->calculated_layout;
             update_element_state(window, state);
+            if (state->state.released)
+            {
+                debug("released element at: {} {} with size: {} {}", element->calculated_layout.x, element->calculated_layout.y, element->calculated_layout.w, element->calculated_layout.h);
+            }
         }
     }
 }
@@ -636,6 +652,7 @@ void ripple_push_id(Window* window, u64 id)
         .id = window->current_element.id
     });
     window->current_element.index = window->elements.n_items - 1;
+    window->current_element.state = nullptr;
 }
 
 void ripple_submit_element(Window* window, RippleElementConfig config)
@@ -669,7 +686,6 @@ void ripple_pop_id(Window* window)
 
     window->current_element.index = element->parent_element;
     window->current_element.id = parent->id;
-    window->current_element.state = nullptr;
 }
 
 void ripple_begin(Allocator* allocator)
@@ -737,7 +753,7 @@ static ElementState* _get_or_insert_current_element_state(Window* window)
 #define OPEN_THE_VOID(allocator) ripple_begin(allocator)
 #define CLOSE_THE_VOID() ripple_end()
 
-#define CURSOR() (_ripple_context.current_window->cursor_state)
+#define CURSOR() (_ripple_context.current_window->prev_cursor_state)
 
 #define RIPPLE_RGB(v) (RippleColor){ .format = RCF_RGB, .value = v }
 #define RIPPLE_RGBA(v) (RippleColor){ .format = RCF_RGBA, .value = v }

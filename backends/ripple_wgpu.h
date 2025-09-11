@@ -695,7 +695,25 @@ void ripple_backend_render_window_begin(RippleBackendWindow* window, RippleBacke
     });
 }
 
-void ripple_backend_render_window_end(RippleBackendWindowRenderer* window, RippleRenderData render_data)
+static void _ripple_backend_color_to_color(RippleColor color, f32 out_color[4])
+{
+    if (color.format == RCF_RGB)
+    {
+        out_color[0] = (f32)((color.value >> 16) & 0xff) / 255.0f;
+        out_color[1] = (f32)((color.value >> 8) & 0xff) / 255.0f;
+        out_color[2] = (f32)(color.value & 0xff) / 255.0f;
+        out_color[3] = 1.0f;
+    }
+    else
+    {
+        out_color[0] = (f32)((color.value >> 24) & 0xff) / 255.0f;
+        out_color[1] = (f32)((color.value >> 16) & 0xff) / 255.0f;
+        out_color[2] = (f32)((color.value >> 8) & 0xff) / 255.0f;
+        out_color[3] = (f32)(color.value & 0xff) / 255.0f;
+    }
+}
+
+void ripple_backend_render_window_end(RippleBackendWindowRenderer* window, RippleRenderData render_data, RippleColor clear_color)
 {
     if (!window->instance_buffer ||
         window->instance_buffer_size < window->instances.size)
@@ -731,13 +749,14 @@ void ripple_backend_render_window_end(RippleBackendWindowRenderer* window, Rippl
             .aspect = WGPUTextureAspect_All,
         });
 
+    f32 clear_color_f32[4]; _ripple_backend_color_to_color(clear_color, clear_color_f32);
     WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass(render_data.encoder, &(WGPURenderPassDescriptor){
             .colorAttachmentCount = 1,
             .colorAttachments = &(WGPURenderPassColorAttachment){
                 .view = window->surface_texture_view,
                 .loadOp = WGPULoadOp_Clear,
                 .storeOp = WGPUStoreOp_Store,
-                .clearValue = (WGPUColor){ 1.0f, 0.7f, 0.4f, 1.0f },
+                .clearValue = (WGPUColor){ clear_color_f32[0], clear_color_f32[1], clear_color_f32[2], clear_color_f32[3] },
             },
             .depthStencilAttachment = nullptr
         });
@@ -801,24 +820,6 @@ void ripple_backend_window_present(RippleBackendWindowRenderer* renderer)
     wgpuSurfacePresent(renderer->surface);
     wgpuTextureViewRelease(renderer->surface_texture_view);
     wgpuTextureRelease(renderer->surface_texture.texture);
-}
-
-static void _ripple_backend_color_to_color(RippleColor color, f32 out_color[4])
-{
-    if (color.format == RCF_RGB)
-    {
-        out_color[0] = (f32)((color.value >> 16) & 0xff) / 255.0f;
-        out_color[1] = (f32)((color.value >> 8) & 0xff) / 255.0f;
-        out_color[2] = (f32)(color.value & 0xff) / 255.0f;
-        out_color[3] = 1.0f;
-    }
-    else
-    {
-        out_color[0] = (f32)((color.value >> 24) & 0xff) / 255.0f;
-        out_color[1] = (f32)((color.value >> 16) & 0xff) / 255.0f;
-        out_color[2] = (f32)((color.value >> 8) & 0xff) / 255.0f;
-        out_color[3] = (f32)(color.value & 0xff) / 255.0f;
-    }
 }
 
 void ripple_backend_render_rect(RippleBackendWindowRenderer* window, i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4)

@@ -7,6 +7,13 @@
 #define CGLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <cglm/struct.h>
 
+RippleColor dark = { 0x222831 };
+RippleColor dark2 = { 0x393E46 };
+RippleColor light = { 0xEEEEEE };
+RippleColor accent = { 0x00ADB5 };
+
+f32 font_size = 32.0f;
+
 typedef struct {
     WGPUTexture texture;
     WGPUTextureView view;
@@ -139,7 +146,7 @@ void subdivide(Vertex* vertices, u32* n_vertices, u16* indices, u32* n_indices)
         indices[(*n_indices)++] = i6; indices[(*n_indices)++] = i2; indices[(*n_indices)++] = i4;
     }
 
-    for_each(vertex, vertices, *n_vertices)
+    for_each_n(vertex, vertices, *n_vertices)
     {
         vertex->position = vertex->normal = glms_vec3_normalize(vertex->position);
     }
@@ -435,6 +442,28 @@ Context create_context(WGPUDevice device, WGPUQueue queue)
     return ctx;
 }
 
+void text(s8 text)
+{
+    i32 width, height; ripple_measure_text(text, font_size, &width, &height);
+    RIPPLE( FORM( .width = PIXELS(width), .height = PIXELS(height) ), WORDS( .text = text, .color = light ));
+}
+
+bool button(s8 label)
+{
+    bool* open = nullptr;
+    RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size) ), RECTANGLE( .color = STATE().is_weak_held ? accent : dark2 ) )
+    {
+        open = &STATE_USER(bool);
+        if (STATE().released)
+        {
+            debug("open {}", *open);
+            STATE_USER(bool) = !*open;
+        }
+        text(label);
+    }
+    return *open;
+}
+
 bool color_selector(HSV* color)
 {
     bool is_interacted = false;
@@ -460,7 +489,7 @@ bool color_selector(HSV* color)
 
             RIPPLE( FORM( .width = PIXELS(0), .height = PIXELS(0), .x = RELATIVE(color->saturation, SVT_RELATIVE_PARENT), .y = RELATIVE(1.0f - color->value, SVT_RELATIVE_PARENT) ) )
             {
-                RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(-5), .y = PIXELS(-5)), RECTANGLE( .color = {0xff0000} ) );
+                RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(-5), .y = PIXELS(-5)), RECTANGLE( .color = accent ) );
             }
         }
 
@@ -490,7 +519,7 @@ bool color_selector(HSV* color)
             }
 
             RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(3), .y = PIXELS((color->hue / 360.0f) * h - 5)),
-                    RECTANGLE( .color = {0xff0000} ) );
+                    RECTANGLE( .color = accent ) );
 
         }
     }
@@ -500,40 +529,36 @@ bool color_selector(HSV* color)
 
 void color_picker(s8 label, HSV* color)
 {
-    f32 font_size = 32.0f;
-    bool should_close = false;
+    bool* open = nullptr;
 
-    RIPPLE( FORM( .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
+    RIPPLE( FORM( .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD) ) )
     {
-        bool* open = &STATE_USER(bool);
-        RIPPLE( FORM( .width = PIXELS(font_size) ), RECTANGLE( .color = RIPPLE_RGB(hsv_to_rgb(*color)) ) )
+        open = &STATE_USER(bool);
+
+        RIPPLE( FORM( .direction = cld_HORIZONTAL, .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD) ) )
         {
-            if (CURSOR().left.pressed && !STATE().hovered)
+            RIPPLE( FORM( .width = PIXELS(font_size) ), RECTANGLE( .color = RIPPLE_RGB(hsv_to_rgb(*color)) ) )
             {
-                should_close = true;
+                if (STATE().released)
+                {
+                    debug("STATE().released: {}", (bool)STATE().released);
+                    *open = !*open;
+                }
             }
 
-            if (STATE().released)
-            {
-                *open = true;
-            }
+            text(label);
         }
-
-        i32 width; ripple_measure_text(label, font_size, &width, nullptr);
-        RIPPLE( FORM( .width = PIXELS(width) ), WORDS( .text = label ));
 
         if (*open)
         {
-            RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .x = PIXELS(0), .y = RELATIVE(-1.0f, SVT_RELATIVE_CHILD)) )
+            /* RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .x = PIXELS(0), .y = RELATIVE(-1.0f, SVT_RELATIVE_CHILD)) ) */
+            RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .x = PIXELS(font_size * 0.5f) ) )
             {
                 if (color_selector(color)) {
-                    should_close = false;
+                    *open = true;
                 }
             }
         }
-
-        if (should_close)
-            *open = false;
     }
 }
 
@@ -564,7 +589,7 @@ RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZ
     CENTERED_VERTICAL(\
     RIPPLE( FORM( .direction = cld_HORIZONTAL ) ) {\
         for (u32 i = 0; i < n_stops; i++) {\
-            RIPPLE( FORM( .x = PIXELS(stops[i].t * (w - stop_w)), .width = PIXELS(stop_w), .height = PIXELS(10) ), RECTANGLE( .color = {0xff00ff}) ) {\
+            RIPPLE( FORM( .x = PIXELS(stops[i].t * (w - stop_w)), .width = PIXELS(stop_w), .height = PIXELS(10) ), RECTANGLE( .color = accent ) ) {\
                 if (!changed && STATE().is_held) {\
                     stops[i].t = clamp(((f32)CURSOR().x - (f32)x) / (f32)w, 0.0f, 1.0f);\
                     changed = true;\
@@ -629,8 +654,6 @@ bool color_ramp(ColorRampStop* stops, u32 n_stops, u32* buffer, u32 buffer_len)
 
 void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allocator)
 {
-    f32 font_size = 32.0f;
-
     RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
     {
         RIPPLE( FORM( .width = PIXELS(315), .direction = cld_HORIZONTAL ))
@@ -641,10 +664,10 @@ void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allo
             u32 x = SHAPE().x;
 
             CENTERED_VERTICAL(
-                RIPPLE( FORM( .width = PIXELS((1.0f - t) * (w - 15)) , .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = { 0 } ) );
+                RIPPLE( FORM( .width = PIXELS((1.0f - t) * (w - 15)) , .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = dark2 ) );
             );
 
-            RIPPLE( FORM( .width = PIXELS(15)), RECTANGLE( .color = { 0xff0000 } ) )
+            RIPPLE( FORM( .width = PIXELS(15)), RECTANGLE( .color = accent ) )
             {
                 if (STATE().is_held)
                 {
@@ -653,15 +676,13 @@ void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allo
             }
 
             CENTERED_VERTICAL(
-                RIPPLE( FORM( .width = PIXELS(t * (w - 15)), .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = { 0 } ) );
+                RIPPLE( FORM( .width = PIXELS(t * (w - 15)), .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = dark2 ) );
             );
         }
 
         RIPPLE( FORM( .width = PIXELS(5) ) );
 
-        s8 text = marrow_format("{}: {.2f}", str_allocator, label, *value);
-        i32 width; ripple_measure_text(text, font_size, &width, nullptr);
-        RIPPLE( FORM( .width = PIXELS(width) ), WORDS( .text = text ));
+        text(marrow_format("{}: {.2f}", str_allocator, label, *value));
     }
 }
 
@@ -710,6 +731,9 @@ int main(int argc, char* argv[])
 
     f32 zoom = 5.0f;
 
+    RippleColor* original_colors[] = { &dark, &dark2, &accent, &light };
+    HSV colors[] = { rgb_to_hsv(dark.value), rgb_to_hsv(dark2.value), rgb_to_hsv(accent.value), rgb_to_hsv(light.value) };
+
     while (main_is_open) {
         f32 time = shader_data.time = glfwGetTime();//(f32)SDL_GetTicks() / 1000.0f;
         f32 dt = shader_data.time - prev_time;
@@ -730,16 +754,14 @@ int main(int argc, char* argv[])
             glm_mat4_copy(glms_mat4_mul(proj, view).raw, shader_data.camera_matrix); // cam.raw is plain mat4
         }
 
-        SURFACE( .title = S8("surface"), .width = 800, .height = 800, .is_open = &main_is_open )
+        SURFACE( .title = S8("surface"), .width = 800, .height = 800, .clear_color = dark, .is_open = &main_is_open )
         {
             if (!debug_window_open)
             {
-                s8 text = S8("debug");
-                i32 w, h; ripple_measure_text(text, 32.0f, &w, &h);
-                RIPPLE( FORM( .width = PIXELS(w), .height = PIXELS(h) ), RECTANGLE( .color = RIPPLE_RGB(STATE().hovered ? 0xeeeeee : 0xffffff) ))
+                RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD) ), RECTANGLE( .color = STATE().hovered ? dark2 : dark ))
                 {
-                    RIPPLE( FORM( .width = PIXELS(20), .height = PIXELS(20), .fixed = true ), WORDS( .text = text ) );
-                    debug_window_open = STATE().clicked;
+                    debug_window_open = STATE().released;
+                    text(S8("text"));
                 }
             }
 
@@ -747,57 +769,62 @@ int main(int argc, char* argv[])
         }
 
         if (debug_window_open)
-        SURFACE( .title = S8("debug"), .width = 400, .height = 400, .is_open = &debug_window_open )
+        SURFACE( .title = S8("debug"), .width = 400, .height = 400, .clear_color = dark, .is_open = &debug_window_open )
+        RIPPLE( RECTANGLE( .color = dark ) )
         {
-            s8 text = marrow_format("fps rn is: {.2f}", &str_allocator, 1.0f / (dt_accum / dt_samples));
-            i32 w, h; ripple_measure_text(text, 32.0f, &w, &h);
-            RIPPLE( FORM( .width = PIXELS(w), .height = PIXELS(h) ), WORDS( .text = text ));
+            text(marrow_format("fps rn is: {.2f}", &str_allocator, 1.0f / (dt_accum / dt_samples)));
 
-            slider("gain", &shader_data.gain, 0.0f, 3.0f, (Allocator*)&str_allocator);
-            slider("speed", &shader_data.speed, 0.0f, 60.0f, (Allocator*)&str_allocator);
-            slider("offset", &shader_data.offset, 0.0f, 5.0f, (Allocator*)&str_allocator);
-            slider("height", &shader_data.height, 0.0f, 10.0f, (Allocator*)&str_allocator);
-            slider("time_scale", &shader_data.time_scale, 0.0f, 1.0f, (Allocator*)&str_allocator);
-            slider("lacunarity", &shader_data.lacunarity, 0.0f, 5.0f, (Allocator*)&str_allocator);
-            slider("scale", &shader_data.scale, 0.0f, 10.0f, (Allocator*)&str_allocator);
-            slider("zoom", &zoom, 1.0f, 10.0f, (Allocator*)&str_allocator);
-
-            f32 float_buffer[256];
-            if (float_ramp(gradient_stops, array_len(gradient_stops), float_buffer, array_len(float_buffer)))
+            if (button(S8("fire settings")))
             {
-                wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
-                        .texture = ctx.gradient.texture.texture,
-                        .aspect = WGPUTextureAspect_All
-                    },
-                    float_buffer,
-                    sizeof(float_buffer),
-                    &(WGPUTextureDataLayout){
-                        .bytesPerRow = sizeof(float_buffer),
-                        .rowsPerImage = 1
-                    },
-                    &ctx.gradient.texture.extent
-                );
+                slider("gain", &shader_data.gain, 0.0f, 3.0f, (Allocator*)&str_allocator);
+                slider("speed", &shader_data.speed, 0.0f, 60.0f, (Allocator*)&str_allocator);
+                slider("offset", &shader_data.offset, 0.0f, 5.0f, (Allocator*)&str_allocator);
+                slider("height", &shader_data.height, 0.0f, 10.0f, (Allocator*)&str_allocator);
+                slider("time_scale", &shader_data.time_scale, 0.0f, 1.0f, (Allocator*)&str_allocator);
+                slider("lacunarity", &shader_data.lacunarity, 0.0f, 5.0f, (Allocator*)&str_allocator);
+                slider("scale", &shader_data.scale, 0.0f, 10.0f, (Allocator*)&str_allocator);
+                slider("zoom", &zoom, 1.0f, 10.0f, (Allocator*)&str_allocator);
+
+                f32 float_buffer[256];
+                if (float_ramp(gradient_stops, array_len(gradient_stops), float_buffer, array_len(float_buffer)))
+                {
+                    wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
+                            .texture = ctx.gradient.texture.texture,
+                            .aspect = WGPUTextureAspect_All
+                        },
+                        float_buffer,
+                        sizeof(float_buffer),
+                        &(WGPUTextureDataLayout){
+                            .bytesPerRow = sizeof(float_buffer),
+                            .rowsPerImage = 1
+                        },
+                        &ctx.gradient.texture.extent
+                    );
+                }
+
+                u32 color_buffer[256];
+                if (color_ramp(color_stops, array_len(color_stops), color_buffer, array_len(color_buffer)))
+                {
+                    wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
+                            .texture = ctx.color.texture.texture,
+                            .aspect = WGPUTextureAspect_All
+                        },
+                        color_buffer,
+                        sizeof(color_buffer),
+                        &(WGPUTextureDataLayout){
+                            .bytesPerRow = sizeof(color_buffer),
+                            .rowsPerImage = 1
+                        },
+                        &ctx.color.texture.extent
+                    );
+                }
             }
 
-            u32 color_buffer[256];
-            if (color_ramp(color_stops, array_len(color_stops), color_buffer, array_len(color_buffer)))
+            for_each_i(color, colors, i)
             {
-                wgpuQueueWriteTexture(queue, &(WGPUImageCopyTexture){
-                        .texture = ctx.color.texture.texture,
-                        .aspect = WGPUTextureAspect_All
-                    },
-                    color_buffer,
-                    sizeof(color_buffer),
-                    &(WGPUTextureDataLayout){
-                        .bytesPerRow = sizeof(color_buffer),
-                        .rowsPerImage = 1
-                    },
-                    &ctx.color.texture.extent
-                );
+                color_picker(marrow_format(": (0x{XD})", (Allocator*)&str_allocator, hsv_to_rgb(*color)), color);
+                original_colors[i]->value = hsv_to_rgb(*color);
             }
-
-            static HSV color_picker_color = { 0 };
-            color_picker(S8("color pixer"), &color_picker_color);
         }
 
         wgpuQueueWriteBuffer(queue, ctx.shader_data.buffer, 0, &shader_data, sizeof(shader_data));
