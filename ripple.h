@@ -147,9 +147,7 @@ typedef struct RippleElementConfig {
     void* render_data;
     usize render_data_size;
 
-    struct{
-        bool _dummy : 1;
-    };
+    u8 layer;
 } RippleElementConfig;
 
 typedef struct {
@@ -215,6 +213,7 @@ typedef struct Window {
 
     struct {
         u8 frame_color : 1;
+        u8 current_layer : 7;
     };
 
     VEKTOR(ElementData) elements;
@@ -291,10 +290,6 @@ void ripple_start_window(RippleWindowConfig config)
         window->cursor_state.consumed = false;
 
         ripple_backend_window_update(&window->window_impl, &window->config, &window->state, &window->cursor_state);
-        if (window->window_impl.resized)
-        {
-            debug("width: {}", window->config.width);
-        }
         if (config.is_open)
             *config.is_open = window->state.is_open;
 
@@ -339,7 +334,7 @@ void ripple_finish_window()
 }
 
 static void finalize_element(Window* window, ElementData* element);
-static void render_element(Window* window, ElementData* element, void* window_user_data, RippleRenderData user_data);
+static void update_element_state(Window* window, ElementState* state);
 
 static void update_window(Window* window)
 {
@@ -386,6 +381,7 @@ RippleRenderData ripple_render_begin()
     return ripple_backend_render_begin();
 }
 
+// also updates elements states cause im retarded and i neeed to do both on sorted by layers
 void ripple_render_end(RippleRenderData render_data)
 {
     for (u32 window_i = 0; window_i < _ripple_context.windows.size; window_i++)
@@ -393,10 +389,30 @@ void ripple_render_end(RippleRenderData render_data)
         Window* window = mapa_get_at_index(_ripple_context.windows, window_i);
         if (!window) continue;
 
-        ripple_backend_render_window_begin(&window->window_impl, &window->window_renderer_impl, render_data);
-        if (window->elements.n_items){
-            render_element(window, &window->elements.items[0], window->user_data, render_data);
+        u32 sorted[window->elements.n_items];
+        array_get_sorted_indices(sorted, window->elements.items, window->elements.n_items, a->config.layer < b->config.layer);
+
+        // updating is done in reverse
+        for (i32 i = array_len(sorted) - 1; i >= 0; i--)
+        {
+            ElementData* element = &window->elements.items[sorted[i]];
+            if (!element->update_state) continue;
+            ElementState* state = mapa_get(window->elements_states, &element->id);
+            if (!state) continue;
+            state->layout = element->calculated_layout;
+            update_element_state(window, state);
         }
+
+        ripple_backend_render_window_begin(&window->window_impl, &window->window_renderer_impl, render_data);
+
+        // while rendering is done normally
+        for (u32 i = 0; i < array_len(sorted); i++)
+        {
+            ElementData* element = &window->elements.items[sorted[i]];
+            if (element->config.render_func)
+                element->config.render_func(&window->window_renderer_impl, element->config, element->calculated_layout, window->user_data, render_data);
+        }
+
         ripple_backend_render_window_end(&window->window_renderer_impl, render_data, window->config.clear_color);
     }
 
@@ -440,8 +456,10 @@ static RenderedLayout element_calculate_children_bounds(Window* window, ElementD
     _for_each_child(element)
     {
         if (child->config.layout.fixed) continue;
-        DIM(layout) += DIM(child->calculated_layout);
-        OTHER_DIM(layout) = max(OTHER_DIM(layout), OTHER_DIM(child->calculated_layout));
+        if (LAYOUT_POS(child->config.layout)._type == SVT_GROW)
+            DIM(layout) += DIM(child->calculated_layout);
+        if (LAYOUT_OTHER_POS(child->config.layout)._type == SVT_GROW)
+            OTHER_DIM(layout) = max(OTHER_DIM(layout), OTHER_DIM(child->calculated_layout));
     }
     return layout;
 }
@@ -606,34 +624,6 @@ static void finalize_element(Window* window, ElementData* element)
     {
         finalize_element(window, &window->elements.items[i]);
     }
-
-    if (element->update_state)
-    {
-        ElementState* state = mapa_get(window->elements_states, &element->id);
-        if (state)
-        {
-            state->layout = element->calculated_layout;
-            update_element_state(window, state);
-            if (state->state.released)
-            {
-                debug("released element at: {} {} with size: {} {}", element->calculated_layout.x, element->calculated_layout.y, element->calculated_layout.w, element->calculated_layout.h);
-            }
-        }
-    }
-}
-
-// recursively renderes elements
-static void render_element(Window* window, ElementData* element, void* window_user_data, RippleRenderData render_data)
-{
-    if (element->config.render_func)
-        element->config.render_func(&window->window_renderer_impl, element->config, element->calculated_layout, window_user_data, render_data);
-
-    allocator_free(window->config.frame_allocator, element->config.render_data, element->config.render_data_size);
-
-    _for_each_child(element)
-    {
-        render_element(window, child, window_user_data, render_data);
-    }
 }
 
 static u64 generate_element_id(u64 base, u64 parent_id, u32 index)
@@ -746,7 +736,7 @@ static ElementState* _get_or_insert_current_element_state(Window* window)
 
 #define SURFACE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (ripple_start_window((RippleWindowConfig) { __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; ripple_finish_window(), LINE_UNIQUE_VAR(_rippleiter)++)
 
-#define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (ripple_push_id(_ripple_context.current_window, LINE_UNIQUE_HASH), ripple_submit_element(_ripple_context.current_window, (RippleElementConfig) { ._dummy = 0, __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; ripple_pop_id(_ripple_context.current_window), LINE_UNIQUE_VAR(_rippleiter)++)
+#define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (ripple_push_id(_ripple_context.current_window, LINE_UNIQUE_HASH), ripple_submit_element(_ripple_context.current_window, (RippleElementConfig) { .layer = _ripple_context.current_window->current_layer, __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; ripple_pop_id(_ripple_context.current_window), LINE_UNIQUE_VAR(_rippleiter)++)
 
 #define FORM(...) .layout = { __VA_ARGS__ }
 
@@ -754,6 +744,8 @@ static ElementState* _get_or_insert_current_element_state(Window* window)
 #define CLOSE_THE_VOID() ripple_end()
 
 #define CURSOR() (_ripple_context.current_window->prev_cursor_state)
+
+#define RIPPLE_RAISE() for (u8 LINE_UNIQUE_VAR(_rippleiter) = (_ripple_context.current_window->current_layer++, 0); LINE_UNIQUE_VAR(_rippleiter) < 1; _ripple_context.current_window->current_layer--, LINE_UNIQUE_VAR(_rippleiter)++)
 
 #define RIPPLE_RGB(v) (RippleColor){ .format = RCF_RGB, .value = v }
 #define RIPPLE_RGBA(v) (RippleColor){ .format = RCF_RGBA, .value = v }

@@ -456,7 +456,6 @@ bool button(s8 label)
         open = &STATE_USER(bool);
         if (STATE().released)
         {
-            debug("open {}", *open);
             STATE_USER(bool) = !*open;
         }
         text(label);
@@ -529,11 +528,10 @@ bool color_selector(HSV* color)
 
 void color_picker(s8 label, HSV* color)
 {
-    bool* open = nullptr;
-
-    RIPPLE( FORM( .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD) ) )
+    RIPPLE( FORM( .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD) ))
     {
-        open = &STATE_USER(bool);
+        bool should_close = false;
+        bool* open = &STATE_USER(bool);
 
         RIPPLE( FORM( .direction = cld_HORIZONTAL, .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD) ) )
         {
@@ -541,8 +539,12 @@ void color_picker(s8 label, HSV* color)
             {
                 if (STATE().released)
                 {
-                    debug("STATE().released: {}", (bool)STATE().released);
                     *open = !*open;
+                }
+
+                if (CURSOR().left.pressed && !STATE().hovered)
+                {
+                    should_close = true;
                 }
             }
 
@@ -551,13 +553,23 @@ void color_picker(s8 label, HSV* color)
 
         if (*open)
         {
-            /* RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .x = PIXELS(0), .y = RELATIVE(-1.0f, SVT_RELATIVE_CHILD)) ) */
-            RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .x = PIXELS(font_size * 0.5f) ) )
+            RIPPLE_RAISE()
             {
-                if (color_selector(color)) {
-                    *open = true;
+                RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD),
+                            .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD),
+                            .x = PIXELS(0), .y = RELATIVE(-1.0f, SVT_RELATIVE_CHILD),
+                            .keep_inside = true
+                ) )
+                /* RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .x = PIXELS(font_size * 0.5f) ) ) */
+                {
+                    if (color_selector(color)) {
+                        should_close = false;
+                    }
                 }
             }
+
+            if (should_close)
+                *open = false;
         }
     }
 }
@@ -761,7 +773,7 @@ int main(int argc, char* argv[])
                 RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD) ), RECTANGLE( .color = STATE().hovered ? dark2 : dark ))
                 {
                     debug_window_open = STATE().released;
-                    text(S8("text"));
+                    text(S8("debug"));
                 }
             }
 
