@@ -79,7 +79,7 @@ typedef struct {
 #endif // RIPPLE_BACKEND
 
 struct RippleBackendWindow;
-struct RippleBackendWindow* _ripple_get_window_impl(u64 id);
+struct RippleBackendWindow* ripple_find_window_impl(u64 id);
 
 #if (RIPPLE_BACKEND) & RIPPLE_GLFW
 #include "backends/ripple_glfw.h"
@@ -231,10 +231,10 @@ typedef struct Window {
 } Window;
 
 thread_local struct {
-    BumpAllocator frame_allocator;
     bool initialized;
+    BumpAllocator frame_allocator;
 
-    MAPA(u64, Window) windows;
+    VEKTOR(Window) windows;
     Window* current_window;
     u32 current_frame_color;
 } _ripple_context;
@@ -244,12 +244,27 @@ void ripple_initialize(RippleBackendWindowConfig window_config, RippleBackendRen
     _ripple_context.frame_allocator = bump_allocator_create();
 
     // this should use an allocator
-    mapa_init(_ripple_context.windows, mapa_hash_u64, mapa_cmp_bytes, nullptr);
+    vektor_init(_ripple_context.windows, 0, nullptr);
 
     ripple_backend_window_initialize(window_config);
     ripple_backend_renderer_initialize(renderer_config);
 
     _ripple_context.initialized = true;
+}
+
+Window* ripple_find_window(u64 id)
+{
+    for (u32 i = 0; i < _ripple_context.windows.n_items; i++)
+    {
+        if (_ripple_context.windows.items[i].id == id)
+            return &_ripple_context.windows.items[i];
+    }
+    return nullptr;
+}
+
+RippleBackendWindow* ripple_find_window_impl(u64 id)
+{
+    return &ripple_find_window(id)->window_impl;
 }
 
 void ripple_start_window(RippleWindowConfig config)
@@ -266,14 +281,21 @@ void ripple_start_window(RippleWindowConfig config)
 
     u64 parent_id = _ripple_context.current_window ? _ripple_context.current_window->id : 0;
 
-    u64 window_id = hash_buf(config.title);
-    Window* window = _ripple_context.current_window = mapa_get(_ripple_context.windows, &window_id);
+    u64 window_id = s8_hash(config.title);
+    Window* window = _ripple_context.current_window = ripple_find_window(window_id);
     if (!window)
     {
+        debug("window didnty exist yety");
         RippleBackendWindow window_impl = ripple_backend_window_create(window_id, config);
         RippleBackendWindowRenderer window_renderer_impl = ripple_backend_window_renderer_create(window_id, config, &window_impl);
-        window = _ripple_context.current_window =
-            mapa_insert(_ripple_context.windows, &window_id, ((Window){ .id = window_id, .window_impl = window_impl, .window_renderer_impl = window_renderer_impl }));
+        if (!window)
+        {
+            debug("and we added it");
+            vektor_add(_ripple_context.windows, (Window){ 0 });
+            window = &_ripple_context.windows.items[_ripple_context.windows.n_items - 1];
+        }
+        *window = (Window){ .id = window_id, .window_impl = window_impl, .window_renderer_impl = window_renderer_impl };
+        _ripple_context.current_window = window;
     }
 
     window->parent_id = parent_id;
@@ -321,15 +343,10 @@ void ripple_start_window(RippleWindowConfig config)
     }
 }
 
-struct RippleBackendWindow* _ripple_get_window_impl(u64 id)
-{
-    return &mapa_get(_ripple_context.windows, &id)->window_impl;
-}
-
 void ripple_finish_window()
 {
     _ripple_context.current_window = _ripple_context.current_window->parent_id ?
-        mapa_get(_ripple_context.windows, &_ripple_context.current_window->parent_id) :
+        ripple_find_window(_ripple_context.current_window->parent_id) :
         nullptr;
 }
 
@@ -357,10 +374,10 @@ static void update_window(Window* window)
 
 RippleRenderData ripple_render_begin()
 {
-    for (i32 window_i = 0; window_i < (i64)_ripple_context.windows.size; window_i++)
+    for (i32 window_i = 0; window_i < (i64)_ripple_context.windows.n_items; window_i++)
     {
-        Window* window = mapa_get_at_index(_ripple_context.windows, (u64)window_i);
-        if(!window) continue;
+        Window* window = &_ripple_context.windows.items[window_i];
+        if(!window->id) continue;
 
         if (window->frame_color != _ripple_context.current_frame_color)
         {
@@ -368,8 +385,7 @@ RippleRenderData ripple_render_begin()
             vektor_free(window->elements);
             mapa_free(window->elements_states);
 
-            mapa_remove_at_index(_ripple_context.windows, (u64)window_i);
-            window_i--;
+            *window = (Window) { 0 };
             continue;
         }
 
@@ -384,10 +400,10 @@ RippleRenderData ripple_render_begin()
 // also updates elements states cause im retarded and i neeed to do both on sorted by layers
 void ripple_render_end(RippleRenderData render_data)
 {
-    for (u32 window_i = 0; window_i < _ripple_context.windows.size; window_i++)
+    for (u32 window_i = 0; window_i < _ripple_context.windows.n_items; window_i++)
     {
-        Window* window = mapa_get_at_index(_ripple_context.windows, window_i);
-        if (!window) continue;
+        Window* window = &_ripple_context.windows.items[window_i];
+        if(!window->id) continue;
 
         u32 sorted[window->elements.n_items];
         array_get_sorted_indices(sorted, window->elements.items, window->elements.n_items, a->config.layer < b->config.layer);
@@ -420,10 +436,10 @@ void ripple_render_end(RippleRenderData render_data)
 
     ripple_backend_render_end(render_data);
 
-    for (u32 window_i = 0; window_i < _ripple_context.windows.size; window_i++)
+    for (u32 window_i = 0; window_i < _ripple_context.windows.n_items; window_i++)
     {
-        Window* window = mapa_get_at_index(_ripple_context.windows, window_i);
-        if (!window) continue;
+        Window* window = &_ripple_context.windows.items[window_i];
+        if(!window->id) continue;
         ripple_backend_window_present(&window->window_renderer_impl);
     }
 }

@@ -53,7 +53,7 @@ void mouse_button_callback(GLFWwindow* glfw_window, i32 button, i32 action, i32 
     (void) mods;
 
     u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
-    RippleBackendWindow* window = _ripple_get_window_impl(window_id);
+    RippleBackendWindow* window = ripple_find_window_impl(window_id);
 
     if (action == GLFW_PRESS)
     {
@@ -81,7 +81,7 @@ void mouse_button_callback(GLFWwindow* glfw_window, i32 button, i32 action, i32 
 void window_pos_callback(GLFWwindow* glfw_window, i32 x, i32 y)
 {
     u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
-    RippleBackendWindow* window = _ripple_get_window_impl(window_id);
+    RippleBackendWindow* window = ripple_find_window_impl(window_id);
 
     if (window->config.x) *window->config.x = x;
     if (window->config.y) *window->config.y = y;
@@ -92,7 +92,7 @@ void on_window_resized(GLFWwindow* glfw_window, i32 w, i32 h)
     (void) w; (void) h;
 
     u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
-    RippleBackendWindow* window = _ripple_get_window_impl(window_id);
+    RippleBackendWindow* window = ripple_find_window_impl(window_id);
     window->resized = true;
 }
 

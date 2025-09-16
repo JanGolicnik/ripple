@@ -167,13 +167,6 @@ thread_local s8 _format_buf;
 
 #endif // MARROW_NO_PRINTCCY
 
-u32 str_len(const char* str)
-{
-    const char* iter = str;
-    while (*iter) iter++;
-    return iter - str;
-}
-
 void buf_copy(void* dst, const void* source, usize len)
 {
     while(len--) ((u8*)dst)[len] = ((u8*)source)[len];
@@ -192,6 +185,20 @@ void buf_set(void* dst, u8 value, usize len)
 {
     while (len--) ((u8*)dst)[len] = value;
 }
+
+u32 str_len(const char* str)
+{
+    const char* iter = str;
+    while (*iter) iter++;
+    return iter - str;
+}
+
+u32 s8_cmp(s8 a, s8 b)
+{
+    if (a.size != b.size) return a.size - b.size;
+    return buf_cmp(a.ptr, b.ptr, a.size);
+}
+
 
 #ifndef LINE_UNIQUE_VAR
 #define LINE_UNIQUE_VAR_CONCAT(a, b) a##b
@@ -213,7 +220,7 @@ void buf_set(void* dst, u8 value, usize len)
 #define for_each_i(el, ptr, i) for(u32 i = 0, LINE_UNIQUE_I = 1; i < array_len(ptr); i++, LINE_UNIQUE_I = 1) for(typeof(*(ptr)) *el = &ptr[i]; LINE_UNIQUE_I ; LINE_UNIQUE_I = 0)
 #endif // for_each_i
 
-u64 hash_buf(s8 buf)
+u64 s8_hash(s8 buf)
 {
     u64 hash = 0xcbf29ce484222325ULL;
     while (buf.size--) {
