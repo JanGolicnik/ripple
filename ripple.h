@@ -70,9 +70,10 @@ typedef struct {
     };
 } RippleWindowConfig;
 
-#define RIPPLE_WGPU 1 << 0
-#define RIPPLE_GLFW 1 << 1
-#define RIPPLE_SDL  1 << 2
+#define RIPPLE_WGPU  1 << 0
+#define RIPPLE_GLFW  1 << 1
+#define RIPPLE_SDL   1 << 2
+#define RIPPLE_EMPTY 1 << 3
 
 #ifndef RIPPLE_BACKEND
 #define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_GLFW
@@ -89,6 +90,9 @@ struct RippleBackendWindow* ripple_find_window_impl(u64 id);
 #endif
 #if (RIPPLE_BACKEND) & RIPPLE_WGPU
 #include "backends/ripple_wgpu.h"
+#endif
+#if (RIPPLE_BACKEND) & RIPPLE_EMPTY
+#include "backends/ripple_empty.h"
 #endif
 
 typedef enum {
@@ -285,12 +289,10 @@ void ripple_start_window(RippleWindowConfig config)
     Window* window = _ripple_context.current_window = ripple_find_window(window_id);
     if (!window)
     {
-        debug("window didnty exist yety");
         RippleBackendWindow window_impl = ripple_backend_window_create(window_id, config);
         RippleBackendWindowRenderer window_renderer_impl = ripple_backend_window_renderer_create(window_id, config, &window_impl);
         if (!window)
         {
-            debug("and we added it");
             vektor_add(_ripple_context.windows, (Window){ 0 });
             window = &_ripple_context.windows.items[_ripple_context.windows.n_items - 1];
         }
@@ -406,7 +408,7 @@ void ripple_render_end(RippleRenderData render_data)
         if(!window->id) continue;
 
         u32 sorted[window->elements.n_items];
-        array_get_sorted_indices(sorted, window->elements.items, window->elements.n_items, a->config.layer < b->config.layer);
+        sort_indices(sorted, window->elements.items, window->elements.n_items, a->config.layer < b->config.layer);
 
         // updating is done in reverse
         for (i32 i = array_len(sorted) - 1; i >= 0; i--)
@@ -674,8 +676,8 @@ void ripple_submit_element(Window* window, RippleElementConfig config)
     parent->last_child = window->current_element.index;
 
     // render_data is supposed to be set if render_data_size is also
-    if (config.render_data_size)
-        config.render_data = allocator_make_copy(window->config.frame_allocator, config.render_data, config.render_data_size, 1);
+    /* if (config.render_data_size) */
+    /*     config.render_data = allocator_make_copy(window->config.frame_allocator, config.render_data, config.render_data_size, 1); */
 
     element->config = config;
 }

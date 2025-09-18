@@ -22,8 +22,14 @@ void _default_free(void* ctx, void* ptr, usize size) { free(ptr); }
 thread_local static Allocator _default_allocator = {.alloc = &_default_alloc, .realloc = &_default_realloc, .free = &_default_free };
 Allocator* default_allocator() { return &_default_allocator; }
 
+static bool allocator_debug = true;
+
 void* allocator_alloc(Allocator* allocator, usize size, usize align)
 {
+    if (allocator_debug)
+    {
+        debug("allocating {}", size);
+    }
     allocator = allocator ? allocator : default_allocator();
     return allocator->alloc(allocator, size, align);
 }
@@ -74,13 +80,14 @@ typedef struct BumpAllocatorBlock {
 typedef struct {
     Allocator allocator;
     BumpAllocatorBlock* first, *last;
+    Allocator* inner_allocator;
 } BumpAllocator;
 
 static void* bump_allocator_alloc(void* a, usize size, usize align);
 
-static BumpAllocatorBlock* bump_allocator_block_new(usize capacity)
+static BumpAllocatorBlock* bump_allocator_block_new(usize capacity, Allocator* allocator)
 {
-    BumpAllocatorBlock* block = (BumpAllocatorBlock*)malloc(sizeof(BumpAllocatorBlock) + capacity);
+    BumpAllocatorBlock* block = (BumpAllocatorBlock*)allocator_alloc(allocator, sizeof(BumpAllocatorBlock) + capacity, 1);
     block->next = nullptr;
     block->capacity = capacity;
     block->used = 0;
@@ -91,10 +98,8 @@ static void* bump_allocator_alloc(void* allocator, usize size, usize align)
 {
     BumpAllocator* a = allocator;
 
-    if (!a->last)
-    {
-        a->first = bump_allocator_block_new(1024);
-        a->last = a->first;
+    if (!a->last) {
+        a->last = a->first = bump_allocator_block_new(1024, a->inner_allocator);
     }
 
     BumpAllocatorBlock* b = a->last;
@@ -111,7 +116,7 @@ static void* bump_allocator_alloc(void* allocator, usize size, usize align)
         }
 
         if (!b->next)
-            b->next = bump_allocator_block_new(b->capacity * 2);
+            b->next = bump_allocator_block_new(b->capacity * 2, a->inner_allocator);
 
         b = b->next;
     }

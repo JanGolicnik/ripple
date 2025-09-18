@@ -266,23 +266,48 @@ u64 hash_combine(u64 a, u64 b)
 
 #define INV_SQRT_3 0.5773502691896258f  // 1/sqrt(3)
 
-#define array_get_sorted_indices(out, array, n, cmp) do {\
+// insertion sort
+#define sort_indices(out, array, n, cmp) do {\
     for (u32 i = 0; i < n; i++) {\
         typeof(*array)* a = &array[i];\
         u32 index = 0;\
-        while(index < i)\
-        {\
+        while(index < i) {\
             typeof(*array)* b = &array[out[index]];\
             if (cmp) break;\
             index++;\
         }\
-        for (u32 j = i; j > index; j--)\
-        {\
+        for (u32 j = i; j > index; j--) {\
             out[j] = out[j - 1];\
         }\
         out[index] = i;\
     }\
-} while( 0 )
+} while(false)
+
+#define mergesort_indices(out, array, n, cmp) do {\
+    u32 aux[(n)];\
+    for (u32 i = 0; i < (n); i++) out[i] = i;\
+    for (u32 width = 1; width < (n); width *= 2) {\
+        for (u32 low = 0; low < (n); low += 2 * width) {\
+            u32 mid = ((low + width) < (n)) ? low + width : (n);\
+            u32 high = (low + 2 * width < (n)) ? low + 2 * width : (n);\
+            u32 i = low, j = mid, k = low;\
+            while (i < mid && j < high) {\
+                typeof(*array)* a = &array[out[i]];\
+                typeof(*array)* b = &array[out[j]];\
+                aux[k++] = (!(cmp)) ? out[i++] : out[j++];\
+            }\
+            while (i < mid) {\
+                aux[k++] = out[i++];\
+            }\
+            while (j < high) {\
+                aux[k++] = out[j++];\
+            }\
+            for (k = low; k < high; k++) {\
+                out[k] = aux[k];\
+            }\
+        }\
+    }\
+} while(false)
 
 u32 value_to_rgb(f32 value)
 {
