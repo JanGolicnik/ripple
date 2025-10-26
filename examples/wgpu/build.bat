@@ -17,6 +17,6 @@ if exist "%build_dir%" (
 )
 mkdir %build_dir%
 
-cmake -B %build_dir% -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DWEBGPU_BACKEND=WGPU
+cmake -B %build_dir% -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DWEBGPU_BACKEND=DAWN
 
 copy /Y "roboto.ttf" %build_dir%

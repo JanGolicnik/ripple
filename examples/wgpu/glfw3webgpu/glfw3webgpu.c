@@ -130,15 +130,15 @@ WGPUSurface glfwGetWGPUSurface(WGPUInstance instance, GLFWwindow* window) {
         HWND hwnd = glfwGetWin32Window(window);
         HINSTANCE hinstance = GetModuleHandle(NULL);
 
-        WGPUSurfaceDescriptorFromWindowsHWND fromWindowsHWND;
+        WGPUSurfaceSourceWindowsHWND fromWindowsHWND;
         fromWindowsHWND.chain.next = NULL;
-        fromWindowsHWND.chain.sType = WGPUSType_SurfaceDescriptorFromWindowsHWND;
+        fromWindowsHWND.chain.sType = WGPUSType_SurfaceSourceWindowsHWND;
         fromWindowsHWND.hinstance = hinstance;
         fromWindowsHWND.hwnd = hwnd;
 
         WGPUSurfaceDescriptor surfaceDescriptor;
         surfaceDescriptor.nextInChain = &fromWindowsHWND.chain;
-        surfaceDescriptor.label = NULL;
+        surfaceDescriptor.label = (WGPUStringView){ NULL, WGPU_STRLEN };
 
         return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
     }

@@ -22,7 +22,7 @@ void _default_free(void* ctx, void* ptr, usize size) { free(ptr); }
 thread_local static Allocator _default_allocator = {.alloc = &_default_alloc, .realloc = &_default_realloc, .free = &_default_free };
 Allocator* default_allocator() { return &_default_allocator; }
 
-static bool allocator_debug = true;
+bool allocator_debug = false;
 
 void* allocator_alloc(Allocator* allocator, usize size, usize align)
 {

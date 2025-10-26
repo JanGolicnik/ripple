@@ -676,8 +676,8 @@ void ripple_submit_element(Window* window, RippleElementConfig config)
     parent->last_child = window->current_element.index;
 
     // render_data is supposed to be set if render_data_size is also
-    /* if (config.render_data_size) */
-    /*     config.render_data = allocator_make_copy(window->config.frame_allocator, config.render_data, config.render_data_size, 1); */
+    if (config.render_data_size)
+        config.render_data = allocator_make_copy(window->config.frame_allocator, config.render_data, config.render_data_size, 1);
 
     element->config = config;
 }
