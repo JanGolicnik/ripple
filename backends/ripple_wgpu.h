@@ -844,6 +844,7 @@ void ripple_backend_render_window_end(RippleBackendWindowRenderer* window, Rippl
     }
 
     wgpuRenderPassEncoderEnd(render_pass);
+    wgpuRenderPassEncoderRelease(render_pass);
 
     for (u32 i = 0; i < array_len(bind_groups); i++)
     {

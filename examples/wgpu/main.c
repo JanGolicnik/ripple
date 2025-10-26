@@ -327,7 +327,7 @@ Context create_context(WGPUDevice device, WGPUQueue queue)
             .passOp = WGPUStencilOperation_Keep
         };
 
-        ctx.pipeline = wgpuDeviceCreateRenderPipeline(_context.config.device, &(WGPURenderPipelineDescriptor){
+        ctx.pipeline = wgpuDeviceCreateRenderPipeline(device, &(WGPURenderPipelineDescriptor){
                 .vertex = {
                     .module = shader_module,
                     .entryPoint = WEBGPU_STR("vs_main"),
@@ -697,26 +697,53 @@ void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allo
     }
 }
 
-int main(int argc, char* argv[])
+void test_loop()
 {
     RippleBackendRendererConfig config = ripple_backend_renderer_default_config();
     ripple_initialize(ripple_backend_window_default_config(), config);
 
+    BumpAllocator str_allocator = bump_allocator_create();
+
+    FloatRampStop gradient_stops[] = {
+        [0] = (FloatRampStop){ 0.075f, 0.0f },
+        [1] = (FloatRampStop){ 0.5f, 0.5f },
+        [2] = (FloatRampStop){ 0.7, 1.0f },
+    };
+
+    u32 frame = 0;
     bool main_is_open = true;
-    /* while (main_is_open) */
-    /* { */
-    /*     SURFACE( .title = S8("surface"), .width = 800, .height = 800, .clear_color = {0xff0000}, .is_open = &main_is_open ) */
-    /*     { */
-    /*         RIPPLE( RECTANGLE( .color = {0xffff00} )); */
-    /*     } */
+    f32 g = 0.0f;
+    while (main_is_open)
+    {
+        frame++;
+        SURFACE( .title = S8("surface"), .width = 800, .height = 800, .clear_color = {0xff0000}, .is_open = &main_is_open )
+        {
+            RIPPLE( RECTANGLE( .color = {0x0e0e0e} ))
+            {
+                CENTERED(
+                    text(marrow_format("halo {}", &str_allocator, frame));
+                    slider("gain", &g, 0.0f, 3.0f, (Allocator*)&str_allocator);
+                    f32 float_buffer[256];
+                    if (float_ramp(gradient_stops, array_len(gradient_stops), float_buffer, array_len(float_buffer)))
+                    {
+                    }
+                );
+            }
+        }
 
-    /*     RippleRenderData render_data = RIPPLE_RENDER_BEGIN(); */
+        RippleRenderData render_data = RIPPLE_RENDER_BEGIN();
+
+        RIPPLE_RENDER_END(render_data);
+
+        bump_allocator_reset(&str_allocator);
+    }
+}
 
 
-    /*     RIPPLE_RENDER_END(render_data); */
-    /* } */
-
-    /* return 0; */
+void main_loop()
+{
+    RippleBackendRendererConfig config = ripple_backend_renderer_default_config();
+    ripple_initialize(ripple_backend_window_default_config(), config);
 
     WGPUQueue queue = wgpuDeviceGetQueue(config.device);
 
@@ -759,6 +786,7 @@ int main(int argc, char* argv[])
     RippleColor* original_colors[] = { &dark, &dark2, &accent, &light };
     HSV colors[] = { rgb_to_hsv(dark.value), rgb_to_hsv(dark2.value), rgb_to_hsv(accent.value), rgb_to_hsv(light.value) };
 
+    bool main_is_open = true;
     while (main_is_open) {
         f32 time = shader_data.time = glfwGetTime();//(f32)SDL_GetTicks() / 1000.0f;
         f32 dt = shader_data.time - prev_time;
@@ -886,11 +914,23 @@ int main(int argc, char* argv[])
             wgpuRenderPassEncoderDrawIndexed(render_pass, ctx.n_indices, array_len(instances), 0, 0, 0);
 
             wgpuRenderPassEncoderEnd(render_pass);
+            wgpuRenderPassEncoderRelease(render_pass);
         }
 
         RIPPLE_RENDER_END(render_data);
 
         bump_allocator_reset(&str_allocator);
     }
-    return 0;
+}
+
+int main(int argc, char* argv[])
+{
+    if (1)
+    {
+        main_loop();
+    }
+    else
+    {
+        test_loop();
+    }
 }
