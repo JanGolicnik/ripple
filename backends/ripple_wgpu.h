@@ -145,8 +145,12 @@ RippleBackendRendererConfig ripple_backend_renderer_default_config()
     return config;
 }
 
-static void configure_surface(WGPUDevice device, WGPUSurface surface, WGPUTextureFormat format, u32 width, u32 height)
+static bool configure_surface(WGPUDevice device, WGPUSurface surface, WGPUTextureFormat format, u32 width, u32 height)
 {
+    wgpuSurfaceUnconfigure(surface);
+    if (width == 0 || height == 0)
+        return false;
+
     wgpuSurfaceConfigure(surface, &(WGPUSurfaceConfiguration){
             .width = width,
             .height = height,
@@ -156,6 +160,7 @@ static void configure_surface(WGPUDevice device, WGPUSurface surface, WGPUTextur
             .presentMode = WGPUPresentMode_Fifo,
             .alphaMode = WGPUCompositeAlphaMode_Auto
         });
+    return true;
 }
 
 static f32 vertex_data[] = {
@@ -303,6 +308,8 @@ typedef struct RippleBackendWindowRenderer {
     VEKTOR(RippleWGPUInstance) instances;
 
     VEKTOR( _RippleImageInstancePair ) images;
+
+    bool surface_is_configured;
 } RippleBackendWindowRenderer;
 
 struct {
@@ -696,10 +703,10 @@ RippleBackendWindowRenderer ripple_backend_window_renderer_create(u64 id, Ripple
 
 RippleRenderData ripple_backend_render_begin()
 {
+    wgpuInstanceProcessEvents(_context.config.instance);
     return (RippleRenderData){
         .encoder = wgpuDeviceCreateCommandEncoder(_context.config.device, &(WGPUCommandEncoderDescriptor){ .label = WEBGPU_STR("Command encoder")})
     };
-    return (RippleRenderData) { 0 };
 }
 
 void ripple_backend_render_window_begin(RippleBackendWindow* window, RippleBackendWindowRenderer* renderer, RippleRenderData render_data)
@@ -710,7 +717,7 @@ void ripple_backend_render_window_begin(RippleBackendWindow* window, RippleBacke
     {
         renderer->shader_data.resolution[0] = window->width;
         renderer->shader_data.resolution[1] = window->height;
-        configure_surface(_context.config.device, renderer->surface, renderer->surface_format, renderer->shader_data.resolution[0], renderer->shader_data.resolution[1]);
+        renderer->surface_is_configured = configure_surface(_context.config.device, renderer->surface, renderer->surface_format, renderer->shader_data.resolution[0], renderer->shader_data.resolution[1]);
         window->resized = false;
     }
 
@@ -749,6 +756,9 @@ static void _ripple_backend_color_to_color(RippleColor color, f32 out_color[4])
 
 void ripple_backend_render_window_end(RippleBackendWindowRenderer* window, RippleRenderData render_data, RippleColor clear_color)
 {
+    if (!window->surface_is_configured)
+        return;
+
     if (!window->instance_buffer ||
         window->instance_buffer_size < window->instances.size)
     {
@@ -852,9 +862,12 @@ void ripple_backend_render_end(RippleRenderData render_data)
 
 void ripple_backend_window_present(RippleBackendWindowRenderer* renderer)
 {
-    wgpuSurfacePresent(renderer->surface);
-    wgpuTextureViewRelease(renderer->surface_texture_view);
-    wgpuTextureRelease(renderer->surface_texture.texture);
+    if (renderer->surface_is_configured)
+    {
+        wgpuSurfacePresent(renderer->surface);
+        wgpuTextureViewRelease(renderer->surface_texture_view);
+        wgpuTextureRelease(renderer->surface_texture.texture);
+    }
 }
 
 void ripple_backend_render_rect(RippleBackendWindowRenderer* window, i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4)
