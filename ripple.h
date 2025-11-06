@@ -19,37 +19,37 @@
 #include <marrow/allocator.h>
 #include <marrow/mapa.h>
 
-typedef struct {
+struct(RippleWindowState) {
     u8 initialized : 1;
     u8 is_open : 1;
-} RippleWindowState;
+};
 
 typedef enum {
     RCF_RGB = 0, // 0xrrggbb, alpha = 1.0f
     RCF_RGBA = 1 // rrggbbaa
 } RippleColorFormat;
 
-typedef struct {
+struct(RippleColor) {
     u32 value;
     RippleColorFormat format;
-} RippleColor;
+};
 
-typedef struct {
+struct(MouseButtonState) {
     u8 pressed : 1;
     u8 released : 1;
     u8 held: 1;
-} MouseButtonState;
+};
 
-typedef struct {
+struct(RippleCursorState) {
     MouseButtonState left;
     MouseButtonState right;
     MouseButtonState middle;
     i32 x;
     i32 y;
     bool consumed;
-} RippleCursorState;
+};
 
-typedef struct {
+struct(RippleWindowConfig) {
     s8 title;
     bool* is_open;
     Allocator* allocator;
@@ -68,7 +68,7 @@ typedef struct {
         bool hide_title : 1;
         bool set_position : 1;
     };
-} RippleWindowConfig;
+};
 
 #define RIPPLE_WGPU  1 << 0
 #define RIPPLE_GLFW  1 << 1
@@ -104,12 +104,12 @@ typedef enum {
 
 #define RIPPLE_FLOAT_PRECISION 25
 
-typedef struct {
+struct(RippleSizingValue) {
     i32 _value : 30;
     RippleSizingValueType _type : 2;
-} RippleSizingValue;
+};
 
-typedef struct {
+struct(RenderedLayout) {
     i32 x;
     i32 y;
     i32 w;
@@ -118,14 +118,14 @@ typedef struct {
     i32 min_w;
     i32 max_h;
     i32 min_h;
-} RenderedLayout;
+};
 
 typedef enum {
     cld_VERTICAL = 0,
     cld_HORIZONTAL = 1,
 } RippleChildLayoutDirection;
 
-typedef struct {
+struct(RippleElementLayoutConfig) {
     RippleSizingValue x;
     RippleSizingValue y;
     RippleSizingValue width;
@@ -139,12 +139,12 @@ typedef struct {
         bool keep_inside : 1;
         RippleChildLayoutDirection direction : 1;
     };
-} RippleElementLayoutConfig;
+};
 
 struct RippleElementConfig;
 typedef void (render_func_t)(struct RippleBackendWindowRenderer*, struct RippleElementConfig, RenderedLayout, void*, RippleRenderData);
 
-typedef struct RippleElementConfig {
+struct(RippleElementConfig) {
     RippleElementLayoutConfig layout;
 
     render_func_t* render_func;
@@ -152,9 +152,9 @@ typedef struct RippleElementConfig {
     usize render_data_size;
 
     u8 layer;
-} RippleElementConfig;
+};
 
-typedef struct {
+struct(RippleElementState) {
     struct {
         u8 _frame_color : 1;
         u8 clicked : 1; // left click pressed and hovered
@@ -164,7 +164,7 @@ typedef struct {
         u8 is_weak_held : 1; // cancelled when loses hover
         u8 first_render : 1; // when called after not existing the previous frame
     };
-} RippleElementState;
+};
 
 struct Window;
 
@@ -184,16 +184,16 @@ void ripple_render_end(RippleRenderData user_data);
 #ifdef RIPPLE_IMPLEMENTATION
 #undef RIPPLE_IMPLEMENTATION
 
-typedef struct {
+struct(ElementState) {
     RenderedLayout layout;
     RippleElementState state;
     union {
         u64 user_data;
         void* user_ptr;
     };
-} ElementState;
+};
 
-typedef struct {
+struct(ElementData) {
     u64 id;
     RippleElementConfig config;
     RenderedLayout calculated_layout;
@@ -205,9 +205,9 @@ typedef struct {
     u32 prev_sibling; // equals parent index if first sibling
 
     bool update_state;
-} ElementData;
+};
 
-typedef struct Window {
+struct(Window) {
     u64 id;
     u64 parent_id;
     RippleWindowConfig config;
@@ -232,7 +232,7 @@ typedef struct Window {
 
     RippleBackendWindow window_impl;
     RippleBackendWindowRenderer window_renderer_impl;
-} Window;
+};
 
 thread_local struct {
     bool initialized;
@@ -768,13 +768,13 @@ static ElementState* _get_or_insert_current_element_state(Window* window)
 #define RIPPLE_RGB(v) (RippleColor){ .format = RCF_RGB, .value = v }
 #define RIPPLE_RGBA(v) (RippleColor){ .format = RCF_RGBA, .value = v }
 
-typedef struct {
+struct(RippleRectangleConfig) {
     RippleColor color;
     RippleColor color1;
     RippleColor color2;
     RippleColor color3;
     RippleColor color4;
-} RippleRectangleConfig;
+};
 
 void render_rectangle(RippleBackendWindowRenderer* renderer, RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {
@@ -791,9 +791,9 @@ void render_rectangle(RippleBackendWindowRenderer* renderer, RippleElementConfig
   .render_data = &(RippleRectangleConfig){__VA_ARGS__},\
   .render_data_size = sizeof(RippleRectangleConfig)
 
-typedef struct {
+struct(RippleImageConfig) {
     RippleImage image;
-} RippleImageConfig;
+};
 
 void render_image(RippleBackendWindowRenderer* renderer, RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {
@@ -806,10 +806,10 @@ void render_image(RippleBackendWindowRenderer* renderer, RippleElementConfig con
   .render_data = &(RippleImageConfig){__VA_ARGS__},\
   .render_data_size = sizeof(RippleImageConfig)
 
-typedef struct {
+struct(RippleTextConfig) {
     RippleColor color;
     s8 text;
-} RippleTextConfig;
+};
 
 void render_text(RippleBackendWindowRenderer* renderer, RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {

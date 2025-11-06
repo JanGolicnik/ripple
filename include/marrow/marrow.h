@@ -99,10 +99,14 @@ static f32 wrap_float(f32 val, f32 max) {
 #define array_len(arr) (sizeof(arr)/sizeof((arr)[0]))
 #endif // array_len
 
-typedef struct {
+#ifndef struct
+#define struct(name) typedef struct name name; struct name
+#endif // struct
+
+struct(s8) {
     u8* ptr;
     usize size;
-} s8;
+};
 
 #define S8(str) (s8){ .ptr = (u8*)str, .size = sizeof(str) }
 
@@ -322,11 +326,11 @@ u32 to_byte(f32 x){
     return (u32)v;
 }
 
-typedef struct {
+struct(HSV) {
     f32 hue;
     f32 saturation;
     f32 value;
-} HSV;
+};
 
 u32 hsv_to_rgb(HSV hsv)
 {

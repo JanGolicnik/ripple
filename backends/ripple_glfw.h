@@ -9,7 +9,7 @@
 
 #ifdef RIPPLE_GLFW_IMPLEMENTATION
 
-typedef struct RippleBackendWindow {
+struct(RippleBackendWindow) {
     GLFWwindow* window;
 
     RippleWindowConfig config;
@@ -33,7 +33,7 @@ typedef struct RippleBackendWindow {
         bool middle_released : 1;
         bool resized : 1;
     };
-} RippleBackendWindow;
+};
 
 typedef void* RippleBackendWindowConfig;
 

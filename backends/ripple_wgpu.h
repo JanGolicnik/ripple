@@ -22,15 +22,15 @@
 #define WEBGPU_STR_EXACT(str) (WGPUStringView) { .data = str, .length = sizeof(str) - 1 }
 #define WEBGPU_STR(str) (WGPUStringView) { .data = str, .length = WGPU_STRLEN }
 
-typedef struct {
+struct(RippleBackendRendererConfig) {
     WGPUInstance instance;
     WGPUAdapter adapter;
     WGPUDevice device;
-} RippleBackendRendererConfig;
+};
 
-typedef struct {
+struct(RippleRenderData) {
     WGPUCommandEncoder encoder;
-} RippleRenderData;
+};
 
 typedef WGPUTextureView RippleImage;
 
@@ -39,10 +39,10 @@ const u32 BITMAP_SIZE = 1024;
 
 #ifdef RIPPLE_WGPU_IMPLEMENTATION
 
-typedef struct {
+struct(RequestAdapterUserData) {
     WGPUAdapter adapter;
     bool request_done;
-} RequestAdapterUserData;
+};
 
 static void request_adapter_callback(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata1, void* userdata2)
 {
@@ -65,10 +65,10 @@ static WGPUAdapter get_adapter(WGPUInstance instance, WGPURequestAdapterOptions 
     return request_adapter_user_data.adapter;
 }
 
-typedef struct {
+struct(RequestDeviceUserData) {
     WGPUDevice device;
     bool request_done;
-} RequestDeviceUserData;
+};
 
 static void request_device_callback(WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, void* userdata1, void* userdata2)
 {
@@ -179,7 +179,7 @@ static uint16_t index_data[] = {
 static const u32 index_data_size = 1 * sizeof(index_data[0]);
 static const u32 index_count = sizeof(index_data) / index_data_size;
 
-typedef struct {
+struct(RippleWGPUInstance) {
     f32 pos[2];
     f32 size[2];
     f32 uv[4];
@@ -190,7 +190,7 @@ typedef struct {
     f32 color_padding[1];
     u32 image_index;
     u32 image_index_padding[3];
-} RippleWGPUInstance;
+};
 
 const char* shader =
 "struct ShaderData {\n"
@@ -277,20 +277,20 @@ const char* shader =
 "    return vec4f(linear_color, color.a);\n"
 "}\n";
 
-typedef struct {
+struct(RippleWGPUShaderData) {
     f32 color[4];
     i32 resolution[2];
     f32 time;
     f32 _padding[1];
-} RippleWGPUShaderData;
+};
 
-typedef struct {
+struct(_RippleImageInstancePair) {
     RippleImage images[5];
     u32 n_images;
     u32 instance_index;
-} _RippleImageInstancePair;
+};
 
-typedef struct RippleBackendWindowRenderer {
+struct(RippleBackendWindowRenderer) {
     WGPUSurface surface;
     WGPUTextureFormat surface_format;
 
@@ -310,7 +310,7 @@ typedef struct RippleBackendWindowRenderer {
     VEKTOR( _RippleImageInstancePair ) images;
 
     bool surface_is_configured;
-} RippleBackendWindowRenderer;
+};
 
 struct {
     RippleBackendRendererConfig config;
