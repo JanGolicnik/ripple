@@ -121,6 +121,13 @@ RippleBackendWindow ripple_backend_window_create(u64 id, RippleWindowConfig conf
     glfwSetMouseButtonCallback(window.window, &mouse_button_callback);
     glfwSetWindowPosCallback(window.window, &window_pos_callback);
 
+    if (config.cursor_disabled)
+    {
+        glfwSetInputMode(window.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        glfwSetInputMode(window.window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+    }
+
+
     if (config.x) window.prev_config.x = *config.x;
     if (config.y) window.prev_config.y = *config.y;
 
