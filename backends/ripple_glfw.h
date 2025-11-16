@@ -45,7 +45,7 @@ RippleBackendWindowConfig ripple_backend_window_default_config()
 void ripple_backend_window_initialize(RippleBackendWindowConfig config)
 {
     if (!glfwInit())
-        abort("Could not intialize GLFW!");
+        mrw_abort("Could not intialize GLFW!");
 }
 
 void mouse_button_callback(GLFWwindow* glfw_window, i32 button, i32 action, i32 mods)
@@ -114,7 +114,7 @@ RippleBackendWindow ripple_backend_window_create(u64 id, RippleWindowConfig conf
     buf_copy(null_terminated_title, config.title.ptr, config.title.size);
     window.window = glfwCreateWindow(config.width, config.height, null_terminated_title, nullptr, nullptr);
     if (!window.window)
-        abort("Couldnt no open window title: {}, width: {}, height: {}!", (const char*)null_terminated_title, config.width, config.height);
+        mrw_abort("Couldnt no open window title: {}, width: {}, height: {}!", (const char*)null_terminated_title, config.width, config.height);
 
     glfwSetWindowUserPointer(window.window, (void*)id);
     glfwSetFramebufferSizeCallback(window.window, &on_window_resized);

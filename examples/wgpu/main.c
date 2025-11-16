@@ -1,3 +1,4 @@
+#include <printccy/printccy.h>
 #include <marrow/marrow.h>
 
 #define RIPPLE_IMPLEMENTATION
@@ -693,7 +694,7 @@ void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allo
 
         RIPPLE( FORM( .width = PIXELS(5) ) );
 
-        text(marrow_format("{}: {.2f}", str_allocator, label, *value));
+        text(mrw_format("{}: {.2f}", str_allocator, label, *value));
     }
 }
 
@@ -721,7 +722,7 @@ void test_loop()
             RIPPLE( RECTANGLE( .color = {0x0e0e0e} ))
             {
                 CENTERED(
-                    text(marrow_format("halo {}", &str_allocator, frame));
+                    text(mrw_format("halo {}", &str_allocator, frame));
                     slider("gain", &g, 0.0f, 3.0f, (Allocator*)&str_allocator);
                     f32 float_buffer[256];
                     if (float_ramp(gradient_stops, array_len(gradient_stops), float_buffer, array_len(float_buffer)))
@@ -792,7 +793,7 @@ void main_loop()
         f32 dt = shader_data.time - prev_time;
         if ((dt_accum += dt) > 1.0f)
         {
-            debug("fps: {}", 1.0f / (dt_accum / dt_samples));
+            mrw_debug("fps: {}", 1.0f / (dt_accum / dt_samples));
             dt_accum = 0.0f;
             dt_samples = 0.0f;
         }
@@ -825,7 +826,7 @@ void main_loop()
         SURFACE( .title = S8("debug"), .width = 400, .height = 400, .clear_color = dark, .is_open = &debug_window_open )
         RIPPLE( RECTANGLE( .color = dark ) )
         {
-            text(marrow_format("fps rn is: {.2f}", &str_allocator, 1.0f / (dt_accum / dt_samples)));
+            text(mrw_format("fps rn is: {.2f}", &str_allocator, 1.0f / (dt_accum / dt_samples)));
 
             if (button(S8("fire settings")))
             {
@@ -875,7 +876,7 @@ void main_loop()
 
             for_each_i(color, colors, i)
             {
-                color_picker(marrow_format(": (0x{XD})", (Allocator*)&str_allocator, hsv_to_rgb(*color)), color);
+                color_picker(mrw_format(": (0x{XD})", (Allocator*)&str_allocator, hsv_to_rgb(*color)), color);
                 original_colors[i]->value = hsv_to_rgb(*color);
             }
         }

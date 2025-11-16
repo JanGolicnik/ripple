@@ -11,7 +11,7 @@
 #ifndef STB_TRUETYPE_IMPLEMENTATION
 #define STB_TRUETYPE_IMPLEMENTATION
 #endif
-#include <stb/stb_truetype.h>
+#include "../vendor/stb/stb_truetype.h"
 
 #include <math.h>
 
@@ -47,7 +47,7 @@ struct(RequestAdapterUserData) {
 static void request_adapter_callback(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata1, void* userdata2)
 {
     if (status != WGPURequestAdapterStatus_Success)
-        abort("Failed to get WebGPU adapter");
+        mrw_abort("Failed to get WebGPU adapter");
 
     RequestAdapterUserData* callback_user_data = userdata1;
     callback_user_data->adapter = adapter;
@@ -74,7 +74,7 @@ static void request_device_callback(WGPURequestDeviceStatus status, WGPUDevice d
 {
     if (status != WGPURequestDeviceStatus_Success)
     {
-        abort("Failed to get WebGPU device");
+        mrw_abort("Failed to get WebGPU device");
     }
 
     RequestDeviceUserData* callback_user_data = userdata1;
@@ -86,14 +86,14 @@ static void device_uncaptured_error_callback(WGPUDevice const* device, WGPUError
 {
     if (message.length == WGPU_STRLEN)
     {
-        error("Uncaptured device error ({}): {}", (u32)type, message.data);
+        mrw_error("Uncaptured device error ({}): {}", (u32)type, message.data);
     }
     else
     {
         char data[message.length + 1];
         buf_copy(data, message.data, message.length + 1);
         data[message.length] = 0;
-        error("Uncaptured device error ({}): {}", (u32)type, data);
+        mrw_error("Uncaptured device error ({}): {}", (u32)type, data);
     }
 }
 
@@ -127,20 +127,20 @@ RippleBackendRendererConfig ripple_backend_renderer_default_config()
 
     config.instance = wgpuCreateInstance(&(WGPUInstanceDescriptor) { 0 });
     if (!config.instance)
-        abort("Failed to create WebGPU instance.");
-    debug("Successfully created the WebGPU instance!");
+        mrw_abort("Failed to create WebGPU instance.");
+    mrw_debug("Successfully created the WebGPU instance!");
 
     config.adapter = get_adapter(config.instance, (WGPURequestAdapterOptions){
         .powerPreference = WGPUPowerPreference_HighPerformance
     });
     if (!config.adapter)
-        abort("Failed to get the adapter!");
-    debug("Successfully got the adapter!");
+        mrw_abort("Failed to get the adapter!");
+    mrw_debug("Successfully got the adapter!");
 
     config.device = get_device(config.adapter);
     if (!config.device)
-        abort("Failed to get the device!");
-    debug("Succesfully got the device!");
+        mrw_abort("Failed to get the device!");
+    mrw_debug("Succesfully got the device!");
 
     return config;
 }
@@ -341,7 +341,7 @@ struct {
 
 void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
 {
-    debug("INITIALIZNG BACKEND");
+    mrw_debug("INITIALIZNG BACKEND");
 
     _context.config = config;
     _context.queue = wgpuDeviceGetQueue(_context.config.device);
@@ -351,7 +351,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
         // load data
         FILE* file = fopen("./roboto.ttf", "rb");
         if ( !file )
-            abort("Could not load font file :(");
+            mrw_abort("Could not load font file :(");
         fseek(file, 0, SEEK_END);
         const usize file_size = ftell(file);
         rewind(file);
@@ -364,7 +364,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
         u8 bitmap_buffer[BITMAP_SIZE * BITMAP_SIZE];
         if (stbtt_BakeFontBitmap(file_buffer, 0, FONT_SIZE, bitmap_buffer, BITMAP_SIZE, BITMAP_SIZE, 32, 96, _context.font.glyphs) == 0)
         {
-            abort("failed baking bitmap");
+            mrw_abort("failed baking bitmap");
         }
 
         _context.font.texture = wgpuDeviceCreateTexture(_context.config.device, &(WGPUTextureDescriptor){

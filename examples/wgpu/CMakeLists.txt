@@ -11,7 +11,17 @@ FetchContent_Declare(
   GIT_TAG        v0.9.5
 )
 
-FetchContent_MakeAvailable(cglm)
+FetchContent_Declare(
+    marrow
+    GIT_REPOSITORY https://github.com/JanGolicnik/marrow.git
+)
+
+FetchContent_Declare(
+    printccy
+    GIT_REPOSITORY https://github.com/JanGolicnik/printccy.git
+)
+
+FetchContent_MakeAvailable(cglm marrow printccy)
 
 add_subdirectory(glfw)
 add_subdirectory(webgpu)
@@ -22,17 +32,19 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -pedantic -Wall -Wextra -Werror 
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-target_include_directories(ripple PUBLIC
-    ${CMAKE_SOURCE_DIR}/../../include
+target_include_directories(${PROJECT_NAME} PUBLIC
     ${CMAKE_SOURCE_DIR}/../..
+    ${CMAKE_SOURCE_DIR}/../../vendor
     ${CMAKE_SOURCE_DIR}/lib/webgpu/include
 )
 
-target_link_libraries(ripple
+target_link_libraries(${PROJECT_NAME}
     webgpu
     glfw
     glfw3webgpu
     cglm
+    marrow
+    printccy
 )
 
 target_copy_webgpu_binaries(${PROJECT_NAME})
