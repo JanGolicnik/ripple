@@ -58,6 +58,7 @@ struct(RippleWindowConfig) {
         bool not_resizable : 1;
         bool hide_title : 1;
         bool set_position : 1;
+        bool cursor_disabled : 1;
     };
 };
 
