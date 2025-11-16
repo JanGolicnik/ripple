@@ -5,15 +5,6 @@
 #include <stddef.h>
 
 #include <printccy/printccy.h>
-
-#ifndef RIPPLE_NO_DEFINE_MARROW_MAPA
-#define MARROW_MAPA_IMPLEMENTATION
-#endif // RIPPLE_NO_DEFINE_MARROW_MAPA
-
-#ifndef RIPPLE_NO_DEFINE_MARROW_VEKTOR
-#define MARROW_VEKTOR_IMPLEMENTATION
-#endif // RIPPLE_NO_DEFINE_MARROW_VEKTOR
-
 #include <marrow/marrow.h>
 #include <marrow/vektor.h>
 #include <marrow/allocator.h>
