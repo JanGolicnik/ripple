@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(ripple)
+project(ripple_test)
 
 set(C_STANDARD 17)
 
@@ -21,7 +21,12 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/JanGolicnik/printccy.git
 )
 
-FetchContent_MakeAvailable(cglm marrow printccy)
+FetchContent_Declare(
+    ripple
+    GIT_REPOSITORY https://github.com/JanGolicnik/ripple.git
+)
+
+FetchContent_MakeAvailable(cglm marrow printccy ripple)
 
 add_subdirectory(glfw)
 add_subdirectory(webgpu)
@@ -33,8 +38,6 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -pedantic -Wall -Wextra -Werror 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_include_directories(${PROJECT_NAME} PUBLIC
-    ${CMAKE_SOURCE_DIR}/../..
-    ${CMAKE_SOURCE_DIR}/../../vendor
     ${CMAKE_SOURCE_DIR}/lib/webgpu/include
 )
 
@@ -45,6 +48,7 @@ target_link_libraries(${PROJECT_NAME}
     cglm
     marrow
     printccy
+    ripple
 )
 
 target_copy_webgpu_binaries(${PROJECT_NAME})

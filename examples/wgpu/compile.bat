@@ -17,14 +17,14 @@ copy /Y "shader.wgsl" %build_dir%\
 
 cd %build_dir%
 
-if exist ripple.exe (
-   del ripple.exe
+if exist ripple_test.exe (
+   del ripple_test.exe
 )
 
 make
 
-if exist ripple.exe (
-   gdb -batch -ex "set logging on" -ex run -ex "bt full" -ex quit --args ripple
+if exist ripple_test.exe (
+   gdb -batch -ex "set logging on" -ex run -ex "bt full" -ex quit --args ripple_test
 )
 
 cd ../..

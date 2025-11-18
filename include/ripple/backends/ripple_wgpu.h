@@ -10,7 +10,7 @@
 
 #ifndef STB_TRUETYPE_IMPLEMENTATION
 #define STB_TRUETYPE_IMPLEMENTATION
-#endif
+#endif // STBTRUETYPE_IMPLEMENTATION
 #include "../vendor/stb/stb_truetype.h"
 
 #include <math.h>

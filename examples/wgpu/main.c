@@ -4,8 +4,8 @@
 #define RIPPLE_IMPLEMENTATION
 #define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_GLFW
 /* #define RIPPLE_BACKEND RIPPLE_EMPTY */
-#include "ripple.h"
-#include "ripple_widgets.h"
+#include <ripple/ripple.h>
+#include <ripple/ripple_widgets.h>
 
 #define CGLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <cglm/struct.h>
