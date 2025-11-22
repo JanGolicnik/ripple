@@ -277,7 +277,7 @@ void ripple_start_window(RippleWindowConfig config)
 
     u64 parent_id = _ripple_context.current_window ? _ripple_context.current_window->id : 0;
 
-    u64 window_id = s8_hash(config.title);
+    u64 window_id = hash_slice(config.title);
     Window* window = _ripple_context.current_window = ripple_find_window(window_id);
     if (!window)
     {

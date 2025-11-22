@@ -64,14 +64,14 @@ typedef struct {
     f32 scale;
 } ShaderData;
 
-typedef struct {
+struct(Vertex) {
     vec3s position;
     vec3s normal;
-} Vertex;
+};
 
-typedef struct {
+struct(Instance) {
     vec4 color;
-} Instance;
+};
 
 
 Vertex icosahedron_vertices[] = {
@@ -116,7 +116,7 @@ static const Instance instances[1] = {
     { .color = {1.0f, 0.0f, 0.0f, 1.0f} }
 };
 
-void subdivide(Vertex* vertices, u32* n_vertices, u16* indices, u32* n_indices)
+void subdivide(VertexSlice* vertices, u16* indices, u32* n_indices)
 {
     u32 n = *n_indices;
     for (u32 i = 0; i < n; i+= 3)
@@ -124,17 +124,17 @@ void subdivide(Vertex* vertices, u32* n_vertices, u16* indices, u32* n_indices)
         u16 i1 = indices[i + 0];
         u16 i3 = indices[i + 1];
         u16 i5 = indices[i + 2];
-        Vertex v1 = vertices[i1];
-        Vertex v3 = vertices[i3];
-        Vertex v5 = vertices[i5];
+        Vertex v1 = vertices->start[i1];
+        Vertex v3 = vertices->start[i3];
+        Vertex v5 = vertices->start[i5];
 
         Vertex v2 = { .position = glms_vec3_scale(glms_vec3_add(v1.position, v3.position), 0.5f) };
         Vertex v4 = { .position = glms_vec3_scale(glms_vec3_add(v3.position, v5.position), 0.5f) };
         Vertex v6 = { .position = glms_vec3_scale(glms_vec3_add(v5.position, v1.position), 0.5f) };
 
-        u16 i2 = *n_vertices; vertices[(*n_vertices)++] = v2;
-        u16 i4 = *n_vertices; vertices[(*n_vertices)++] = v4;
-        u16 i6 = *n_vertices; vertices[(*n_vertices)++] = v6;
+        u16 i2 = slice_count(*vertices); *(vertices->end++) = v2;
+        u16 i4 = slice_count(*vertices); *(vertices->end++) = v4;
+        u16 i6 = slice_count(*vertices); *(vertices->end++) = v6;
 
         indices[i] = i1; indices[i + 1] = i2; indices[i + 2] = i6;
         indices[(*n_indices)++] = i2; indices[(*n_indices)++] = i3; indices[(*n_indices)++] = i4;
@@ -142,7 +142,7 @@ void subdivide(Vertex* vertices, u32* n_vertices, u16* indices, u32* n_indices)
         indices[(*n_indices)++] = i6; indices[(*n_indices)++] = i2; indices[(*n_indices)++] = i4;
     }
 
-    for_each_n(vertex, vertices, *n_vertices)
+    slice_for_each(*vertices, vertex)
     {
         vertex->position = vertex->normal = glms_vec3_normalize(vertex->position);
     }
@@ -408,11 +408,12 @@ Context create_context(WGPUDevice device, WGPUQueue queue)
         ctx.n_vertices = array_len(icosahedron_indices) / 3;
         ctx.n_indices = array_len(icosahedron_indices);
         Vertex vertices[ctx.n_vertices * 6 * 6];
+        VertexSlice vertex_slice = slice_to(vertices, ctx.n_vertices);
         u16 indices[ctx.n_indices * 4 * 4];
         buf_copy(vertices, icosahedron_vertices, sizeof(icosahedron_vertices));
         buf_copy(indices, icosahedron_indices, sizeof(icosahedron_indices));
-        subdivide(vertices, &ctx.n_vertices, indices, &ctx.n_indices);
-        subdivide(vertices, &ctx.n_vertices, indices, &ctx.n_indices);
+        subdivide(&vertex_slice, indices, &ctx.n_indices);
+        subdivide(&vertex_slice, indices, &ctx.n_indices);
 
         ctx.vertex_buffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor) {
             .size = sizeof(vertices),
@@ -455,7 +456,7 @@ void test_loop()
     while (main_is_open)
     {
         frame++;
-        SURFACE( .title = S8("surface"), .width = 800, .height = 800, .clear_color = {0xff0000}, .is_open = &main_is_open )
+        SURFACE( .title = str("surface"), .width = 800, .height = 800, .clear_color = {0xff0000}, .is_open = &main_is_open )
         {
             RIPPLE( RECTANGLE( .color = {0x0e0e0e} ))
             {
@@ -545,14 +546,14 @@ void main_loop()
             glm_mat4_copy(glms_mat4_mul(proj, view).raw, shader_data.camera_matrix); // cam.raw is plain mat4
         }
 
-        SURFACE( .title = S8("surface"), .width = 800, .height = 800, .clear_color = dark, .is_open = &main_is_open )
+        SURFACE( .title = str("surface"), .width = 800, .height = 800, .clear_color = dark, .is_open = &main_is_open )
         {
             if (!debug_window_open)
             {
                 RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD) ), RECTANGLE( .color = STATE().hovered ? dark2 : dark ))
                 {
                     debug_window_open = STATE().released;
-                    text(S8("debug"));
+                    text(str("debug"));
                 }
             }
 
@@ -560,12 +561,12 @@ void main_loop()
         }
 
         if (debug_window_open)
-        SURFACE( .title = S8("debug"), .width = 400, .height = 400, .clear_color = dark, .is_open = &debug_window_open )
+        SURFACE( .title = str("debug"), .width = 400, .height = 400, .clear_color = dark, .is_open = &debug_window_open )
         RIPPLE( RECTANGLE( .color = dark ) )
         {
             text(mrw_format("fps rn is: {.2f}", &str_allocator, 1.0f / (dt_accum / dt_samples)));
 
-            if (button(S8("fire settings")))
+            if (button(str("fire settings")))
             {
                 slider("gain", &shader_data.gain, 0.0f, 3.0f, (Allocator*)&str_allocator);
                 slider("speed", &shader_data.speed, 0.0f, 60.0f, (Allocator*)&str_allocator);
@@ -611,10 +612,10 @@ void main_loop()
                 }
             }
 
-            for_each_i(color, colors, i)
+            array_for_each_i(colors, i)
             {
-                color_picker(mrw_format(": (0x{XD})", (Allocator*)&str_allocator, hsv_to_rgb(*color)), color);
-                original_colors[i]->value = hsv_to_rgb(*color);
+                color_picker(mrw_format(": (0x{XD})", (Allocator*)&str_allocator, hsv_to_rgb(colors[i])), &colors[i]);
+                original_colors[i]->value = hsv_to_rgb(colors[i]);
             }
         }
 

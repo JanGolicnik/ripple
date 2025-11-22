@@ -937,11 +937,10 @@ void ripple_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h)
     f32 scale = font_size / FONT_SIZE;
     f32 x = 0.0f, y = 0.0f;
 
-    for (u64 i = 0; i < text.size; i++)
+    slice_for_each(text, c)
     {
-        i32 c = text.ptr[i];
-        if (c < 32 || c >= 128) continue;
-        stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, c - 32, &x, &y, &(stbtt_aligned_quad){ 0 }, 1);
+        if (*c < 32) continue;
+        stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, *c - 32, &x, &y, &(stbtt_aligned_quad){ 0 }, 1);
     }
 
     if (out_w) *out_w = (i32)(x * scale);
@@ -955,12 +954,10 @@ void ripple_backend_render_text(RippleBackendWindowRenderer* window, i32 pos_x, 
     pos_y += font_size * 0.75f;
     f32 x = 0.0f;
     f32 y = 0.0f;
-    for (u64 i = 0; i < text.size; i++)
+    slice_for_each(text, c)
     {
-        i32 c = text.ptr[i];
-
         stbtt_aligned_quad quad;
-        stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, c - 32, &x, &y, &quad, 1);
+        stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, *c - 32, &x, &y, &quad, 1);
 
         vektor_add(window->instances, (RippleWGPUInstance){
             .pos = { pos_x + quad.x0 * scale, pos_y + quad.y0 * scale },

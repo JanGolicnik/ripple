@@ -110,8 +110,9 @@ RippleBackendWindow ripple_backend_window_create(u64 id, RippleWindowConfig conf
         glfwWindowHint(GLFW_POSITION_Y, *config.y);
     }
 
-    char null_terminated_title[config.title.size + 1];
-    buf_copy(null_terminated_title, config.title.ptr, config.title.size);
+    char null_terminated_title[slice_count(config.title) + 1];
+    s8 title_slice = array_slice(null_terminated_title);
+    slice_copy(title_slice, config.title);
     window.window = glfwCreateWindow(config.width, config.height, null_terminated_title, nullptr, nullptr);
     if (!window.window)
         mrw_abort("Couldnt no open window title: {}, width: {}, height: {}!", (const char*)null_terminated_title, config.width, config.height);
