@@ -766,16 +766,25 @@ struct(RippleRectangleConfig) {
     RippleColor color2;
     RippleColor color3;
     RippleColor color4;
+    f32 radius;
+    f32 radiusBL;
+    f32 radiusBR;
+    f32 radiusTL;
+    f32 radiusTR;
 };
 
 void render_rectangle(RippleBackendWindowRenderer* renderer, RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
 {
     RippleRectangleConfig rectangle_data = *(RippleRectangleConfig*)config.render_data;
     if (rectangle_data.color.value != 0 || rectangle_data.color.format != 0)
-    {
         rectangle_data.color1 = rectangle_data.color2 = rectangle_data.color3 = rectangle_data.color4 = rectangle_data.color;
-    }
-    ripple_backend_render_rect(renderer, layout.x, layout.y, layout.w, layout.h, rectangle_data.color1, rectangle_data.color2, rectangle_data.color3, rectangle_data.color4);
+    if (rectangle_data.radius != 0.0f)
+        rectangle_data.radiusBL = rectangle_data.radiusBR = rectangle_data.radiusTL = rectangle_data.radiusTR = rectangle_data.radius;
+    ripple_backend_render_rect(renderer,
+                               layout.x, layout.y, layout.w, layout.h,
+                               rectangle_data.color1, rectangle_data.color2, rectangle_data.color3, rectangle_data.color4,
+                               rectangle_data.radiusBL, rectangle_data.radiusBR, rectangle_data.radiusTL, rectangle_data.radiusTR
+                               );
 }
 
 #define RECTANGLE(...)\

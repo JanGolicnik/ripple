@@ -183,11 +183,11 @@ struct(RippleWGPUInstance) {
     f32 pos[2];
     f32 size[2];
     f32 uv[4];
+    f32 radius[4];
     f32 color1[4];
     f32 color2[4];
     f32 color3[4];
     f32 color4[4];
-    f32 color_padding[1];
     u32 image_index;
     u32 image_index_padding[3];
 };
@@ -199,40 +199,37 @@ const char* shader =
 "    time: f32,\n"
 "}\n"
 "@group(0) @binding(0) var<uniform> shader_data: ShaderData;\n"
-"\n"
 "@group(1) @binding(0) var texture1: texture_2d<f32>;\n"
 "@group(1) @binding(1) var texture2: texture_2d<f32>;\n"
 "@group(1) @binding(2) var texture3: texture_2d<f32>;\n"
 "@group(1) @binding(3) var texture4: texture_2d<f32>;\n"
 "@group(1) @binding(4) var texture5: texture_2d<f32>;\n"
-"\n"
 "@group(2) @binding(0) var texture_sampler: sampler;\n"
-"\n"
 "struct VertexInput {\n"
 "    @location(0) position: vec2f,\n"
 "}\n"
-"\n"
 "struct InstanceInput {\n"
 "    @location(1) position: vec2f,\n"
 "    @location(2) size: vec2f,\n"
 "    @location(3) uv: vec4f,\n"
+"    @location(4) radius: vec4f,\n"
+"    @location(5) color1: vec4f,\n"
+"    @location(6) color2: vec4f,\n"
+"    @location(7) color3: vec4f,\n"
+"    @location(8) color4: vec4f,\n"
+"    @location(9) image_index: u32,\n"
+"}\n"
+"struct VertexOutput{\n"
+"    @builtin(position) position: vec4f,\n"
+"    @location(0) uv: vec2f,\n"
+"    @location(1) size: vec2f,\n"
+"    @location(2) radius: vec4f,\n"
+"    @interpolate(flat) @location(3) image_index: u32,\n"
 "    @location(4) color1: vec4f,\n"
 "    @location(5) color2: vec4f,\n"
 "    @location(6) color3: vec4f,\n"
 "    @location(7) color4: vec4f,\n"
-"    @location(8) image_index: u32,\n"
 "}\n"
-"\n"
-"struct VertexOutput{\n"
-"    @builtin(position) position: vec4f,\n"
-"    @location(0) uv: vec2f,\n"
-"    @interpolate(flat) @location(1) image_index: u32,\n"
-"    @location(2) color1: vec4f,\n"
-"    @location(3) color2: vec4f,\n"
-"    @location(4) color3: vec4f,\n"
-"    @location(5) color4: vec4f,\n"
-"}\n"
-"\n"
 "@vertex \n"
 "fn vs_main(v: VertexInput, i: InstanceInput, @builtin(vertex_index) index: u32) -> VertexOutput {\n"
 "    let resolution = vec2f(f32(shader_data.resolution.x), f32(shader_data.resolution.y));\n"
@@ -243,10 +240,11 @@ const char* shader =
 "    if (index == 1) { uv = i.uv.zy; }\n"
 "    else if (index == 2) { uv = i.uv.zw; }\n"
 "    else if (index == 3) { uv = i.uv.xw; }\n"
-"    \n"
 "    var out: VertexOutput;\n"
 "    out.position = vec4f(position.x, position.y, 0.0, 1.0);\n"
+"    out.size = i.size;\n"
 "    out.uv = uv;\n"
+"    out.radius = i.radius;\n"
 "    out.color1 = i.color1;\n"
 "    out.color2 = i.color2;\n"
 "    out.color3 = i.color3;\n"
@@ -254,27 +252,51 @@ const char* shader =
 "    out.image_index = i.image_index;\n"
 "    return out;\n"
 "}\n"
-"\n"
 "@fragment \n"
 "fn fs_main(in: VertexOutput) -> @location(0) vec4f {\n"
-"    var tex_color1 = textureSample(texture1, texture_sampler, in.uv);\n"
-"    var tex_color2 = vec4f(textureSample(texture2, texture_sampler, in.uv).r);\n"
-"    var tex_color3 = textureSample(texture3, texture_sampler, in.uv);\n"
-"    var tex_color4 = textureSample(texture4, texture_sampler, in.uv);\n"
-"    var tex_color5 = textureSample(texture5, texture_sampler, in.uv);\n"
-"    var tex_color: vec4f;\n"
+"    var alpha = 1.0f;\n"
+"    let min_size = min(in.size.x, in.size.y);\n"
+"    let p = in.uv * in.size;\n"
+"    let rTL = in.radius.x * min_size;\n"
+"    let rTR = in.radius.y * min_size;\n"
+"    let rBR = in.radius.z * min_size;\n"
+"    let rBL = in.radius.w * min_size;\n"
+"    let cBL = vec2f(rBL, rBL);\n"
+"    let cBR = vec2f(in.size.x - rBR, rBR);\n"
+"    let cTR = vec2f(in.size.x - rTR, in.size.y - rTR);\n"
+"    let cTL = vec2f(rTL, in.size.y - rTL);\n"
+"    let feather = 1.0f;\n"
+"    if (p.x < cBL.x && p.y < cBL.y) {\n"
+"        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cBL) - rBL);\n"
+"        alpha = min(alpha, a);\n"
+"    } else if (p.x > cBR.x && p.y < cBR.y) {\n"
+"        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cBR) - rBR);\n"
+"        alpha = min(alpha, a);\n"
+"    } else if (p.x > cTR.x && p.y > cTR.y) {\n"
+"        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cTR) - rTR);\n"
+"        alpha = min(alpha, a);\n"
+"    } else if (p.x < cTL.x && p.y > cTL.y) {\n"
+"        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cTL) - rTL);\n"
+"        alpha = min(alpha, a);\n"
+"    }\n"
+"    var tc1 = textureSample(texture1, texture_sampler, in.uv);\n"
+"    var tc2 = vec4f(textureSample(texture2, texture_sampler, in.uv).r);\n"
+"    var tc3 = textureSample(texture3, texture_sampler, in.uv);\n"
+"    var tc4 = textureSample(texture4, texture_sampler, in.uv);\n"
+"    var tc5 = textureSample(texture5, texture_sampler, in.uv);\n"
+"    var tc: vec4f;\n"
 "    switch in.image_index {\n"
-"        default { tex_color = tex_color1; }\n"
-"        case 0u { tex_color = tex_color1; }\n"
-"        case 1u { tex_color = tex_color2; }\n"
-"        case 2u { tex_color = tex_color3; }\n"
-"        case 3u { tex_color = tex_color4; }\n"
-"        case 4u { tex_color = tex_color5; }\n"
+"        default { tc = tc1; }\n"
+"        case 0u { tc = tc1; }\n"
+"        case 1u { tc = tc2; }\n"
+"        case 2u { tc = tc3; }\n"
+"        case 3u { tc = tc4; }\n"
+"        case 4u { tc = tc5; }\n"
 "    }\n"
 "    let gradient = mix(mix(in.color3, in.color4, in.uv.x), mix(in.color1, in.color2, in.uv.x), in.uv.y);\n"
-"    let color = tex_color * gradient;\n"
+"    let color = tc * gradient;\n"
 "    let linear_color = pow(color.rgb, vec3f(2.2));\n"
-"    return vec4f(linear_color, color.a);\n"
+"    return vec4f(linear_color, color.a * alpha);\n"
 "}\n";
 
 struct(RippleWGPUShaderData) {
@@ -571,45 +593,50 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
                         .stepMode = WGPUVertexStepMode_Vertex,
                     },
                     [1] = {
-                        .attributeCount = 8,
+                        .attributeCount = 9,
                         .attributes = (WGPUVertexAttribute[]) {
-                            [0] = {
+                            {
                                 .shaderLocation = 1,
                                 .format = WGPUVertexFormat_Float32x2,
                                 .offset = 0
                             },
-                            [1] = {
+                            {
                                 .shaderLocation = 2,
                                 .format = WGPUVertexFormat_Float32x2,
                                 .offset = offsetof(RippleWGPUInstance, size)
                             },
-                            [2] = {
+                            {
                                 .shaderLocation = 3,
                                 .format = WGPUVertexFormat_Float32x4,
                                 .offset = offsetof(RippleWGPUInstance, uv)
                             },
-                            [3] = {
+                            {
                                 .shaderLocation = 4,
+                                .format = WGPUVertexFormat_Float32x4,
+                                .offset = offsetof(RippleWGPUInstance, radius)
+                            },
+                            {
+                                .shaderLocation = 5,
                                 .format = WGPUVertexFormat_Float32x4,
                                 .offset = offsetof(RippleWGPUInstance, color1)
                             },
-                            [4] = {
-                                .shaderLocation = 5,
+                            {
+                                .shaderLocation = 6,
                                 .format = WGPUVertexFormat_Float32x4,
                                 .offset = offsetof(RippleWGPUInstance, color2)
                             },
-                            [5] = {
-                                .shaderLocation = 6,
+                            {
+                                .shaderLocation = 7,
                                 .format = WGPUVertexFormat_Float32x4,
                                 .offset = offsetof(RippleWGPUInstance, color3)
                             },
-                            [6] = {
-                                .shaderLocation = 7,
+                            {
+                                .shaderLocation = 8,
                                 .format = WGPUVertexFormat_Float32x4,
                                 .offset = offsetof(RippleWGPUInstance, color4)
                             },
-                            [7] = {
-                                .shaderLocation = 8,
+                            {
+                                .shaderLocation = 9,
                                 .format = WGPUVertexFormat_Uint32,
                                 .offset = offsetof(RippleWGPUInstance, image_index)
                             }
@@ -871,12 +898,13 @@ void ripple_backend_window_present(RippleBackendWindowRenderer* renderer)
     }
 }
 
-void ripple_backend_render_rect(RippleBackendWindowRenderer* window, i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4)
+void ripple_backend_render_rect(RippleBackendWindowRenderer* window, i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4, f32 radius1, f32 radius2, f32 radius3, f32 radius4)
 {
     RippleWGPUInstance instance = {
         .pos = { (f32)x, (f32)y },
         .size = { (f32)w, (f32)h },
         .uv = { 0.0f, 0.0f, 1.0f, 1.0f },
+        .radius = { radius1, radius2, radius3, radius4 },
         .image_index = 0
     };
     _ripple_backend_color_to_color(color1, instance.color1);
