@@ -37,7 +37,12 @@ struct(RippleCursorState) {
     MouseButtonState middle;
     i32 x;
     i32 y;
-    bool consumed;
+    i32 dx;
+    i32 dy;
+    struct{
+        bool consumed : 1;
+        bool valid : 1;
+    };
 };
 
 struct(RippleWindowConfig) {
@@ -298,17 +303,23 @@ void ripple_start_window(RippleWindowConfig config)
     // update backend and state
     {
         window->prev_cursor_state = window->cursor_state;
-
         window->cursor_state.left.held |= window->cursor_state.left.pressed;
         window->cursor_state.right.held |= window->cursor_state.right.pressed;
         window->cursor_state.middle.held |= window->cursor_state.middle.pressed;
-
         window->cursor_state.consumed = false;
+        bool prev_valid = window->cursor_state.valid;
+        i32 prev_x = window->cursor_state.x;
+        i32 prev_y = window->cursor_state.y;
 
         ripple_backend_window_update(&window->window_impl, &window->config, &window->state, &window->cursor_state);
-        if (config.is_open)
-            *config.is_open = window->state.is_open;
 
+        if (prev_valid)
+        {
+            window->cursor_state.dx = window->cursor_state.x - prev_x;
+            window->cursor_state.dy = prev_y - window->cursor_state.y;
+        }
+
+        if (config.is_open) *config.is_open = window->state.is_open;
         if (window->cursor_state.left.released) window->cursor_state.left.held = 0;
         if (window->cursor_state.right.released) window->cursor_state.right.held = 0;
         if (window->cursor_state.middle.released) window->cursor_state.middle.held = 0;

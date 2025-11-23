@@ -17,6 +17,9 @@ struct(RippleBackendWindow) {
     struct {
         i32 width;
         i32 height;
+        double mouse_x;
+        double mouse_y;
+        bool mouse_valid;
     };
 
     struct {
@@ -78,11 +81,20 @@ void mouse_button_callback(GLFWwindow* glfw_window, i32 button, i32 action, i32 
     }
 }
 
+void mouse_pos_callback(GLFWwindow* glfw_window, double x, double y)
+{
+    u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
+    RippleBackendWindow* window = ripple_find_window_impl(window_id);
+    window->mouse_x = x;
+    window->mouse_y = y;
+    window->mouse_valid = true;
+}
+
+
 void window_pos_callback(GLFWwindow* glfw_window, i32 x, i32 y)
 {
     u64 window_id = (u64)glfwGetWindowUserPointer(glfw_window);
     RippleBackendWindow* window = ripple_find_window_impl(window_id);
-
     if (window->config.x) *window->config.x = x;
     if (window->config.y) *window->config.y = y;
 }
@@ -120,6 +132,7 @@ RippleBackendWindow ripple_backend_window_create(u64 id, RippleWindowConfig conf
     glfwSetWindowUserPointer(window.window, (void*)id);
     glfwSetFramebufferSizeCallback(window.window, &on_window_resized);
     glfwSetMouseButtonCallback(window.window, &mouse_button_callback);
+    glfwSetCursorPosCallback(window.window, &mouse_pos_callback);
     glfwSetWindowPosCallback(window.window, &window_pos_callback);
 
     if (config.cursor_disabled)
@@ -176,9 +189,9 @@ void ripple_backend_window_update(RippleBackendWindow* window, RippleWindowConfi
     }
 
     { // cursor
-        double x, y; glfwGetCursorPos(window->window, &x, &y);
-        cursor_state->x = (i32)x;
-        cursor_state->y = (i32)y;
+        cursor_state->valid = window->mouse_valid;
+        cursor_state->x = (i32)window->mouse_x;
+        cursor_state->y = (i32)window->mouse_y;
         cursor_state->left.pressed = window->left_pressed;
         cursor_state->right.pressed = window->right_pressed;
         cursor_state->middle.pressed = window->middle_pressed;
