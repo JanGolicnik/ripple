@@ -1,19 +1,15 @@
 #ifndef RIPPLE_WGPU_H
 #define RIPPLE_WGPU_H
 
-#if (RIPPLE_BACKEND) & RIPPLE_GLFW
-#include <glfw3webgpu.h>
-#endif // RIPPLE_GLFW
-#if (RIPPLE_BACKEND) & RIPPLE_SDL
-#include <sdl2webgpu.h>
-#endif // RIPPLE_SDL
-
 #ifndef STB_TRUETYPE_IMPLEMENTATION
 #define STB_TRUETYPE_IMPLEMENTATION
 #endif // STBTRUETYPE_IMPLEMENTATION
+
 #include "../vendor/stb/stb_truetype.h"
 
 #include <math.h>
+
+#include <webgpu/webgpu.h>
 
 #ifdef RIPPLE_IMPLEMENTATION
 #define RIPPLE_WGPU_IMPLEMENTATION
@@ -26,10 +22,13 @@ struct(RippleBackendRendererConfig) {
     WGPUInstance instance;
     WGPUAdapter adapter;
     WGPUDevice device;
+    WGPUQueue queue;
 };
 
 struct(RippleRenderData) {
+    RippleBackendRendererConfig config;
     WGPUCommandEncoder encoder;
+    WGPUTextureView texture_view;
 };
 
 typedef WGPUTextureView RippleImage;
@@ -126,41 +125,22 @@ RippleBackendRendererConfig ripple_backend_renderer_default_config()
     RippleBackendRendererConfig config = { 0 };
 
     config.instance = wgpuCreateInstance(&(WGPUInstanceDescriptor) { 0 });
-    if (!config.instance)
-        mrw_abort("Failed to create WebGPU instance.");
+    if (!config.instance) mrw_abort("Failed to create WebGPU instance.");
     mrw_debug("Successfully created the WebGPU instance!");
 
-    config.adapter = get_adapter(config.instance, (WGPURequestAdapterOptions){
-        .powerPreference = WGPUPowerPreference_HighPerformance
-    });
-    if (!config.adapter)
-        mrw_abort("Failed to get the adapter!");
+    config.adapter = get_adapter(config.instance, (WGPURequestAdapterOptions){ .powerPreference = WGPUPowerPreference_HighPerformance });
+    if (!config.adapter) mrw_abort("Failed to get the adapter!");
     mrw_debug("Successfully got the adapter!");
 
     config.device = get_device(config.adapter);
-    if (!config.device)
-        mrw_abort("Failed to get the device!");
+    if (!config.device) mrw_abort("Failed to get the device!");
     mrw_debug("Succesfully got the device!");
 
+    config.queue = wgpuDeviceGetQueue(config.device);
+    if (!config.queue) mrw_abort("Failed to get the queue!");
+    mrw_debug("Succesfully got the queue!");
+
     return config;
-}
-
-static bool configure_surface(WGPUDevice device, WGPUSurface surface, WGPUTextureFormat format, u32 width, u32 height)
-{
-    wgpuSurfaceUnconfigure(surface);
-    if (width == 0 || height == 0)
-        return false;
-
-    wgpuSurfaceConfigure(surface, &(WGPUSurfaceConfiguration){
-            .width = width,
-            .height = height,
-            .format = format,
-            .usage = WGPUTextureUsage_RenderAttachment,
-            .device = device,
-            .presentMode = WGPUPresentMode_Fifo,
-            .alphaMode = WGPUCompositeAlphaMode_Auto
-        });
-    return true;
 }
 
 static f32 vertex_data[] = {
@@ -194,9 +174,7 @@ struct(RippleWGPUInstance) {
 
 const char* shader =
 "struct ShaderData {\n"
-"    color: vec4f,\n"
 "    resolution: vec2i,\n"
-"    time: f32,\n"
 "}\n"
 "@group(0) @binding(0) var<uniform> shader_data: ShaderData;\n"
 "@group(1) @binding(0) var texture1: texture_2d<f32>;\n"
@@ -300,10 +278,7 @@ const char* shader =
 "}\n";
 
 struct(RippleWGPUShaderData) {
-    f32 color[4];
     i32 resolution[2];
-    f32 time;
-    f32 _padding[1];
 };
 
 struct(_RippleImageInstancePair) {
@@ -312,31 +287,8 @@ struct(_RippleImageInstancePair) {
     u32 instance_index;
 };
 
-struct(RippleBackendWindowRenderer) {
-    WGPUSurface surface;
-    WGPUTextureFormat surface_format;
-
-    // these two are only set inbetween render_window_end and render_end
-    WGPUSurfaceTexture surface_texture;
-    WGPUTextureView surface_texture_view;
-
-    WGPUBuffer instance_buffer;
-    WGPUBuffer uniform_buffer;
-    WGPUBindGroup bind_group;
-
-    RippleWGPUShaderData shader_data;
-
-    u32 instance_buffer_size;
-    VEKTOR(RippleWGPUInstance) instances;
-
-    VEKTOR( _RippleImageInstancePair ) images;
-
-    bool surface_is_configured;
-};
-
 struct {
     RippleBackendRendererConfig config;
-    WGPUQueue queue;
 
     WGPUBindGroupLayout bind_group_layout;
     WGPUBindGroupLayout image_bind_group_layout;
@@ -359,14 +311,21 @@ struct {
         WGPUTextureView view;
         stbtt_bakedchar glyphs[96];
     } font;
+
+    WGPUBuffer instance_buffer;
+    WGPUBuffer uniform_buffer;
+    WGPUBindGroup bind_group;
+
+    RippleWGPUShaderData shader_data;
+
+    u32 instance_buffer_size;
+    VEKTOR(RippleWGPUInstance) instances;
+    VEKTOR( _RippleImageInstancePair ) images;
 } _context;
 
 void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
 {
     mrw_debug("INITIALIZNG BACKEND");
-
-    _context.config = config;
-    _context.queue = wgpuDeviceGetQueue(_context.config.device);
 
     // create font
     {
@@ -389,7 +348,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
             mrw_abort("failed baking bitmap");
         }
 
-        _context.font.texture = wgpuDeviceCreateTexture(_context.config.device, &(WGPUTextureDescriptor){
+        _context.font.texture = wgpuDeviceCreateTexture(config.device, &(WGPUTextureDescriptor){
                 .label = WEBGPU_STR("fontAtlas"),
                 .size = (WGPUExtent3D){ .width = BITMAP_SIZE, .height = BITMAP_SIZE, .depthOrArrayLayers = 1 },
                 .format = WGPUTextureFormat_R8Unorm,
@@ -399,7 +358,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
                 .sampleCount = 1
             });
 
-        wgpuQueueWriteTexture(_context.queue, &(WGPUTexelCopyTextureInfo){
+        wgpuQueueWriteTexture(config.queue, &(WGPUTexelCopyTextureInfo){
                 .texture = _context.font.texture,
                 .aspect = WGPUTextureAspect_All
             },
@@ -426,7 +385,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
     }
 
     {
-        _context.white_pixel.texture = wgpuDeviceCreateTexture(_context.config.device, &(WGPUTextureDescriptor){
+        _context.white_pixel.texture = wgpuDeviceCreateTexture(config.device, &(WGPUTextureDescriptor){
                 .label = WEBGPU_STR("white_pixel"),
                 .size = (WGPUExtent3D){ .width = 1, .height = 1, .depthOrArrayLayers = 1 },
                 .format = WGPUTextureFormat_RGBA8Unorm,
@@ -445,7 +404,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
             });
 
         u32 white = 0xffffffff;
-        wgpuQueueWriteTexture(_context.queue, &(WGPUTexelCopyTextureInfo){
+        wgpuQueueWriteTexture(config.queue, &(WGPUTexelCopyTextureInfo){
                 .texture = _context.white_pixel.texture,
                 .aspect = WGPUTextureAspect_All
             },
@@ -463,7 +422,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
         );
     }
 
-    _context.bind_group_layout = wgpuDeviceCreateBindGroupLayout(_context.config.device, &(WGPUBindGroupLayoutDescriptor){
+    _context.bind_group_layout = wgpuDeviceCreateBindGroupLayout(config.device, &(WGPUBindGroupLayoutDescriptor){
             .entryCount = 1,
             .entries = (WGPUBindGroupLayoutEntry[]) {
                 [0] = {
@@ -477,7 +436,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
             }
         });
 
-    _context.image_bind_group_layout = wgpuDeviceCreateBindGroupLayout(_context.config.device, &(WGPUBindGroupLayoutDescriptor)
+    _context.image_bind_group_layout = wgpuDeviceCreateBindGroupLayout(config.device, &(WGPUBindGroupLayoutDescriptor)
         {
             .entryCount = 5,
             .entries = (WGPUBindGroupLayoutEntry[]) {
@@ -524,7 +483,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
             }
         });
 
-    _context.sampler_bind_group_layout = wgpuDeviceCreateBindGroupLayout(_context.config.device, &(WGPUBindGroupLayoutDescriptor)
+    _context.sampler_bind_group_layout = wgpuDeviceCreateBindGroupLayout(config.device, &(WGPUBindGroupLayoutDescriptor)
         {
             .entryCount = 1,
             .entries = &(WGPUBindGroupLayoutEntry) {
@@ -536,7 +495,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
             }
         });
 
-    _context.sampler = wgpuDeviceCreateSampler(_context.config.device, &(WGPUSamplerDescriptor){
+    _context.sampler = wgpuDeviceCreateSampler(config.device, &(WGPUSamplerDescriptor){
             .addressModeU = WGPUAddressMode_ClampToEdge,
             .addressModeV = WGPUAddressMode_ClampToEdge,
             .addressModeW = WGPUAddressMode_ClampToEdge,
@@ -546,7 +505,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
             .maxAnisotropy = 1
         });
 
-    _context.sampler_bind_group = wgpuDeviceCreateBindGroup(_context.config.device, &(WGPUBindGroupDescriptor){
+    _context.sampler_bind_group = wgpuDeviceCreateBindGroup(config.device, &(WGPUBindGroupDescriptor){
             .layout = _context.sampler_bind_group_layout,
             .entryCount = 1,
             .entries = (WGPUBindGroupEntry[]){
@@ -557,7 +516,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
             }
         });
 
-    WGPUShaderModule shader_module = wgpuDeviceCreateShaderModule(_context.config.device, &(WGPUShaderModuleDescriptor){
+    WGPUShaderModule shader_module = wgpuDeviceCreateShaderModule(config.device, &(WGPUShaderModuleDescriptor){
             .label = WEBGPU_STR("Shdader descriptor"),
             .nextInChain = &((WGPUShaderSourceWGSL) {
                 .chain.sType = WGPUSType_ShaderSourceWGSL,
@@ -565,7 +524,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
             }).chain
         });
 
-    _context.pipeline_layout = wgpuDeviceCreatePipelineLayout(_context.config.device, &(WGPUPipelineLayoutDescriptor){
+    _context.pipeline_layout = wgpuDeviceCreatePipelineLayout(config.device, &(WGPUPipelineLayoutDescriptor){
             .bindGroupLayoutCount = 3,
             .bindGroupLayouts = (WGPUBindGroupLayout[]) {
                 [0] = _context.bind_group_layout,
@@ -574,7 +533,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
             }
         });
 
-    _context.pipeline = wgpuDeviceCreateRenderPipeline(_context.config.device, &(WGPURenderPipelineDescriptor){
+    _context.pipeline = wgpuDeviceCreateRenderPipeline(config.device, &(WGPURenderPipelineDescriptor){
             .vertex = {
                 .module = shader_module,
                 .entryPoint = WEBGPU_STR("vs_main"),
@@ -682,81 +641,47 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
 
     wgpuShaderModuleRelease(shader_module);
 
-    _context.vertex_buffer = wgpuDeviceCreateBuffer(_context.config.device, &(WGPUBufferDescriptor) {
+    _context.vertex_buffer = wgpuDeviceCreateBuffer(config.device, &(WGPUBufferDescriptor) {
            .size = sizeof(vertex_data),
            .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
         });
-    wgpuQueueWriteBuffer(_context.queue, _context.vertex_buffer, 0, vertex_data, sizeof(vertex_data));
+    wgpuQueueWriteBuffer(config.queue, _context.vertex_buffer, 0, vertex_data, sizeof(vertex_data));
 
-    _context.index_buffer = wgpuDeviceCreateBuffer(_context.config.device, &(WGPUBufferDescriptor) {
+    _context.index_buffer = wgpuDeviceCreateBuffer(config.device, &(WGPUBufferDescriptor) {
            .size = sizeof(index_data),
            .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Index,
         });
-    wgpuQueueWriteBuffer(_context.queue, _context.index_buffer, 0, index_data, sizeof(index_data));
-}
+    wgpuQueueWriteBuffer(config.queue, _context.index_buffer, 0, index_data, sizeof(index_data));
 
-RippleBackendWindowRenderer ripple_backend_window_renderer_create(u64 id, RippleWindowConfig config, const RippleBackendWindow* window)
-{
-    RippleBackendWindowRenderer renderer = { 0 };
-    renderer.surface =
-#if (RIPPLE_BACKEND) & RIPPLE_GLFW
-        glfwGetWGPUSurface(_context.config.instance, window->window);
-#endif // RIPPLE_GLFW
-#if (RIPPLE_BACKEND) & RIPPLE_SDL
-        SDL_GetWGPUSurface(_context.config.instance, window->window);
-#endif // RIPPLE_SDL
-    renderer.surface_format = WGPUTextureFormat_BGRA8UnormSrgb;//wgpuSurfaceGetPreferredFormat(renderer.surface, _context.config.adapter);
-
-    renderer.uniform_buffer = wgpuDeviceCreateBuffer(_context.config.device, &(WGPUBufferDescriptor){
-            .size = sizeof(renderer.shader_data),
+    _context.uniform_buffer = wgpuDeviceCreateBuffer(config.device, &(WGPUBufferDescriptor){
+            .size = sizeof(_context.shader_data),
             .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
         });
 
-    renderer.bind_group = wgpuDeviceCreateBindGroup(_context.config.device, &(WGPUBindGroupDescriptor){
+    _context.bind_group = wgpuDeviceCreateBindGroup(config.device, &(WGPUBindGroupDescriptor){
             .layout = _context.bind_group_layout,
             .entryCount = 1,
             .entries = (WGPUBindGroupEntry[]){
                 [0] = {
                     .binding = 0,
-                    .buffer = renderer.uniform_buffer,
+                    .buffer = _context.uniform_buffer,
                     .offset = 0,
-                    .size = sizeof(renderer.shader_data)
+                    .size = sizeof(_context.shader_data)
                 }
             }
         });
 
-    return renderer;
+    _context.config = config;
 }
 
-RippleRenderData ripple_backend_render_begin()
+void ripple_backend_render_begin(u32 width, u32 height)
 {
-    wgpuInstanceProcessEvents(_context.config.instance);
-    return (RippleRenderData){
-        .encoder = wgpuDeviceCreateCommandEncoder(_context.config.device, &(WGPUCommandEncoderDescriptor){ .label = WEBGPU_STR("Command encoder")})
-    };
-}
-
-void ripple_backend_render_window_begin(RippleBackendWindow* window, RippleBackendWindowRenderer* renderer, RippleRenderData render_data)
-{
-    (void) render_data;
-
-    if (window->resized)
-    {
-        renderer->shader_data.resolution[0] = window->width;
-        renderer->shader_data.resolution[1] = window->height;
-        renderer->surface_is_configured = configure_surface(_context.config.device, renderer->surface, renderer->surface_format, renderer->shader_data.resolution[0], renderer->shader_data.resolution[1]);
-        window->resized = false;
-    }
-
-    renderer->shader_data.time = 0.0f; // TODO
-    renderer->shader_data.color[0] = sinf(renderer->shader_data.time) * 0.5f + 0.5f;
-    renderer->shader_data.color[1] = sinf(renderer->shader_data.time * 2.5f) * 0.25f + 0.5f;
-    renderer->shader_data.color[2] = sinf(renderer->shader_data.time * 5.0f) * 0.1f + 0.5f;
-    wgpuQueueWriteBuffer(_context.queue, renderer->uniform_buffer, 0, &renderer->shader_data, sizeof(renderer->shader_data));
-
-    vektor_clear(renderer->instances);
-    vektor_clear(renderer->images);
-    vektor_add(renderer->images, (_RippleImageInstancePair) {
+    _context.shader_data.resolution[0] = width;
+    _context.shader_data.resolution[1] = height;
+    wgpuQueueWriteBuffer(_context.config.queue, _context.uniform_buffer, 0, &_context.shader_data, sizeof(_context.shader_data));
+    vektor_clear(_context.instances);
+    vektor_clear(_context.images);
+    vektor_add(_context.images, (_RippleImageInstancePair) {
         .images = { [0] = _context.white_pixel.view, [1] = _context.font.view },
         .n_images = 2,
         .instance_index = 0
@@ -781,50 +706,36 @@ static void _ripple_backend_color_to_color(RippleColor color, f32 out_color[4])
     }
 }
 
-void ripple_backend_render_window_end(RippleBackendWindowRenderer* window, RippleRenderData render_data, RippleColor clear_color)
+void ripple_backend_render_end(RippleRenderData render_data, RippleColor clear_color)
 {
-    if (!window->surface_is_configured)
-        return;
-
-    if (!window->instance_buffer ||
-        window->instance_buffer_size < window->instances.size)
+    if (!_context.instance_buffer || _context.instance_buffer_size < _context.instances.size)
     {
-        window->instance_buffer_size = window->instances.size + 1;
+        _context.instance_buffer_size = _context.instances.size + 1;
 
-        if (window->instance_buffer)
+        if (_context.instance_buffer)
         {
-            wgpuBufferRelease(window->instance_buffer);
+            wgpuBufferRelease(_context.instance_buffer);
         }
 
-        window->instance_buffer =
+        _context.instance_buffer =
             wgpuDeviceCreateBuffer(_context.config.device, &(WGPUBufferDescriptor) {
-                .size = window->instance_buffer_size * sizeof(*window->instances.items),
+                .size = _context.instance_buffer_size * sizeof(*_context.instances.items),
                 .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
             });
     }
 
-    wgpuQueueWriteBuffer(_context.queue,
-                         window->instance_buffer,
+    wgpuQueueWriteBuffer(_context.config.queue,
+                         _context.instance_buffer,
                          0,
-                         window->instances.items,
-                         window->instances.n_items * sizeof(*window->instances.items));
+                         _context.instances.items,
+                         _context.instances.n_items * sizeof(*_context.instances.items));
 
-    wgpuSurfaceGetCurrentTexture(window->surface, &window->surface_texture);
-
-    window->surface_texture_view = wgpuTextureCreateView(window->surface_texture.texture, &(WGPUTextureViewDescriptor){
-            .label = WEBGPU_STR("Surface texture view"),
-            .format = wgpuTextureGetFormat(window->surface_texture.texture),
-            .dimension = WGPUTextureViewDimension_2D,
-            .mipLevelCount = 1,
-            .arrayLayerCount = 1,
-            .aspect = WGPUTextureAspect_All,
-        });
 
     f32 clear_color_f32[4]; _ripple_backend_color_to_color(clear_color, clear_color_f32);
     WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass(render_data.encoder, &(WGPURenderPassDescriptor){
             .colorAttachmentCount = 1,
             .colorAttachments = &(WGPURenderPassColorAttachment){
-                .view = window->surface_texture_view,
+                .view = render_data.texture_view,
                 .loadOp = WGPULoadOp_Clear,
                 .storeOp = WGPUStoreOp_Store,
                 .clearValue = (WGPUColor){ clear_color_f32[0], clear_color_f32[1], clear_color_f32[2], clear_color_f32[3] },
@@ -836,15 +747,15 @@ void ripple_backend_render_window_end(RippleBackendWindowRenderer* window, Rippl
     wgpuRenderPassEncoderSetPipeline(render_pass, _context.pipeline);
     wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0, _context.vertex_buffer, 0, wgpuBufferGetSize(_context.vertex_buffer));
     wgpuRenderPassEncoderSetIndexBuffer(render_pass, _context.index_buffer, WGPUIndexFormat_Uint16, 0, wgpuBufferGetSize(_context.index_buffer));
-    wgpuRenderPassEncoderSetBindGroup(render_pass, 0, window->bind_group, 0, nullptr);
+    wgpuRenderPassEncoderSetBindGroup(render_pass, 0, _context.bind_group, 0, nullptr);
     wgpuRenderPassEncoderSetBindGroup(render_pass, 2, _context.sampler_bind_group, 0, nullptr);
 
-    WGPUBindGroup bind_groups[window->images.n_items];
+    WGPUBindGroup bind_groups[_context.images.n_items];
 
     u32 instance_index = 0;
-    for (u32 i = 0; i < window->images.n_items; i++)
+    for (u32 i = 0; i < _context.images.n_items; i++)
     {
-        _RippleImageInstancePair* image_pair = &window->images.items[i];
+        _RippleImageInstancePair* image_pair = &_context.images.items[i];
         WGPUBindGroupEntry image_textures[array_len(image_pair->images)];
         for (u32 j = 0; j < array_len(image_pair->images); j++)
         {
@@ -861,9 +772,9 @@ void ripple_backend_render_window_end(RippleBackendWindowRenderer* window, Rippl
                 .entries = image_textures
             });
 
-        u32 n_instances = ((i == window->images.n_items - 1) ? window->instances.n_items : image_pair->instance_index) - instance_index;
+        u32 n_instances = ((i == _context.images.n_items - 1) ? _context.instances.n_items : image_pair->instance_index) - instance_index;
 
-        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, window->instance_buffer, 0, n_instances * sizeof(RippleWGPUInstance));
+        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1, _context.instance_buffer, 0, n_instances * sizeof(RippleWGPUInstance));
         wgpuRenderPassEncoderSetBindGroup(render_pass, 1, bind_groups[i], 0, nullptr);
         wgpuRenderPassEncoderDrawIndexed(render_pass, index_count, n_instances, 0, 0, instance_index);
 
@@ -879,26 +790,7 @@ void ripple_backend_render_window_end(RippleBackendWindowRenderer* window, Rippl
     }
 }
 
-void ripple_backend_render_end(RippleRenderData render_data)
-{
-    WGPUCommandBuffer command = wgpuCommandEncoderFinish(render_data.encoder, &(WGPUCommandBufferDescriptor){ .label = WEBGPU_STR("Command buffer") });
-    wgpuCommandEncoderRelease(render_data.encoder);
-
-    wgpuQueueSubmit(_context.queue, 1, &command);
-    wgpuCommandBufferRelease(command);
-}
-
-void ripple_backend_window_present(RippleBackendWindowRenderer* renderer)
-{
-    if (renderer->surface_is_configured)
-    {
-        wgpuSurfacePresent(renderer->surface);
-        wgpuTextureViewRelease(renderer->surface_texture_view);
-        wgpuTextureRelease(renderer->surface_texture.texture);
-    }
-}
-
-void ripple_backend_render_rect(RippleBackendWindowRenderer* window, i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4, f32 radius1, f32 radius2, f32 radius3, f32 radius4)
+void ripple_backend_render_rect(i32 x, i32 y, i32 w, i32 h, RippleColor color1, RippleColor color2, RippleColor color3, RippleColor color4, f32 radius1, f32 radius2, f32 radius3, f32 radius4)
 {
     RippleWGPUInstance instance = {
         .pos = { (f32)x, (f32)y },
@@ -911,13 +803,13 @@ void ripple_backend_render_rect(RippleBackendWindowRenderer* window, i32 x, i32 
     _ripple_backend_color_to_color(color2, instance.color2);
     _ripple_backend_color_to_color(color3, instance.color3);
     _ripple_backend_color_to_color(color4, instance.color4);
-    vektor_add(window->instances, instance);
+    vektor_add(_context.instances, instance);
 }
 
-void ripple_backend_render_image(RippleBackendWindowRenderer* window, i32 x, i32 y, i32 w, i32 h, RippleImage image)
+void ripple_backend_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
 {
     u32 image_index = U32_MAX;
-    _RippleImageInstancePair* pair = &window->images.items[window->images.n_items - 1];
+    _RippleImageInstancePair* pair = &_context.images.items[_context.images.n_items - 1];
     for (u32 i = 0; i < pair->n_images; i++)
     {
         if (pair->images[i] == image)
@@ -929,10 +821,10 @@ void ripple_backend_render_image(RippleBackendWindowRenderer* window, i32 x, i32
 
     if (image_index >= pair->n_images && pair->n_images >= array_len(pair->images))
     {
-        vektor_add(window->images, (_RippleImageInstancePair) {
+        vektor_add(_context.images, (_RippleImageInstancePair) {
             .images = { [0] = _context.white_pixel.view, [1] = _context.font.view, [2] = image },
             .n_images = 3,
-            .instance_index = window->instances.n_items
+            .instance_index = _context.instances.n_items
         });
 
         image_index = 2;
@@ -945,10 +837,10 @@ void ripple_backend_render_image(RippleBackendWindowRenderer* window, i32 x, i32
             pair->images[pair->n_images++] = image;
         }
 
-        pair->instance_index = window->instances.n_items;
+        pair->instance_index = _context.instances.n_items;
     }
 
-    vektor_add(window->instances, (RippleWGPUInstance){
+    vektor_add(_context.instances, (RippleWGPUInstance){
         .pos = { (f32)x, (f32)y },
         .uv = { 0.0f, 0.0f, 1.0f, 1.0f },
         .color1 = { 1.0f, 1.0f, 1.0f, 1.0f},
@@ -975,7 +867,7 @@ void ripple_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h)
     if (out_h) *out_h = (i32)(font_size);
 }
 
-void ripple_backend_render_text(RippleBackendWindowRenderer* window, i32 pos_x, i32 pos_y, s8 text, f32 font_size, RippleColor color)
+void ripple_backend_render_text(i32 pos_x, i32 pos_y, s8 text, f32 font_size, RippleColor color)
 {
     f32 scale = font_size / FONT_SIZE;
     f32 color_arr[4]; _ripple_backend_color_to_color(color, color_arr);
@@ -987,7 +879,7 @@ void ripple_backend_render_text(RippleBackendWindowRenderer* window, i32 pos_x, 
         stbtt_aligned_quad quad;
         stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, *c - 32, &x, &y, &quad, 1);
 
-        vektor_add(window->instances, (RippleWGPUInstance){
+        vektor_add(_context.instances, (RippleWGPUInstance){
             .pos = { pos_x + quad.x0 * scale, pos_y + quad.y0 * scale },
             .size = { (quad.x1 - quad.x0) * scale, (quad.y1 - quad.y0) * scale },
             .uv = { quad.s0, quad.t0, quad.s1, quad.t1 },
