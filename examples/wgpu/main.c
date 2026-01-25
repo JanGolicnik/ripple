@@ -24,7 +24,6 @@ typedef struct {
 } BindableTexture;
 
 typedef struct {
-    Texture target;
     Texture depth;
 
     BindableTexture gradient;
@@ -211,12 +210,9 @@ BindableTexture create_bindable_texture(WGPUDevice device, Texture texture, WGPU
 
 Context create_context(WGPUDevice device, WGPUQueue queue)
 {
-    Context ctx;
+    Context ctx = { 0 };
 
     {
-        ctx.target = create_texture(device, WEBGPU_STR("surface_texture"), 1000, 1000, WGPUTextureFormat_BGRA8UnormSrgb, WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment, WGPUTextureAspect_All);
-        ctx.depth = create_texture(device, WEBGPU_STR("depth_texture"), 1000, 1000, WGPUTextureFormat_Depth24Plus, WGPUTextureUsage_RenderAttachment, WGPUTextureAspect_DepthOnly);
-
         Texture gradient_texture =  create_texture(device, WEBGPU_STR("gradient_texture"), 255, 1, WGPUTextureFormat_R32Float, WGPUTextureUsage_CopyDst | WGPUTextureUsage_TextureBinding, WGPUTextureAspect_All);
         ctx.gradient = create_bindable_texture(device, gradient_texture, WGPUShaderStage_Vertex);
         Texture color_texture =  create_texture(device, WEBGPU_STR("color_texture"), 255, 1, WGPUTextureFormat_RGBA8Unorm, WGPUTextureUsage_CopyDst | WGPUTextureUsage_TextureBinding, WGPUTextureAspect_All);
@@ -505,6 +501,9 @@ int main(int argc, char* argv[])
                     .presentMode = WGPUPresentMode_Fifo,
                     .alphaMode = WGPUCompositeAlphaMode_Auto
                 });
+            if (ctx.depth.view) wgpuTextureViewRelease(ctx.depth.view);
+            if (ctx.depth.texture) wgpuTextureRelease(ctx.depth.texture);
+            ctx.depth = create_texture(config.device, WEBGPU_STR("depth_texture"), width, height, WGPUTextureFormat_Depth24Plus, WGPUTextureUsage_RenderAttachment, WGPUTextureAspect_DepthOnly);
         }
 
         f32 time = shader_data.time = glfwGetTime();
@@ -526,7 +525,7 @@ int main(int argc, char* argv[])
             glm_mat4_copy(glms_mat4_mul(proj, view).raw, shader_data.camera_matrix); // cam.raw is plain mat4
         }
 
-        RIPPLE( FORM( .height = PIXELS(100), .width = PIXELS(100) ), RECTANGLE( .color = dark ) )
+        RIPPLE( FORM( .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD) ), RECTANGLE( .color = dark ) )
         {
             text(mrw_format("fps rn is: {.2f}", &str_allocator, 1.0f / (dt_accum / dt_samples)));
 
@@ -574,12 +573,12 @@ int main(int argc, char* argv[])
                         &ctx.color.texture.extent
                     );
                 }
-            }
 
-            array_for_each_i(colors, i)
-            {
-                color_picker(mrw_format(": (0x{XD})", (Allocator*)&str_allocator, hsv_to_rgb(colors[i])), &colors[i]);
-                original_colors[i]->value = hsv_to_rgb(colors[i]);
+                array_for_each_i(colors, i)
+                {
+                    color_picker(mrw_format(": (0x{XD})", (Allocator*)&str_allocator, hsv_to_rgb(colors[i])), &colors[i]);
+                    original_colors[i]->value = hsv_to_rgb(colors[i]);
+                }
             }
         }
 

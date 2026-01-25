@@ -736,9 +736,8 @@ void ripple_backend_render_end(RippleRenderData render_data, RippleColor clear_c
             .colorAttachmentCount = 1,
             .colorAttachments = &(WGPURenderPassColorAttachment){
                 .view = render_data.texture_view,
-                .loadOp = WGPULoadOp_Clear,
+                .loadOp = WGPULoadOp_Load,
                 .storeOp = WGPUStoreOp_Store,
-                .clearValue = (WGPUColor){ clear_color_f32[0], clear_color_f32[1], clear_color_f32[2], clear_color_f32[3] },
                 .depthSlice = WGPU_DEPTH_SLICE_UNDEFINED
             },
             .depthStencilAttachment = nullptr
