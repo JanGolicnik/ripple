@@ -24,18 +24,18 @@ typedef enum {
     RCF_RGBA = 1 // rrggbbaa
 } RippleColorFormat;
 
-struct(RippleColor) {
+STRUCT(RippleColor) {
     u32 value;
     RippleColorFormat format;
 };
 
-struct(MouseButtonState) {
+STRUCT(MouseButtonState) {
     u8 pressed : 1;
     u8 released : 1;
     u8 held: 1;
 };
 
-struct(RippleCursorState) {
+STRUCT(RippleCursorState) {
     MouseButtonState left, right, middle;
     i32 x, y;
     i32 dx, dy;
@@ -45,12 +45,12 @@ struct(RippleCursorState) {
     };
 };
 
-struct(RippleSizingValue) {
+STRUCT(RippleSizingValue) {
     i32 _value : 30;
     RippleSizingValueType _type : 2;
 };
 
-struct(RenderedLayout) {
+STRUCT(RenderedLayout) {
     i32 x, y, w, h, max_w, min_w, max_h, min_h;
 };
 
@@ -59,7 +59,7 @@ typedef enum {
     cld_HORIZONTAL = 1,
 } RippleChildLayoutDirection;
 
-struct(RippleElementLayoutConfig) {
+STRUCT(RippleElementLayoutConfig) {
     RippleSizingValue x;
     RippleSizingValue y;
     RippleSizingValue width;
@@ -79,7 +79,7 @@ struct RippleElementConfig;
 struct RippleRenderData;
 typedef void (render_func_t)(struct RippleElementConfig, RenderedLayout, void*, struct RippleRenderData);
 
-struct(RippleElementConfig) {
+STRUCT(RippleElementConfig) {
     RippleElementLayoutConfig layout;
 
     render_func_t* render_func;
@@ -89,7 +89,7 @@ struct(RippleElementConfig) {
     u8 layer;
 };
 
-struct(RippleElementState) {
+STRUCT(RippleElementState) {
     struct {
         u8 _frame_color : 1;
         u8 clicked : 1; // left click pressed and hovered
@@ -101,7 +101,7 @@ struct(RippleElementState) {
     };
 };
 
-struct(ElementState) {
+STRUCT(ElementState) {
     RenderedLayout layout;
     RippleElementState state;
     union {
@@ -110,7 +110,7 @@ struct(ElementState) {
     };
 };
 
-struct(ElementData) {
+STRUCT(ElementData) {
     u64 id;
     RippleElementConfig config;
     RenderedLayout calculated_layout;
@@ -124,7 +124,7 @@ struct(ElementData) {
     bool update_state;
 };
 
-struct(Window) {
+STRUCT(Window) {
     RippleCursorState cursor_state;
     RippleCursorState prev_cursor_state;
     VEKTOR(ElementData) elements;
@@ -139,7 +139,7 @@ struct(Window) {
     u32 current_layer;
 };
 
-struct(RippleContext) {
+STRUCT(RippleContext) {
     bool initialized;
     BumpAllocator frame_allocator;
     u32 frame_color;
@@ -166,7 +166,7 @@ struct(RippleContext) {
 
 void ripple_push_id(u64);
 void ripple_submit_element(RippleElementConfig config); // copies render data if its size is non zero
-void ripple_pop_id();
+void ripple_pop_id(void);
 
 RippleContext ripple_initialize(RippleBackendRendererConfig config);
 void ripple_make_active_context(RippleContext* context);
@@ -529,7 +529,7 @@ void ripple_submit_element(RippleElementConfig config)
     element->config = config;
 }
 
-void ripple_pop_id()
+void ripple_pop_id(void)
 {
     Window* window = &_ripple_context->current_window;
     ElementData *element = &window->elements.items[window->current_element.index];
@@ -559,7 +559,7 @@ void ripple_pop_id()
 #endif // RIPPLE_IMPLEMENTATION
 
 // TODO: cache this somehow
-static ElementState* _get_or_insert_current_element_state()
+static ElementState* _get_or_insert_current_element_state(void)
 {
     Window* window = &_ripple_context->current_window;
     if (window->current_element.state)
@@ -583,16 +583,16 @@ static ElementState* _get_or_insert_current_element_state()
 }
 
 // the underlying field is a u64 so dont expect too much
-#define STATE_USER(type) *((type*)&_get_or_insert_current_element_state(_ripple_context->current_window)->user_data)
-#define STATE_PTR() (_get_or_insert_current_element_state(_ripple_context->current_window)->user_ptr)
-#define STATE() (_get_or_insert_current_element_state(_ripple_context->current_window)->state)
-#define SHAPE() (_get_or_insert_current_element_state(_ripple_context->current_window)->layout)
+#define STATE_USER(type) *((type*)&_get_or_insert_current_element_state()->user_data)
+#define STATE_PTR() (_get_or_insert_current_element_state()->user_ptr)
+#define STATE() (_get_or_insert_current_element_state()->state)
+#define SHAPE() (_get_or_insert_current_element_state()->layout)
 
 #define RELATIVE(value, relation) { ._value = (i32)((value) * (f32)(2<<RIPPLE_FLOAT_PRECISION)), relation }
 #define PIXELS(value) { ._value = value, ._type = SVT_PIXELS }
 #define GROW { ._type = SVT_GROW }
 
-#define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (ripple_push_id(LINE_UNIQUE_HASH), ripple_submit_element((RippleElementConfig) { .layer = _ripple_context->current_window.current_layer, __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; ripple_pop_id(LINE_UNIQUE_VAR(_rippleiter)++))
+#define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (ripple_push_id(LINE_UNIQUE_HASH), ripple_submit_element((RippleElementConfig) { .layer = _ripple_context->current_window.current_layer, __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; ripple_pop_id(),LINE_UNIQUE_VAR(_rippleiter)++)
 
 #define FORM(...) .layout = { __VA_ARGS__ }
 
@@ -603,7 +603,7 @@ static ElementState* _get_or_insert_current_element_state()
 #define RIPPLE_RGB(v) (RippleColor){ .format = RCF_RGB, .value = v }
 #define RIPPLE_RGBA(v) (RippleColor){ .format = RCF_RGBA, .value = v }
 
-struct(RippleRectangleConfig) {
+STRUCT(RippleRectangleConfig) {
     RippleColor color;
     RippleColor color1;
     RippleColor color2;
@@ -634,7 +634,7 @@ void render_rectangle(RippleElementConfig config, RenderedLayout layout, void* w
   .render_data = &(RippleRectangleConfig){__VA_ARGS__},\
   .render_data_size = sizeof(RippleRectangleConfig)
 
-struct(RippleImageConfig) {
+STRUCT(RippleImageConfig) {
     RippleImage image;
 };
 
@@ -649,7 +649,7 @@ void render_image(RippleElementConfig config, RenderedLayout layout, void* windo
   .render_data = &(RippleImageConfig){__VA_ARGS__},\
   .render_data_size = sizeof(RippleImageConfig)
 
-struct(RippleTextConfig) {
+STRUCT(RippleTextConfig) {
     RippleColor color;
     s8 text;
 };

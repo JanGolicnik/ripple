@@ -15,18 +15,15 @@
 #define RIPPLE_WGPU_IMPLEMENTATION
 #endif // RIPPLE_IMPLEMENTATION
 
-#define WEBGPU_STR_EXACT(str) (WGPUStringView) { .data = str, .length = sizeof(str) - 1 }
-#define WEBGPU_STR(str) (WGPUStringView) { .data = str, .length = WGPU_STRLEN }
-
-struct(RippleBackendRendererConfig) {
-    WGPUInstance instance;
-    WGPUAdapter adapter;
-    WGPUDevice device;
+STRUCT(RippleBackendRendererConfig)
+{
     WGPUQueue queue;
+    WGPUDevice device;
 };
 
-struct(RippleRenderData) {
-    RippleBackendRendererConfig config;
+STRUCT(RippleRenderData) {
+    WGPUQueue queue;
+    WGPUDevice device;
     WGPUCommandEncoder encoder;
     WGPUTextureView texture_view;
 };
@@ -37,111 +34,6 @@ const f32 FONT_SIZE = 128.0f;
 const u32 BITMAP_SIZE = 1024;
 
 #ifdef RIPPLE_WGPU_IMPLEMENTATION
-
-struct(RequestAdapterUserData) {
-    WGPUAdapter adapter;
-    bool request_done;
-};
-
-static void request_adapter_callback(WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata1, void* userdata2)
-{
-    if (status != WGPURequestAdapterStatus_Success)
-        mrw_abort("Failed to get WebGPU adapter");
-
-    RequestAdapterUserData* callback_user_data = userdata1;
-    callback_user_data->adapter = adapter;
-    callback_user_data->request_done = true;
-}
-
-static WGPUAdapter get_adapter(WGPUInstance instance, WGPURequestAdapterOptions request_adapter_options)
-{
-    RequestAdapterUserData request_adapter_user_data = { 0 };
-    wgpuInstanceRequestAdapter(instance, &request_adapter_options, (WGPURequestAdapterCallbackInfo) {
-        .mode = WGPUCallbackMode_AllowSpontaneous,
-        .callback = request_adapter_callback,
-        .userdata1 = &request_adapter_user_data
-    });
-    return request_adapter_user_data.adapter;
-}
-
-struct(RequestDeviceUserData) {
-    WGPUDevice device;
-    bool request_done;
-};
-
-static void request_device_callback(WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, void* userdata1, void* userdata2)
-{
-    if (status != WGPURequestDeviceStatus_Success)
-    {
-        mrw_abort("Failed to get WebGPU device");
-    }
-
-    RequestDeviceUserData* callback_user_data = userdata1;
-    callback_user_data->device = device;
-    callback_user_data->request_done = true;
-}
-
-static void device_uncaptured_error_callback(WGPUDevice const* device, WGPUErrorType type, WGPUStringView message, void* userdata1, void* userdata2)
-{
-    if (message.length == WGPU_STRLEN)
-    {
-        mrw_error("Uncaptured device error ({}): {}", (u32)type, message.data);
-    }
-    else
-    {
-        char data[message.length + 1];
-        buf_copy(data, message.data, message.length + 1);
-        data[message.length] = 0;
-        mrw_error("Uncaptured device error ({}): {}", (u32)type, data);
-    }
-}
-
-static WGPUDevice get_device(WGPUAdapter adapter)
-{
-    WGPUDeviceDescriptor device_descriptor = {
-        .label = WEBGPU_STR("Device :D"),
-        .defaultQueue.label = WEBGPU_STR("Default queue"),
-        .uncapturedErrorCallbackInfo = (WGPUUncapturedErrorCallbackInfo) {
-            .callback = device_uncaptured_error_callback,
-        }
-    };
-    RequestDeviceUserData request_device_user_data = { 0 };
-    wgpuAdapterRequestDevice(
-        adapter,
-        &device_descriptor,
-        (WGPURequestDeviceCallbackInfo){
-            .mode = WGPUCallbackMode_AllowSpontaneous,
-            .callback = request_device_callback,
-            .userdata1 = &request_device_user_data
-        }
-    );
-
-    WGPUDevice device = request_device_user_data.device;
-    return device;
-}
-
-RippleBackendRendererConfig ripple_backend_renderer_default_config()
-{
-    RippleBackendRendererConfig config = { 0 };
-
-    config.instance = wgpuCreateInstance(&(WGPUInstanceDescriptor) { 0 });
-    if (!config.instance) mrw_abort("Failed to create WebGPU instance.");
-    mrw_debug("Successfully created the WebGPU instance!");
-
-    config.adapter = get_adapter(config.instance, (WGPURequestAdapterOptions){ .powerPreference = WGPUPowerPreference_HighPerformance });
-    if (!config.adapter) mrw_abort("Failed to get the adapter!");
-    mrw_debug("Successfully got the adapter!");
-
-    config.device = get_device(config.adapter);
-    if (!config.device) mrw_abort("Failed to get the device!");
-    mrw_debug("Succesfully got the device!");
-
-    config.queue = wgpuDeviceGetQueue(config.device);
-    if (!config.queue) mrw_abort("Failed to get the queue!");
-    mrw_debug("Succesfully got the queue!");
-
-    return config;
-}
 
 static f32 vertex_data[] = {
     0.0, 0.0,
@@ -159,7 +51,7 @@ static uint16_t index_data[] = {
 static const u32 index_data_size = 1 * sizeof(index_data[0]);
 static const u32 index_count = sizeof(index_data) / index_data_size;
 
-struct(RippleWGPUInstance) {
+STRUCT(RippleWGPUInstance) {
     f32 pos[2];
     f32 size[2];
     f32 uv[4];
@@ -277,11 +169,11 @@ const char* shader =
 "    return vec4f(linear_color, color.a * alpha);\n"
 "}\n";
 
-struct(RippleWGPUShaderData) {
+STRUCT(RippleWGPUShaderData) {
     i32 resolution[2];
 };
 
-struct(_RippleImageInstancePair) {
+STRUCT(_RippleImageInstancePair) {
     RippleImage images[5];
     u32 n_images;
     u32 instance_index;
@@ -330,9 +222,8 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
     // create font
     {
         // load data
-        FILE* file = fopen("./roboto.ttf", "rb");
-        if ( !file )
-            mrw_abort("Could not load font file :(");
+        FILE* file = fopen("./res/roboto.ttf", "rb");
+        if (!file) mrw_abort("Could not load font file :(");
         fseek(file, 0, SEEK_END);
         const usize file_size = ftell(file);
         rewind(file);
