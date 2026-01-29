@@ -148,10 +148,15 @@ STRUCT(RippleContext) {
 
 #define RIPPLE_WGPU 1 << 0
 #define RIPPLE_GLFW 1 << 1
-#define RIPPLE_EMPTY 1 << 2
+#define RIPPLE_EMSCRIPTEN 1 << 2
+#define RIPPLE_EMPTY 1 << 3
 
 #ifndef RIPPLE_BACKEND
-#define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_GLFW
+    #ifdef __EMSCRIPTEN__
+        #define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_EMSCRIPTEN
+    #else
+        #define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_GLFW
+    #endif
 #endif // RIPPLE_BACKEND
 
 #if (RIPPLE_BACKEND) & RIPPLE_WGPU
@@ -159,6 +164,9 @@ STRUCT(RippleContext) {
 #endif
 #if (RIPPLE_BACKEND) & RIPPLE_GLFW
 #include "backends/ripple_glfw.h"
+#endif
+#if (RIPPLE_BACKEND) & RIPPLE_EMSCRIPTEN
+#include "backends/ripple_emscripten.h"
 #endif
 #if (RIPPLE_BACKEND) & RIPPLE_EMPTY
 #include "backends/ripple_empty.h"
@@ -442,6 +450,11 @@ static void element_grow_children(ElementData* element)
 static void update_element_state(ElementState* state)
 {
     Window* window = &_ripple_context->current_window;
+    if (!window->cursor_state.valid)
+    {
+        state->state = (RippleElementState){ 0 };
+        return;
+    }
     state->state.hovered = !window->cursor_state.consumed && (
         window->cursor_state.x >= state->layout.x && window->cursor_state.x < state->layout.x + state->layout.w &&
         window->cursor_state.y >= state->layout.y && window->cursor_state.y < state->layout.y + state->layout.h

@@ -19,6 +19,7 @@ STRUCT(RippleBackendRendererConfig)
 {
     WGPUQueue queue;
     WGPUDevice device;
+    WGPUTextureFormat surface_format;
 };
 
 STRUCT(RippleRenderData) {
@@ -222,7 +223,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
     // create font
     {
         // load data
-        FILE* file = fopen("./res/roboto.ttf", "rb");
+        FILE* file = fopen("/res/roboto.ttf", "rb");
         if (!file) mrw_abort("Could not load font file :(");
         fseek(file, 0, SEEK_END);
         const usize file_size = ftell(file);
@@ -507,7 +508,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
                 .entryPoint = WEBGPU_STR("fs_main"),
                 .targetCount = 1,
                 .targets = &(WGPUColorTargetState) {
-                    .format = WGPUTextureFormat_BGRA8UnormSrgb,
+                    .format = config.surface_format,
                     .writeMask = WGPUColorWriteMask_All,
                     .blend = &(WGPUBlendState) {
                         .color =  {
