@@ -19,7 +19,7 @@ static inline void text(s8 text)
 static inline bool button(s8 label)
 {
     bool* open = nullptr;
-    RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size) ), RECTANGLE( .color = STATE().is_weak_held ? accent : dark2 ) )
+    RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size) ), RECTANGLE( .color = STATE().is_weak_held ? accent : dark2 ) )
     {
         open = &STATE_USER(bool);
         if (STATE().released)
@@ -35,7 +35,7 @@ static inline bool color_selector(HSV* color)
 {
     bool is_interacted = false;
 
-    RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .direction = cld_HORIZONTAL ) )
+    RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .height = PERCENT(1.0f, SVT_RELATIVE_CHILD), .direction = cld_HORIZONTAL ) )
     {
         u32 full_color = hsv_to_rgb((HSV){ color->hue, 1.0f, 1.0f });
         RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(300) ),
@@ -54,13 +54,13 @@ static inline bool color_selector(HSV* color)
 
             is_interacted |= STATE().hovered;
 
-            RIPPLE( FORM( .width = PIXELS(0), .height = PIXELS(0), .x = RELATIVE(color->saturation, SVT_RELATIVE_PARENT), .y = RELATIVE(1.0f - color->value, SVT_RELATIVE_PARENT) ) )
+            RIPPLE( FORM( .width = PIXELS(0), .height = PIXELS(0), .x = PERCENT(color->saturation, SVT_RELATIVE_PARENT), .y = PERCENT(1.0f - color->value, SVT_RELATIVE_PARENT) ) )
             {
                 RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(-5), .y = PIXELS(-5)), RECTANGLE( .color = accent ) );
             }
         }
 
-        RIPPLE( FORM( .width = PIXELS(16), .height = RELATIVE(1.0f, SVT_RELATIVE_PARENT) ) )
+        RIPPLE( FORM( .width = PIXELS(16), .height = PERCENT(1.0f, SVT_RELATIVE_PARENT) ) )
         {
             i32 y = SHAPE().y;
             i32 h = SHAPE().h;
@@ -77,7 +77,7 @@ static inline bool color_selector(HSV* color)
             {
                 u32 color1 = hsv_to_rgb((HSV){((f32)i/n) * 360.0f, 1.0f, 1.0f});
                 u32 color2 = hsv_to_rgb((HSV){((f32)(i+1)/n) * 360.0f, 1.0f, 1.0f});
-                RIPPLE( FORM( .height = RELATIVE(1.0f / n, SVT_RELATIVE_PARENT) ),
+                RIPPLE( FORM( .height = PERCENT(1.0f / n, SVT_RELATIVE_PARENT) ),
                         RECTANGLE(  .color1 = RIPPLE_RGB(color2),
                                     .color2 = RIPPLE_RGB(color2),
                                     .color3 = RIPPLE_RGB(color1),
@@ -96,12 +96,12 @@ static inline bool color_selector(HSV* color)
 
 static inline void color_picker(s8 label, HSV* color)
 {
-    RIPPLE( FORM( .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD) ))
+    RIPPLE( FORM( .height = PERCENT(1.0f, SVT_RELATIVE_CHILD) ))
     {
         bool should_close = false;
         bool* open = &STATE_USER(bool);
 
-        RIPPLE( FORM( .direction = cld_HORIZONTAL, .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD) ) )
+        RIPPLE( FORM( .direction = cld_HORIZONTAL, .height = PERCENT(1.0f, SVT_RELATIVE_CHILD) ) )
         {
             RIPPLE( FORM( .width = PIXELS(font_size) ), RECTANGLE( .color = RIPPLE_RGB(hsv_to_rgb(*color)) ) )
             {
@@ -123,12 +123,12 @@ static inline void color_picker(s8 label, HSV* color)
         {
             RIPPLE_RAISE()
             {
-                RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD),
-                            .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD),
-                            .x = PIXELS(0), .y = RELATIVE(-1.0f, SVT_RELATIVE_CHILD),
+                RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD),
+                            .height = PERCENT(1.0f, SVT_RELATIVE_CHILD),
+                            .x = PIXELS(0), .y = PERCENT(-1.0f, SVT_RELATIVE_CHILD),
                             .keep_inside = true
                 ) )
-                /* RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .x = PIXELS(font_size * 0.5f) ) ) */
+                /* RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .height = PERCENT(1.0f, SVT_RELATIVE_CHILD), .x = PIXELS(font_size * 0.5f) ) ) */
                 {
                     if (color_selector(color)) {
                         should_close = false;
@@ -154,15 +154,15 @@ RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZ
     for (i32 i = 0; i < (i32)n_stops; i++) {\
         u32 color = to_rgb(stops[sorted[i]].value);\
         u32 prev_color = to_rgb(stops[sorted[max(i - 1, 0)]].value);\
-        RIPPLE( FORM( .x = RELATIVE(t, SVT_RELATIVE_PARENT),\
-                      .width = RELATIVE(stops[sorted[i]].t - t + 3.0f / 300.0f, SVT_RELATIVE_PARENT)), \
+        RIPPLE( FORM( .x = PERCENT(t, SVT_RELATIVE_PARENT),\
+                      .width = PERCENT(stops[sorted[i]].t - t + 3.0f / 300.0f, SVT_RELATIVE_PARENT)), \
             RECTANGLE(\
                 .color1 = {prev_color}, .color3 = {prev_color},\
                 .color2 = {color},      .color4 = {color},\
             ) );\
         t = stops[sorted[i]].t;\
     }\
-    RIPPLE( FORM( .x = RELATIVE(stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT), .width = RELATIVE(1.0f - stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT)),\
+    RIPPLE( FORM( .x = PERCENT(stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT), .width = PERCENT(1.0f - stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT)),\
             RECTANGLE( .color = {value_to_rgb(stops[sorted[n_stops - 1]].value)} )\
     );\
     changed = STATE().first_render;\
@@ -234,7 +234,7 @@ static inline bool color_ramp(ColorRampStop* stops, u32 n_stops, u32* buffer, u3
 
 static inline void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allocator)
 {
-    RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
+    RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
     {
         RIPPLE( FORM( .width = PIXELS(315), .direction = cld_HORIZONTAL ))
         {

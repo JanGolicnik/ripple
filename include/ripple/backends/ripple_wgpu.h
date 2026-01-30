@@ -197,7 +197,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
     // create font
     {
         // load data
-        FILE* file = fopen("/res/roboto.ttf", "rb");
+        FILE* file = fopen("./res/roboto.ttf", "rb");
         if (!file) mrw_abort("Could not load font file :(");
         fseek(file, 0, SEEK_END);
         const usize file_size = ftell(file);

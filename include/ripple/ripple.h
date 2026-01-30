@@ -601,7 +601,7 @@ static ElementState* _get_or_insert_current_element_state(void)
 #define STATE() (_get_or_insert_current_element_state()->state)
 #define SHAPE() (_get_or_insert_current_element_state()->layout)
 
-#define RELATIVE(value, relation) { ._value = (i32)((value) * (f32)(2<<RIPPLE_FLOAT_PRECISION)), relation }
+#define PERCENT(value, relation) { ._value = (i32)((value) * (f32)(2<<RIPPLE_FLOAT_PRECISION)), relation }
 #define PIXELS(value) { ._value = value, ._type = SVT_PIXELS }
 #define GROW { ._type = SVT_GROW }
 
@@ -688,7 +688,7 @@ void render_text(RippleElementConfig config, RenderedLayout layout, void* window
         }\
 } while (false)
 #define CENTERED_VERTICAL(...) do {\
-        RIPPLE( FORM( .width = RELATIVE(1.0f, SVT_RELATIVE_CHILD), .direction = cld_VERTICAL ) ) {\
+        RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .direction = cld_VERTICAL ) ) {\
             RIPPLE();\
             { __VA_ARGS__; }\
             RIPPLE();\
