@@ -152,24 +152,24 @@ STRUCT(RippleContext) {
 #define RIPPLE_EMPTY 1 << 3
 
 #ifndef RIPPLE_BACKEND
-    #ifdef __EMSCRIPTEN__
-        #define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_EMSCRIPTEN
-    #else
-        #define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_GLFW
-    #endif
+#   ifdef __EMSCRIPTEN__
+#       define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_EMSCRIPTEN
+#   else
+#       define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_GLFW
+#   endif
 #endif // RIPPLE_BACKEND
 
 #if (RIPPLE_BACKEND) & RIPPLE_WGPU
-#include "backends/ripple_wgpu.h"
+#   include "backends/ripple_wgpu.h"
 #endif
 #if (RIPPLE_BACKEND) & RIPPLE_GLFW
-#include "backends/ripple_glfw.h"
+#   include "backends/ripple_glfw.h"
 #endif
 #if (RIPPLE_BACKEND) & RIPPLE_EMSCRIPTEN
-#include "backends/ripple_emscripten.h"
+#   include "backends/ripple_emscripten.h"
 #endif
 #if (RIPPLE_BACKEND) & RIPPLE_EMPTY
-#include "backends/ripple_empty.h"
+#   include "backends/ripple_empty.h"
 #endif
 
 void ripple_push_id(u64);
