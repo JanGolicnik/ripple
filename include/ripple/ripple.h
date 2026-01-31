@@ -20,6 +20,21 @@ typedef enum {
 #define RIPPLE_FLOAT_PRECISION 25
 
 typedef enum {
+    REVT_MOUSE_MOVE = 0,
+    REVT_MOUSE_PRESS = 1,
+    REVT_MOUSE_RELEASE = 2,
+    REVT_MOUSE_LEAVE = 3,
+    REVT_MOUSE_ENTER = 4
+} RippleEventType;
+
+STRUCT(RippleMouseEvent)
+{
+    RippleEventType type;
+    i32 x, y;
+    u32 button; // 0 - left, 1 - right, 2 - middle
+};
+
+typedef enum {
     RCF_RGB = 0, // 0xrrggbb, alpha = 1.0f
     RCF_RGBA = 1 // rrggbbaa
 } RippleColorFormat;
@@ -159,6 +174,8 @@ STRUCT(RippleContext) {
 #   endif
 #endif // RIPPLE_BACKEND
 
+void ripple_on_mouse_event(RippleContext* context, RippleMouseEvent evt);
+
 #if (RIPPLE_BACKEND) & RIPPLE_WGPU
 #   include "backends/ripple_wgpu.h"
 #endif
@@ -184,6 +201,36 @@ void ripple_submit(RippleContext* context, u32 width, u32 height, RippleRenderDa
 #undef RIPPLE_IMPLEMENTATION
 
 thread_local RippleContext* _ripple_context = nullptr;
+
+void ripple_on_mouse_event(RippleContext* context, RippleMouseEvent evt)
+{
+    if (evt.type == REVT_MOUSE_PRESS)
+    {
+        if (evt.button == 0) context->current_window.cursor_state.left.pressed = true;
+        if (evt.button == 1) context->current_window.cursor_state.right.pressed = true;
+        if (evt.button == 2) context->current_window.cursor_state.middle.pressed = true;
+    }
+    else if (evt.type == REVT_MOUSE_RELEASE)
+    {
+        if (evt.button == 0) context->current_window.cursor_state.left.released = true;
+        if (evt.button == 1) context->current_window.cursor_state.right.released = true;
+        if (evt.button == 2) context->current_window.cursor_state.middle.released = true;
+    }
+    else if (evt.type == REVT_MOUSE_LEAVE)
+    {
+        context->current_window.cursor_state.valid = false;
+    }
+    else if (evt.type == REVT_MOUSE_ENTER)
+    {
+        context->current_window.cursor_state.valid = true;
+    }
+    else if (evt.type == REVT_MOUSE_MOVE)
+    {
+        context->current_window.cursor_state.x = evt.x;
+        context->current_window.cursor_state.y = evt.y;
+        context->current_window.cursor_state.valid = true;
+    }
+}
 
 void ripple_reset(RippleContext* context)
 {
