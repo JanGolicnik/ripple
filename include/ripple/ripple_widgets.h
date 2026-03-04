@@ -232,8 +232,9 @@ static inline bool color_ramp(ColorRampStop* stops, u32 n_stops, u32* buffer, u3
     return false;
 }
 
-static inline void slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allocator)
+static inline bool slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allocator)
 {
+    bool was_held = false;
     RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
     {
         RIPPLE( FORM( .width = PIXELS(315), .direction = cld_HORIZONTAL ))
@@ -252,6 +253,7 @@ static inline void slider(const char* label, f32* value, f32 max, f32 min, Alloc
                 if (STATE().is_held)
                 {
                     *value = (1.0f - (clamp((f32)CURSOR().x - (f32)x, 0.0f, (f32)w) / (f32)w)) * range + min;
+                    was_held = true;
                 }
             }
 
@@ -264,6 +266,7 @@ static inline void slider(const char* label, f32* value, f32 max, f32 min, Alloc
 
         text(mrw_format("{}: {.2f}", str_allocator, label, *value));
     }
+    return was_held;
 }
 
 #endif // RIPPLE_WIDGETS_H
