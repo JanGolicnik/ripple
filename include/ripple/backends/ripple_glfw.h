@@ -5,7 +5,7 @@
 #define RIPPLE_GLFW_IMPLEMENTATION
 #endif // RIPPLE_IMPLEMENTATIONz
 
-#include <glfw/glfw3.h>
+#include <GLFW/glfw3.h>
 
 void ripple_glfw_register_callbacks(RippleContext* context, GLFWwindow* window);
 

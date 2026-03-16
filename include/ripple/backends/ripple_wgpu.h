@@ -49,102 +49,102 @@ STRUCT(RippleWGPUInstance) {
     u32 image_index_padding[3];
 };
 
-const char* shader = R"(
-struct ShaderData {
-    resolution: vec2i,
-}
-@group(0) @binding(0) var<uniform> shader_data: ShaderData;
-@group(1) @binding(0) var texture1: texture_2d<f32>;
-@group(1) @binding(1) var texture2: texture_2d<f32>;
-@group(1) @binding(2) var texture3: texture_2d<f32>;
-@group(1) @binding(3) var texture4: texture_2d<f32>;
-@group(1) @binding(4) var texture5: texture_2d<f32>;
-@group(2) @binding(0) var texture_sampler: sampler;
-struct InstanceInput {
-    @location(1) position: vec2f,
-    @location(2) size: vec2f,
-    @location(3) uv: vec4f,
-    @location(4) radius: vec4f,
-    @location(5) color1: vec4f,
-    @location(6) color2: vec4f,
-    @location(7) color3: vec4f,
-    @location(8) color4: vec4f,
-    @location(9) image_index: u32,
-}
-struct VertexOutput{
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-    @location(1) size: vec2f,
-    @location(2) radius: vec4f,
-    @interpolate(flat) @location(3) image_index: u32,
-    @location(4) color1: vec4f,
-    @location(5) color2: vec4f,
-    @location(6) color3: vec4f,
-    @location(7) color4: vec4f,
-}
-const FULLSCREEN_QUAD_POSITIONS : array<vec2f, 6> = array<vec2f, 6>( vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0), vec2f(0.0, 0.0), vec2f(0.0, 1.0), vec2f(1.0, 1.0), );
-@vertex
-fn vs_main(@builtin(vertex_index) index : u32, i: InstanceInput) -> VertexOutput {
-    let resolution = vec2f(f32(shader_data.resolution.x), f32(shader_data.resolution.y));
-    let p = FULLSCREEN_QUAD_POSITIONS[index];
-    var position = i.position + p.xy * i.size;
-    position = position / resolution;
-    position = vec2f(position.x, 1.0f - position.y) * 2.0f - vec2<f32>(1.0f, 1.0f);
-    var out: VertexOutput;
-    out.uv = vec2(select(i.uv.x, i.uv.z, p.x > 0.5), select(i.uv.y, i.uv.w, p.y > 0.5));
-    out.size = i.size;
-    out.radius = i.radius;
-    out.color1 = i.color1; out.color2 = i.color2; out.color3 = i.color3; out.color4 = i.color4;
-    out.position = vec4(position, 0.0, 1.0);
-    out.image_index = i.image_index;
-    return out;
-}
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    var alpha = 1.0f;
-    let min_size = min(in.size.x, in.size.y);
-    let p = in.uv * in.size;
-    let rTL = in.radius.x * min_size;
-    let rTR = in.radius.y * min_size;
-    let rBR = in.radius.z * min_size;
-    let rBL = in.radius.w * min_size;
-    let cBL = vec2f(rBL, rBL);
-    let cBR = vec2f(in.size.x - rBR, rBR);
-    let cTR = vec2f(in.size.x - rTR, in.size.y - rTR);
-    let cTL = vec2f(rTL, in.size.y - rTL);
-    let feather = 1.0f;
-    if (p.x < cBL.x && p.y < cBL.y) {
-        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cBL) - rBL);
-        alpha = min(alpha, a);
-    } else if (p.x > cBR.x && p.y < cBR.y) {
-        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cBR) - rBR);
-        alpha = min(alpha, a);
-    } else if (p.x > cTR.x && p.y > cTR.y) {
-        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cTR) - rTR);
-        alpha = min(alpha, a);
-    } else if (p.x < cTL.x && p.y > cTL.y) {
-        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cTL) - rTL);
-        alpha = min(alpha, a);
-    }
-    var tc1 = textureSample(texture1, texture_sampler, in.uv);
-    var tc2 = vec4f(textureSample(texture2, texture_sampler, in.uv).r);
-    var tc3 = textureSample(texture3, texture_sampler, in.uv);
-    var tc4 = textureSample(texture4, texture_sampler, in.uv);
-    var tc5 = textureSample(texture5, texture_sampler, in.uv);
-    var tc: vec4f;
-    switch in.image_index {
-        default { tc = tc1; }
-        case 0u { tc = tc1; }
-        case 1u { tc = tc2; }
-        case 2u { tc = tc3; }
-        case 3u { tc = tc4; }
-        case 4u { tc = tc5; }
-    }
-    let gradient = mix(mix(in.color3, in.color4, in.uv.x), mix(in.color1, in.color2, in.uv.x), in.uv.y);
-    let color = tc * gradient;
-    let linear_color = pow(color.rgb, vec3f(2.2));
-    return vec4f(linear_color, color.a * alpha);
-})";
+const char* shader =
+"struct ShaderData {\n"
+"    resolution: vec2i,\n"
+"}\n"
+"@group(0) @binding(0) var<uniform> shader_data: ShaderData;\n"
+"@group(1) @binding(0) var texture1: texture_2d<f32>;\n"
+"@group(1) @binding(1) var texture2: texture_2d<f32>;\n"
+"@group(1) @binding(2) var texture3: texture_2d<f32>;\n"
+"@group(1) @binding(3) var texture4: texture_2d<f32>;\n"
+"@group(1) @binding(4) var texture5: texture_2d<f32>;\n"
+"@group(2) @binding(0) var texture_sampler: sampler;\n"
+"struct InstanceInput {\n"
+"    @location(1) position: vec2f,\n"
+"    @location(2) size: vec2f,\n"
+"    @location(3) uv: vec4f,\n"
+"    @location(4) radius: vec4f,\n"
+"    @location(5) color1: vec4f,\n"
+"    @location(6) color2: vec4f,\n"
+"    @location(7) color3: vec4f,\n"
+"    @location(8) color4: vec4f,\n"
+"    @location(9) image_index: u32,\n"
+"}\n"
+"struct VertexOutput{\n"
+"    @builtin(position) position: vec4f,\n"
+"    @location(0) uv: vec2f,\n"
+"    @location(1) size: vec2f,\n"
+"    @location(2) radius: vec4f,\n"
+"    @interpolate(flat) @location(3) image_index: u32,\n"
+"    @location(4) color1: vec4f,\n"
+"    @location(5) color2: vec4f,\n"
+"    @location(6) color3: vec4f,\n"
+"    @location(7) color4: vec4f,\n"
+"}\n"
+"const FULLSCREEN_QUAD_POSITIONS : array<vec2f, 6> = array<vec2f, 6>( vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0), vec2f(0.0, 0.0), vec2f(0.0, 1.0), vec2f(1.0, 1.0), );\n"
+"@vertex\n"
+"fn vs_main(@builtin(vertex_index) index : u32, i: InstanceInput) -> VertexOutput {\n"
+"    let resolution = vec2f(f32(shader_data.resolution.x), f32(shader_data.resolution.y));\n"
+"    let p = FULLSCREEN_QUAD_POSITIONS[index];\n"
+"    var position = i.position + p.xy * i.size;\n"
+"    position = position / resolution;\n"
+"    position = vec2f(position.x, 1.0f - position.y) * 2.0f - vec2<f32>(1.0f, 1.0f);\n"
+"    var out: VertexOutput;\n"
+"    out.uv = vec2(select(i.uv.x, i.uv.z, p.x > 0.5), select(i.uv.y, i.uv.w, p.y > 0.5));\n"
+"    out.size = i.size;\n"
+"    out.radius = i.radius;\n"
+"    out.color1 = i.color1; out.color2 = i.color2; out.color3 = i.color3; out.color4 = i.color4;\n"
+"    out.position = vec4(position, 0.0, 1.0);\n"
+"    out.image_index = i.image_index;\n"
+"    return out;\n"
+"}\n"
+"@fragment\n"
+"fn fs_main(in: VertexOutput) -> @location(0) vec4f {\n"
+"    var alpha = 1.0f;\n"
+"    let min_size = min(in.size.x, in.size.y);\n"
+"    let p = in.uv * in.size;\n"
+"    let rTL = in.radius.x * min_size;\n"
+"    let rTR = in.radius.y * min_size;\n"
+"    let rBR = in.radius.z * min_size;\n"
+"    let rBL = in.radius.w * min_size;\n"
+"    let cBL = vec2f(rBL, rBL);\n"
+"    let cBR = vec2f(in.size.x - rBR, rBR);\n"
+"    let cTR = vec2f(in.size.x - rTR, in.size.y - rTR);\n"
+"    let cTL = vec2f(rTL, in.size.y - rTL);\n"
+"    let feather = 1.0f;\n"
+"    if (p.x < cBL.x && p.y < cBL.y) {\n"
+"        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cBL) - rBL);\n"
+"        alpha = min(alpha, a);\n"
+"    } else if (p.x > cBR.x && p.y < cBR.y) {\n"
+"        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cBR) - rBR);\n"
+"        alpha = min(alpha, a);\n"
+"    } else if (p.x > cTR.x && p.y > cTR.y) {\n"
+"        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cTR) - rTR);\n"
+"        alpha = min(alpha, a);\n"
+"    } else if (p.x < cTL.x && p.y > cTL.y) {\n"
+"        let a = 1.0f - smoothstep(0.0f, feather, distance(p, cTL) - rTL);\n"
+"        alpha = min(alpha, a);\n"
+"    }\n"
+"    var tc1 = textureSample(texture1, texture_sampler, in.uv);\n"
+"    var tc2 = vec4f(textureSample(texture2, texture_sampler, in.uv).r);\n"
+"    var tc3 = textureSample(texture3, texture_sampler, in.uv);\n"
+"    var tc4 = textureSample(texture4, texture_sampler, in.uv);\n"
+"    var tc5 = textureSample(texture5, texture_sampler, in.uv);\n"
+"    var tc: vec4f;\n"
+"    switch in.image_index {\n"
+"        default { tc = tc1; }\n"
+"        case 0u { tc = tc1; }\n"
+"        case 1u { tc = tc2; }\n"
+"        case 2u { tc = tc3; }\n"
+"        case 3u { tc = tc4; }\n"
+"        case 4u { tc = tc5; }\n"
+"    }\n"
+"    let gradient = mix(mix(in.color3, in.color4, in.uv.x), mix(in.color1, in.color2, in.uv.x), in.uv.y);\n"
+"    let color = tc * gradient;\n"
+"    let linear_color = pow(color.rgb, vec3f(2.2));\n"
+"    return vec4f(linear_color, color.a * alpha);\n"
+"}\n";
 
 STRUCT(RippleWGPUShaderData) {
     i32 resolution[2];

@@ -139,7 +139,7 @@ STRUCT(ElementData) {
     bool update_state;
 };
 
-STRUCT(Window) {
+STRUCT(RippleWindow) {
     RippleCursorState cursor_state;
     RippleCursorState prev_cursor_state;
     VEKTOR(ElementData) elements;
@@ -158,7 +158,7 @@ STRUCT(RippleContext) {
     bool initialized;
     BumpAllocator frame_allocator;
     u32 frame_color;
-    Window current_window;
+    RippleWindow current_window;
 };
 
 #define RIPPLE_WGPU 1 << 0
@@ -267,7 +267,7 @@ static void finalize_element(ElementData* element);
 static void update_element_state(ElementState* state);
 void ripple_submit(RippleContext* context, u32 width, u32 height, RippleRenderData render_data)
 {
-    Window* window = &context->current_window;
+    RippleWindow* window = &context->current_window;
 
     window->width = width;
     window->height = height;
@@ -365,7 +365,7 @@ if (value._type == type)\
 
 static RenderedLayout element_calculate_children_bounds(ElementData* element)
 {
-    Window* window = &_ripple_context->current_window;
+    RippleWindow* window = &_ripple_context->current_window;
     RenderedLayout layout = { 0 };
     _for_each_child(element)
     {
@@ -399,7 +399,7 @@ static void element_apply_sizing(ElementData* element, RippleSizingValueType typ
 
 static void element_position_children(ElementData* element)
 {
-    Window* window = &_ripple_context->current_window;
+    RippleWindow* window = &_ripple_context->current_window;
     u32 offset = 0;
     _for_each_child(element) {
         if (child->config.layout.fixed) continue;
@@ -426,7 +426,7 @@ static void element_position_children(ElementData* element)
 
 static void element_grow_children(ElementData* element)
 {
-    Window* window = &_ripple_context->current_window;
+    RippleWindow* window = &_ripple_context->current_window;
     if (element->n_children == 0)
         return;
 
@@ -496,7 +496,7 @@ static void element_grow_children(ElementData* element)
 
 static void update_element_state(ElementState* state)
 {
-    Window* window = &_ripple_context->current_window;
+    RippleWindow* window = &_ripple_context->current_window;
     if (!window->cursor_state.valid)
     {
         state->state = (RippleElementState){ 0 };
@@ -524,7 +524,7 @@ static void update_element_state(ElementState* state)
 
 static void finalize_element(ElementData* element)
 {
-    Window* window = &_ripple_context->current_window;
+    RippleWindow* window = &_ripple_context->current_window;
     _for_each_child(element)
     {
         element_apply_sizing(child, SVT_RELATIVE_PARENT, element->calculated_layout, (RenderedLayout){ 0 });
@@ -557,7 +557,7 @@ static u64 generate_element_id(u64 base, u64 parent_id, u32 index)
 // should be called before submit element
 void ripple_push_id(u64 id)
 {
-    Window* window = &_ripple_context->current_window;
+    RippleWindow* window = &_ripple_context->current_window;
     ElementData* parent = &window->elements.items[window->current_element.index];
     window->current_element.id = id ? generate_element_id(id, window->current_element.id, parent->n_children) : id;
 
@@ -571,7 +571,7 @@ void ripple_push_id(u64 id)
 
 void ripple_submit_element(RippleElementConfig config)
 {
-    Window* window = &_ripple_context->current_window;
+    RippleWindow* window = &_ripple_context->current_window;
     ElementData* element = &window->elements.items[window->current_element.index];
     ElementData* parent = &window->elements.items[element->parent_element];
     if (parent->n_children++ > 0)
@@ -591,7 +591,7 @@ void ripple_submit_element(RippleElementConfig config)
 
 void ripple_pop_id(void)
 {
-    Window* window = &_ripple_context->current_window;
+    RippleWindow* window = &_ripple_context->current_window;
     ElementData *element = &window->elements.items[window->current_element.index];
     ElementData *parent = &window->elements.items[element->parent_element];
 
@@ -621,7 +621,7 @@ void ripple_pop_id(void)
 // TODO: cache this somehow
 static ElementState* _get_or_insert_current_element_state(void)
 {
-    Window* window = &_ripple_context->current_window;
+    RippleWindow* window = &_ripple_context->current_window;
     if (window->current_element.state)
         return window->current_element.state;
 
