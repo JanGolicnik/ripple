@@ -10,13 +10,13 @@ RippleColor dark2 = { 0x393E46 };
 RippleColor light = { 0xEEEEEE };
 RippleColor accent = { 0x00ADB5 };
 
-static inline void text(s8 text)
+static inline void text(str text)
 {
     i32 width, height; ripple_measure_text(text, font_size, &width, &height);
     RIPPLE( FORM( .width = PIXELS(width), .height = PIXELS(height) ), WORDS( .text = text, .color = light ));
 }
 
-static inline bool button(s8 label)
+static inline bool button(str label)
 {
     bool* open = nullptr;
     RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size) ), RECTANGLE( .color = STATE().is_weak_held ? accent : dark2 ) )
@@ -94,7 +94,7 @@ static inline bool color_selector(HSV* color)
     return is_interacted;
 }
 
-static inline void color_picker(s8 label, HSV* color)
+static inline void color_picker(str label, HSV* color)
 {
     RIPPLE( FORM( .height = PERCENT(1.0f, SVT_RELATIVE_CHILD) ))
     {
@@ -142,11 +142,11 @@ static inline void color_picker(s8 label, HSV* color)
     }
 }
 
-#define RIPPLE_STOP_RAMP_BODY(lerp, to_rgb, selector)\
+#define RIPPLE_STOP_RAMP_BODY(lerp, to_rgb, selector, T)\
 bool changed = false;\
 u32 stop_w = 10;\
 u32 sorted[n_stops];\
-sort_indices(sorted, stops, n_stops, a->t < b->t);\
+sort_indices(sorted, stops, n_stops, a->t < b->t, T);\
 RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZONTAL)) {\
     u32 x = SHAPE().x;\
     u32 w = SHAPE().w;\
@@ -200,7 +200,7 @@ typedef struct {
 } FloatRampStop;
 static inline bool float_ramp(FloatRampStop* stops, u32 n_stops, f32* buffer, u32 buffer_len)
 {
-    RIPPLE_STOP_RAMP_BODY(v0.value * (1.0f - t) + v1.value * t, value_to_rgb, (void));
+    RIPPLE_STOP_RAMP_BODY(v0.value * (1.0f - t) + v1.value * t, value_to_rgb, (void), FloatRampStop);
 }
 
 static inline u32 lerp_color(u32 a, u32 b, f32 t)
@@ -228,7 +228,7 @@ typedef struct {
 } ColorRampStop;
 static inline bool color_ramp(ColorRampStop* stops, u32 n_stops, u32* buffer, u32 buffer_len)
 {
-    RIPPLE_STOP_RAMP_BODY(lerp_color(v0.value, v1.value, t), (u32), color_selector);
+    RIPPLE_STOP_RAMP_BODY(lerp_color(v0.value, v1.value, t), (u32), color_selector, ColorRampStop);
     return false;
 }
 

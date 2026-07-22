@@ -8,7 +8,7 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 
-void ripple_emscripten_register_callbacks(RippleContext* context, const char* target);
+void ripple_emscripten_init(RippleContext* context, const char* target, bool install_callbacks);
 
 #ifdef RIPPLE_GLFW_IMPLEMENTATION
 
@@ -28,12 +28,15 @@ bool ripple_emscripten_mouse_callback(int type, const EmscriptenMouseEvent* even
     return true;
 }
 
-void ripple_emscripten_register_callbacks(RippleContext* context, const char* target)
+void ripple_emscripten_init(RippleContext* context, const char* target, bool install_callbacks)
 {
-    emscripten_set_mousedown_callback(target, context, EM_TRUE, &ripple_emscripten_mouse_callback);
-    emscripten_set_mouseup_callback(target, context, EM_TRUE, &ripple_emscripten_mouse_callback);
-    emscripten_set_mousemove_callback(target, context, EM_TRUE, &ripple_emscripten_mouse_callback);
-    emscripten_set_mouseleave_callback(target, context, EM_TRUE, &ripple_emscripten_mouse_callback);
+    if (install_callbacks)
+    {
+        emscripten_set_mousedown_callback(target, context, EM_TRUE, &ripple_emscripten_mouse_callback);
+        emscripten_set_mouseup_callback(target, context, EM_TRUE, &ripple_emscripten_mouse_callback);
+        emscripten_set_mousemove_callback(target, context, EM_TRUE, &ripple_emscripten_mouse_callback);
+        emscripten_set_mouseleave_callback(target, context, EM_TRUE, &ripple_emscripten_mouse_callback);
+    }
 }
 
 #endif // RIPPLE_GLFW_IMPLEMENTATION

@@ -7,7 +7,7 @@
 
 #include <GLFW/glfw3.h>
 
-void ripple_glfw_register_callbacks(RippleContext* context, GLFWwindow* window);
+void ripple_glfw_init(RippleContext* context, GLFWwindow* window, bool install_callbacks);
 
 #ifdef RIPPLE_GLFW_IMPLEMENTATION
 
@@ -48,11 +48,13 @@ void ripple_glfw_mouse_button_callback(GLFWwindow* window, i32 button, i32 actio
     }
 }
 
-void ripple_glfw_register_callbacks(RippleContext* context, GLFWwindow* window)
+void ripple_glfw_init(RippleContext* context, GLFWwindow* window, bool install_callbacks)
 {
     glfwSetWindowUserPointer(window, (void*)context);
-    glfwSetMouseButtonCallback(window, &ripple_glfw_mouse_button_callback);
-    glfwSetCursorPosCallback(window, &ripple_glfw_mouse_pos_callback);
+    if (install_callbacks) {
+        glfwSetMouseButtonCallback(window, &ripple_glfw_mouse_button_callback);
+        glfwSetCursorPosCallback(window, &ripple_glfw_mouse_pos_callback);
+    }
 }
 
 #endif // RIPPLE_GLFW_IMPLEMENTATION

@@ -684,12 +684,12 @@ void ripple_backend_render_image(i32 x, i32 y, i32 w, i32 h, RippleImage image)
     });
 }
 
-void ripple_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h)
+void ripple_measure_text(str text, f32 font_size, i32* out_w, i32* out_h)
 {
     f32 scale = font_size / FONT_SIZE;
     f32 x = 0.0f, y = 0.0f;
 
-    slice_for_each(text, c)
+    slice_for_each(text, c, char)
     {
         if (*c < 32) continue;
         stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, *c - 32, &x, &y, &(stbtt_aligned_quad){ 0 }, 1);
@@ -699,14 +699,14 @@ void ripple_measure_text(s8 text, f32 font_size, i32* out_w, i32* out_h)
     if (out_h) *out_h = (i32)(font_size);
 }
 
-void ripple_backend_render_text(i32 pos_x, i32 pos_y, s8 text, f32 font_size, RippleColor color)
+void ripple_backend_render_text(i32 pos_x, i32 pos_y, str text, f32 font_size, RippleColor color)
 {
     f32 scale = font_size / FONT_SIZE;
     f32 color_arr[4]; _ripple_backend_color_to_color(color, color_arr);
     pos_y += font_size * 0.75f;
     f32 x = 0.0f;
     f32 y = 0.0f;
-    slice_for_each(text, c)
+    slice_for_each(text, c, char)
     {
         stbtt_aligned_quad quad;
         stbtt_GetBakedQuad(_context.font.glyphs, BITMAP_SIZE, BITMAP_SIZE, *c - 32, &x, &y, &quad, 1);

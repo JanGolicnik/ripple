@@ -306,7 +306,7 @@ void ripple_submit(RippleContext* context, u32 width, u32 height, RippleRenderDa
     context->frame_color = context->frame_color ? 0 : 1;
 
     u32 sorted[window->elements.n_items];
-    sort_indices(sorted, window->elements.items, window->elements.n_items, a->config.layer < b->config.layer);
+    sort_indices(sorted, window->elements.items, window->elements.n_items, a->config.layer < b->config.layer, ElementData);
 
     // updating is done in reverse
     for (i32 i = array_len(sorted) - 1; i >= 0; i--)
@@ -711,7 +711,7 @@ void render_image(RippleElementConfig config, RenderedLayout layout, void* windo
 
 STRUCT(RippleTextConfig) {
     RippleColor color;
-    s8 text;
+    str text;
 };
 
 void render_text(RippleElementConfig config, RenderedLayout layout, void* window_user_data, RippleRenderData user_data)
