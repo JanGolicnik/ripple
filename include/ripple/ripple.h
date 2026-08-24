@@ -7,7 +7,7 @@
 #include <printccy/printccy.h>
 #include <marrow/marrow.h>
 #include <marrow/vektor.h>
-#include <marrow/allocator.h>
+#include <marrow/alloc.h>
 #include <marrow/mapa.h>
 
 typedef enum {
@@ -161,23 +161,23 @@ STRUCT(RippleContext) {
     RippleWindow current_window;
 };
 
-#define RIPPLE_WGPU 1 << 0
+#define RIPPLE_RENI 1 << 0
 #define RIPPLE_GLFW 1 << 1
 #define RIPPLE_EMSCRIPTEN 1 << 2
 #define RIPPLE_EMPTY 1 << 3
 
 #ifndef RIPPLE_BACKEND
 #   ifdef __EMSCRIPTEN__
-#       define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_EMSCRIPTEN
+#       define RIPPLE_BACKEND RIPPLE_RENI | RIPPLE_EMSCRIPTEN
 #   else
-#       define RIPPLE_BACKEND RIPPLE_WGPU | RIPPLE_GLFW
+#       define RIPPLE_BACKEND RIPPLE_RENI | RIPPLE_GLFW
 #   endif
 #endif // RIPPLE_BACKEND
 
 void ripple_on_mouse_event(RippleContext* context, RippleMouseEvent evt);
 
-#if (RIPPLE_BACKEND) & RIPPLE_WGPU
-#   include "backends/ripple_wgpu.h"
+#if (RIPPLE_BACKEND) & RIPPLE_RENI
+#   include "backends/ripple_reni.h"
 #endif
 #if (RIPPLE_BACKEND) & RIPPLE_GLFW
 #   include "backends/ripple_glfw.h"
@@ -240,13 +240,13 @@ void ripple_reset(RippleContext* context)
     context->current_window.current_element.id = 0;
     context->current_window.current_element.index = 0;
 
-    bump_allocator_reset(&context->frame_allocator);
+    mrw_bump_reset(&context->frame_allocator);
 }
 
 RippleContext ripple_initialize(RippleBackendRendererConfig renderer_config)
 {
     RippleContext context = { .initialized = true };
-    context.frame_allocator = bump_allocator_create();
+    context.frame_allocator = (BumpAllocator){ MRW_BUMP_IMPL };
     ripple_backend_renderer_initialize(renderer_config);
 
     // TODO: use allocators here lol
@@ -584,7 +584,7 @@ void ripple_submit_element(RippleElementConfig config)
 
     // render_data is supposed to be set if render_data_size is also
     if (config.render_data_size)
-        config.render_data = allocator_make_copy((Allocator*)&_ripple_context->frame_allocator, config.render_data, config.render_data_size, 1);
+        config.render_data = mrw_alloc_copy((Allocator*)&_ripple_context->frame_allocator, config.render_data, config.render_data_size, u8);
 
     element->config = config;
 }

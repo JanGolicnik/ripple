@@ -37,7 +37,7 @@ static inline bool color_selector(HSV* color)
 
     RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .height = PERCENT(1.0f, SVT_RELATIVE_CHILD), .direction = cld_HORIZONTAL ) )
     {
-        u32 full_color = hsv_to_rgb((HSV){ color->hue, 1.0f, 1.0f });
+        u32 full_color = hsv_to_rgb((HSV){ color->h, 1.0f, 1.0f });
         RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(300) ),
                 RECTANGLE( .color1 = {0x0}, .color2 = {0x0}, .color3 = {0xffffff}, .color4 = RIPPLE_RGB(full_color) ) )
         {
@@ -48,13 +48,13 @@ static inline bool color_selector(HSV* color)
                 i32 w = SHAPE().w;
                 i32 h = SHAPE().h;
 
-                color->saturation = clamp((f32)(CURSOR().x - x) / w, 0.0f, 1.0f);
-                color->value = clamp(1.0f - ((f32)(CURSOR().y - y) / h), 0.0f, 1.0f);
+                color->s = clamp((f32)(CURSOR().x - x) / w, 0.0f, 1.0f);
+                color->v = clamp(1.0f - ((f32)(CURSOR().y - y) / h), 0.0f, 1.0f);
             }
 
             is_interacted |= STATE().hovered;
 
-            RIPPLE( FORM( .width = PIXELS(0), .height = PIXELS(0), .x = PERCENT(color->saturation, SVT_RELATIVE_PARENT), .y = PERCENT(1.0f - color->value, SVT_RELATIVE_PARENT) ) )
+            RIPPLE( FORM( .width = PIXELS(0), .height = PIXELS(0), .x = PERCENT(color->s, SVT_RELATIVE_PARENT), .y = PERCENT(1.0f - color->v, SVT_RELATIVE_PARENT) ) )
             {
                 RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(-5), .y = PIXELS(-5)), RECTANGLE( .color = accent ) );
             }
@@ -67,7 +67,7 @@ static inline bool color_selector(HSV* color)
 
             if (STATE().is_held)
             {
-                color->hue = clamp((f32)(CURSOR().y - y) / h, 0.0f, 1.0f) * 360.0f;
+                color->h = clamp((f32)(CURSOR().y - y) / h, 0.0f, 1.0f) * 360.0f;
             }
 
             is_interacted |= STATE().hovered;
@@ -85,7 +85,7 @@ static inline bool color_selector(HSV* color)
                 ));
             }
 
-            RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(3), .y = PIXELS((color->hue / 360.0f) * h - 5)),
+            RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(3), .y = PIXELS((color->h / 360.0f) * h - 5)),
                     RECTANGLE( .color = accent ) );
 
         }
@@ -198,6 +198,9 @@ typedef struct {
     f32 t;
     f32 value;
 } FloatRampStop;
+static inline u32 value_to_rgb(f32 v) {
+    return hsv_to_rgb((HSV){ .v = v });
+}
 static inline bool float_ramp(FloatRampStop* stops, u32 n_stops, f32* buffer, u32 buffer_len)
 {
     RIPPLE_STOP_RAMP_BODY(v0.value * (1.0f - t) + v1.value * t, value_to_rgb, (void), FloatRampStop);
