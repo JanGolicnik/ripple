@@ -392,7 +392,10 @@ void ripple_backend_render_end(RippleRenderData render_data, RippleColor clear_c
     reni_buffer_write(render_data.reni, _context.instance_buffer, slice_vektor_u8(_context.instances), 0);
 
     f32 clear_color_f32[4]; _ripple_backend_color_to_color(clear_color, clear_color_f32);
-    ReniRenderpass pass = reni_create_renderpass(render_data.reni, (ReniRenderpassConfig){ .targets[0].texture = render_data.surface });
+    ReniRenderpass pass = reni_create_renderpass(render_data.reni, (ReniRenderpassConfig){
+        .name = "ripple ui renderpass",
+        .targets[0].texture = render_data.surface
+    });
 
     reni_renderpass_set_shader(render_data.reni, pass, _context.shader);
     reni_renderpass_set_binding(render_data.reni, pass, 0, _context.bind_group);
