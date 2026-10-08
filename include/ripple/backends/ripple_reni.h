@@ -393,7 +393,7 @@ void ripple_backend_render_end(RippleRenderData render_data, RippleColor clear_c
 
     f32 clear_color_f32[4]; _ripple_backend_color_to_color(clear_color, clear_color_f32);
     ReniRenderpass pass = reni_create_renderpass(render_data.reni, (ReniRenderpassConfig){
-        .name = "ripple ui renderpass",
+        .name = sstr("ripple ui renderpass"),
         .targets[0].texture = render_data.surface
     });
 
