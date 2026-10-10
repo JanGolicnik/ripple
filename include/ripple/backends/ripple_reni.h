@@ -145,7 +145,6 @@ STRUCT(_RippleImageInstancePair) {
 STRUCT(RippleBackendRendererConfig)
 {
     Reni* reni;
-    ReniTextureFormat surface_format;
 };
 
 STRUCT(RippleRenderData)
@@ -156,6 +155,8 @@ STRUCT(RippleRenderData)
 
 struct {
     RippleBackendRendererConfig config;
+
+    ReniTextureFormat surface_format;
 
     ReniBindingLayout bind_group_layout;
     ReniBindingLayout image_bind_group_layout;
@@ -264,18 +265,81 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
             .entries[0].sampler = _context.sampler,
     });
 
-    _context.shader = reni_create_shader(config.reni, (ReniShaderConfig){
-       .name = sstr("ripple shader"),
-       .source.string = str((char*)shader),
-       .layouts[0] = _context.bind_group_layout,
-       .layouts[1] = _context.image_bind_group_layout,
-       .layouts[2] = _context.sampler_bind_group_layout,
-       .vertex = {
-           .entry = sstr("vs_main"),
-           .buffers[0] = {
-               .stride = sizeof(RippleWGPUInstance),
-               .instance = true,
-               .attributes = {
+    _context.uniform_buffer = reni_create_buffer(config.reni, (ReniBufferConfig){
+        .usage = ReniBufferUsage_CopyDst | ReniBufferUsage_Uniform,
+    });
+
+    _context.bind_group = reni_create_binding(config.reni, (ReniBindingConfig){
+            .layout = _context.bind_group_layout,
+            .entries[0] = {
+                .buffer = {
+                    .buffer = _context.uniform_buffer,
+                    .size = sizeof(_context.shader_data)
+                }
+            }
+        });
+
+    _context.instance_buffer = reni_create_buffer(config.reni, (ReniBufferConfig){
+       .usage = ReniBufferUsage_Vertex
+    });
+
+    _context.config = config;
+}
+
+void ripple_backend_render_begin(u32 width, u32 height)
+{
+    _context.shader_data.resolution[0] = width;
+    _context.shader_data.resolution[1] = height;
+    reni_buffer_write(_context.config.reni, _context.uniform_buffer, slice_u8_one(&_context.shader_data), 0);
+    vektor_clear(_context.instances);
+    vektor_clear(_context.images);
+    vektor_add(_context.images, (_RippleImageInstancePair) {
+        .images = { [0] = _context.white_pixel, [1] = _context.font.texture },
+        .n_images = 2,
+        .instance_index = 0
+    });
+}
+
+static void _ripple_backend_color_to_color(RippleColor color, f32 out_color[4])
+{
+    if (color.format == RippleColorFormat_RGB)
+    {
+        out_color[0] = (f32)((color.value >> 16) & 0xff) / 255.0f;
+        out_color[1] = (f32)((color.value >> 8) & 0xff) / 255.0f;
+        out_color[2] = (f32)(color.value & 0xff) / 255.0f;
+        out_color[3] = 1.0f;
+    }
+    else
+    {
+        out_color[0] = (f32)((color.value >> 24) & 0xff) / 255.0f;
+        out_color[1] = (f32)((color.value >> 16) & 0xff) / 255.0f;
+        out_color[2] = (f32)((color.value >> 8) & 0xff) / 255.0f;
+        out_color[3] = (f32)(color.value & 0xff) / 255.0f;
+    }
+}
+
+void _ripple_backend_ensure_shader(Reni* reni, ReniTexture surface)
+{
+    ReniTextureFormat surface_format = reni_texture_get_format(reni, surface);
+    if (_context.surface_format == surface_format)
+        return;
+    _context.surface_format = surface_format;
+
+    if (_context.shader.h.valid)
+        reni_release_shader(reni, _context.shader);
+
+    _context.shader = reni_create_shader(reni, (ReniShaderConfig){
+        .name = sstr("ripple shader"),
+        .source.string = str((char*)shader),
+        .layouts[0] = _context.bind_group_layout,
+        .layouts[1] = _context.image_bind_group_layout,
+        .layouts[2] = _context.sampler_bind_group_layout,
+        .vertex = {
+            .entry = sstr("vs_main"),
+            .buffers[0] = {
+                .stride = sizeof(RippleWGPUInstance),
+                .instance = true,
+                .attributes = {
                     {
                         .location = 1,
                         .format = ReniVertexFormat_Float32x2,
@@ -321,74 +385,24 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
                         .format = ReniVertexFormat_Uint32,
                         .offset = offsetof(RippleWGPUInstance, image_index)
                     },
-               },
-           }
-       },
-       .fragment = {
-           .entry = sstr("fs_main"),
-           .targets[0] = {
-               .format = config.surface_format,
-               .blend_state.color = RENI_BLEND_STATE_BLEND,
-               .blend_state.alpha = RENI_BLEND_STATE_OVERWRITE,
-           }
+                },
+            }
+        },
+        .fragment = {
+            .entry = sstr("fs_main"),
+            .targets[0] = {
+                .format = surface_format,
+                .blend_state.color = RENI_BLEND_STATE_BLEND,
+                .blend_state.alpha = RENI_BLEND_STATE_OVERWRITE,
+            }
         }
     });
-
-    _context.uniform_buffer = reni_create_buffer(config.reni, (ReniBufferConfig){
-        .usage = ReniBufferUsage_CopyDst | ReniBufferUsage_Uniform,
-    });
-
-    _context.bind_group = reni_create_binding(config.reni, (ReniBindingConfig){
-            .layout = _context.bind_group_layout,
-            .entries[0] = {
-                .buffer = {
-                    .buffer = _context.uniform_buffer,
-                    .size = sizeof(_context.shader_data)
-                }
-            }
-        });
-
-    _context.instance_buffer = reni_create_buffer(config.reni, (ReniBufferConfig){
-       .usage = ReniBufferUsage_Vertex
-    });
-
-    _context.config = config;
-}
-
-void ripple_backend_render_begin(u32 width, u32 height)
-{
-    _context.shader_data.resolution[0] = width;
-    _context.shader_data.resolution[1] = height;
-    reni_buffer_write(_context.config.reni, _context.uniform_buffer, slice_u8_one(&_context.shader_data), 0);
-    vektor_clear(_context.instances);
-    vektor_clear(_context.images);
-    vektor_add(_context.images, (_RippleImageInstancePair) {
-        .images = { [0] = _context.white_pixel, [1] = _context.font.texture },
-        .n_images = 2,
-        .instance_index = 0
-    });
-}
-
-static void _ripple_backend_color_to_color(RippleColor color, f32 out_color[4])
-{
-    if (color.format == RCF_RGB)
-    {
-        out_color[0] = (f32)((color.value >> 16) & 0xff) / 255.0f;
-        out_color[1] = (f32)((color.value >> 8) & 0xff) / 255.0f;
-        out_color[2] = (f32)(color.value & 0xff) / 255.0f;
-        out_color[3] = 1.0f;
-    }
-    else
-    {
-        out_color[0] = (f32)((color.value >> 24) & 0xff) / 255.0f;
-        out_color[1] = (f32)((color.value >> 16) & 0xff) / 255.0f;
-        out_color[2] = (f32)((color.value >> 8) & 0xff) / 255.0f;
-        out_color[3] = (f32)(color.value & 0xff) / 255.0f;
-    }
 }
 
 void ripple_backend_render_end(RippleRenderData render_data, RippleColor clear_color)
 {
+    _ripple_backend_ensure_shader(render_data.reni, render_data.surface);
+
     reni_buffer_write(render_data.reni, _context.instance_buffer, slice_vektor_u8(_context.instances), 0);
 
     f32 clear_color_f32[4]; _ripple_backend_color_to_color(clear_color, clear_color_f32);

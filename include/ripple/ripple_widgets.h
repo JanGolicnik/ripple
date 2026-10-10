@@ -19,7 +19,7 @@ static inline void text(str text)
 static inline bool button(str label)
 {
     bool* open = nullptr;
-    RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size) ), RECTANGLE( .color = STATE().is_weak_held ? accent : dark2 ) )
+    RIPPLE( FORM( .width = FROM_CHILD, .height = PIXELS(font_size) ), RECT( .color = STATE().is_weak_held ? accent : dark2 ) )
     {
         open = &STATE_USER(bool);
         if (STATE().released)
@@ -35,11 +35,11 @@ static inline bool color_selector(HSV* color)
 {
     bool is_interacted = false;
 
-    RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .height = PERCENT(1.0f, SVT_RELATIVE_CHILD), .direction = cld_HORIZONTAL ) )
+    RIPPLE( FORM( .width = FROM_CHILD, .height = FROM_CHILD, .direction = RippleChildLayoutDirection_Horizontal ) )
     {
         u32 full_color = hsv_to_rgb((HSV){ color->h, 1.0f, 1.0f });
         RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(300) ),
-                RECTANGLE( .color1 = {0x0}, .color2 = {0x0}, .color3 = {0xffffff}, .color4 = RIPPLE_RGB(full_color) ) )
+                RECT( .color1 = {0x0}, .color2 = {0x0}, .color3 = {0xffffff}, .color4 = RIPPLE_RGB(full_color) ) )
         {
             if (STATE().is_held)
             {
@@ -54,13 +54,13 @@ static inline bool color_selector(HSV* color)
 
             is_interacted |= STATE().hovered;
 
-            RIPPLE( FORM( .width = PIXELS(0), .height = PIXELS(0), .x = PERCENT(color->s, SVT_RELATIVE_PARENT), .y = PERCENT(1.0f - color->v, SVT_RELATIVE_PARENT) ) )
+            RIPPLE( FORM( .width = PIXELS(0), .height = PIXELS(0), .x = FROM_PARENT_P(color->s), .y = FROM_PARENT_P(1.0f - color->v) ) )
             {
-                RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(-5), .y = PIXELS(-5)), RECTANGLE( .color = accent ) );
+                RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(-5), .y = PIXELS(-5)), RECT( .color = accent ) );
             }
         }
 
-        RIPPLE( FORM( .width = PIXELS(16), .height = PERCENT(1.0f, SVT_RELATIVE_PARENT) ) )
+        RIPPLE( FORM( .width = PIXELS(16), .height = FROM_PARENT ) )
         {
             i32 y = SHAPE().y;
             i32 h = SHAPE().h;
@@ -77,8 +77,8 @@ static inline bool color_selector(HSV* color)
             {
                 u32 color1 = hsv_to_rgb((HSV){((f32)i/n) * 360.0f, 1.0f, 1.0f});
                 u32 color2 = hsv_to_rgb((HSV){((f32)(i+1)/n) * 360.0f, 1.0f, 1.0f});
-                RIPPLE( FORM( .height = PERCENT(1.0f / n, SVT_RELATIVE_PARENT) ),
-                        RECTANGLE(  .color1 = RIPPLE_RGB(color2),
+                RIPPLE( FORM( .height = FROM_PARENT_P(1.0f / n) ),
+                        RECT(  .color1 = RIPPLE_RGB(color2),
                                     .color2 = RIPPLE_RGB(color2),
                                     .color3 = RIPPLE_RGB(color1),
                                     .color4 = RIPPLE_RGB(color1)
@@ -86,7 +86,7 @@ static inline bool color_selector(HSV* color)
             }
 
             RIPPLE( FORM( .width = PIXELS(10), .height = PIXELS(10), .x = PIXELS(3), .y = PIXELS((color->h / 360.0f) * h - 5)),
-                    RECTANGLE( .color = accent ) );
+                    RECT( .color = accent ) );
 
         }
     }
@@ -96,14 +96,14 @@ static inline bool color_selector(HSV* color)
 
 static inline void color_picker(str label, HSV* color)
 {
-    RIPPLE( FORM( .height = PERCENT(1.0f, SVT_RELATIVE_CHILD) ))
+    RIPPLE( FORM( .height = FROM_CHILD ))
     {
         bool should_close = false;
         bool* open = &STATE_USER(bool);
 
-        RIPPLE( FORM( .direction = cld_HORIZONTAL, .height = PERCENT(1.0f, SVT_RELATIVE_CHILD) ) )
+        RIPPLE( FORM( .direction = RippleChildLayoutDirection_Horizontal, .height = FROM_CHILD ) )
         {
-            RIPPLE( FORM( .width = PIXELS(font_size) ), RECTANGLE( .color = RIPPLE_RGB(hsv_to_rgb(*color)) ) )
+            RIPPLE( FORM( .width = PIXELS(font_size) ), RECT( .color = RIPPLE_RGB(hsv_to_rgb(*color)) ) )
             {
                 if (STATE().released)
                 {
@@ -123,12 +123,12 @@ static inline void color_picker(str label, HSV* color)
         {
             RIPPLE_RAISE()
             {
-                RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD),
-                            .height = PERCENT(1.0f, SVT_RELATIVE_CHILD),
-                            .x = PIXELS(0), .y = PERCENT(-1.0f, SVT_RELATIVE_CHILD),
+                RIPPLE( FORM( .width = FROM_CHILD,
+                            .height = FROM_CHILD,
+                            .x = PIXELS(0), .y = FROM_CHILD_P(-1.0f),
                             .keep_inside = true
                 ) )
-                /* RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .height = PERCENT(1.0f, SVT_RELATIVE_CHILD), .x = PIXELS(font_size * 0.5f) ) ) */
+                /* RIPPLE( FORM( .width = FROM_CHILD, .height = FROM_CHILD, .x = PIXELS(font_size * 0.5f) ) ) */
                 {
                     if (color_selector(color)) {
                         should_close = false;
@@ -147,29 +147,29 @@ bool changed = false;\
 u32 stop_w = 10;\
 u32 sorted[n_stops];\
 sort_indices(sorted, stops, n_stops, a->t < b->t, T);\
-RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = cld_HORIZONTAL)) {\
+RIPPLE( FORM( .width = PIXELS(300), .height = PIXELS(32), .direction = RippleChildLayoutDirection_Horizontal)) {\
     u32 x = SHAPE().x;\
     u32 w = SHAPE().w;\
     f32 t = 0.0f;\
     for (i32 i = 0; i < (i32)n_stops; i++) {\
         u32 color = to_rgb(stops[sorted[i]].value);\
         u32 prev_color = to_rgb(stops[sorted[max(i - 1, 0)]].value);\
-        RIPPLE( FORM( .x = PERCENT(t, SVT_RELATIVE_PARENT),\
-                      .width = PERCENT(stops[sorted[i]].t - t + 3.0f / 300.0f, SVT_RELATIVE_PARENT)), \
-            RECTANGLE(\
+        RIPPLE( FORM( .x = FROM_PARENT_P(t),\
+                      .width = FROM_PARENT_P(stops[sorted[i]].t - t + 3.0f / 300.0f)), \
+            RECT(\
                 .color1 = {prev_color}, .color3 = {prev_color},\
                 .color2 = {color},      .color4 = {color},\
             ) );\
         t = stops[sorted[i]].t;\
     }\
-    RIPPLE( FORM( .x = PERCENT(stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT), .width = PERCENT(1.0f - stops[sorted[n_stops - 1]].t, SVT_RELATIVE_PARENT)),\
-            RECTANGLE( .color = {value_to_rgb(stops[sorted[n_stops - 1]].value)} )\
+    RIPPLE( FORM( .x = FROM_PARENT_P(stops[sorted[n_stops - 1]].t), .width = FROM_PARENT_P(1.0f - stops[sorted[n_stops - 1]].t)),\
+            RECT( .color = {value_to_rgb(stops[sorted[n_stops - 1]].value)} )\
     );\
     changed = STATE().first_render;\
     CENTERED_VERTICAL(\
-    RIPPLE( FORM( .direction = cld_HORIZONTAL ) ) {\
+    RIPPLE( FORM( .direction = RippleChildLayoutDirection_Horizontal ) ) {\
         for (u32 i = 0; i < n_stops; i++) {\
-            RIPPLE( FORM( .x = PIXELS(stops[i].t * (w - stop_w)), .width = PIXELS(stop_w), .height = PIXELS(10) ), RECTANGLE( .color = accent ) ) {\
+            RIPPLE( FORM( .x = PIXELS(stops[i].t * (w - stop_w)), .width = PIXELS(stop_w), .height = PIXELS(10) ), RECT( .color = accent ) ) {\
                 if (!changed && STATE().is_held) {\
                     stops[i].t = clamp(((f32)CURSOR().x - (f32)x) / (f32)w, 0.0f, 1.0f);\
                     changed = true;\
@@ -238,9 +238,9 @@ static inline bool color_ramp(ColorRampStop* stops, u32 n_stops, u32* buffer, u3
 static inline bool slider(const char* label, f32* value, f32 max, f32 min, Allocator* str_allocator)
 {
     bool was_held = false;
-    RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .height = PIXELS(font_size), .direction = cld_HORIZONTAL ) )
+    RIPPLE( FORM( .width = FROM_CHILD, .height = PIXELS(font_size), .direction = RippleChildLayoutDirection_Horizontal ) )
     {
-        RIPPLE( FORM( .width = PIXELS(315), .direction = cld_HORIZONTAL ))
+        RIPPLE( FORM( .width = PIXELS(315), .direction = RippleChildLayoutDirection_Horizontal ))
         {
             f32 range = max - min;
             f32 t = clamp(( *value - min ) / range, 0.0f, 1.0f);
@@ -248,10 +248,10 @@ static inline bool slider(const char* label, f32* value, f32 max, f32 min, Alloc
             u32 x = SHAPE().x;
 
             CENTERED_VERTICAL(
-                RIPPLE( FORM( .width = PIXELS((1.0f - t) * (w - 15)) , .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = dark2 ) );
+                RIPPLE( FORM( .width = PIXELS((1.0f - t) * (w - 15)) , .height = PIXELS(font_size * 0.5f)), RECT( .color = dark2 ) );
             );
 
-            RIPPLE( FORM( .width = PIXELS(15)), RECTANGLE( .color = accent ) )
+            RIPPLE( FORM( .width = PIXELS(15)), RECT( .color = accent ) )
             {
                 if (STATE().is_held)
                 {
@@ -261,7 +261,7 @@ static inline bool slider(const char* label, f32* value, f32 max, f32 min, Alloc
             }
 
             CENTERED_VERTICAL(
-                RIPPLE( FORM( .width = PIXELS(t * (w - 15)), .height = PIXELS(font_size * 0.5f)), RECTANGLE( .color = dark2 ) );
+                RIPPLE( FORM( .width = PIXELS(t * (w - 15)), .height = PIXELS(font_size * 0.5f)), RECT( .color = dark2 ) );
             );
         }
 

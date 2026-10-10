@@ -11,20 +11,20 @@
 #include <marrow/mapa.h>
 
 typedef enum {
-    SVT_GROW = 0,
-    SVT_PIXELS = 1,
-    SVT_RELATIVE_CHILD = 2,
-    SVT_RELATIVE_PARENT = 3,
+    RippleSizingValueType_Grow = 0,
+    RippleSizingValueType_Pixels = 1,
+    RippleSizingValueType_Child = 2,
+    RippleSizingValueType_Parent = 3,
 } RippleSizingValueType;
 
 #define RIPPLE_FLOAT_PRECISION 25
 
 typedef enum {
-    REVT_MOUSE_MOVE = 0,
-    REVT_MOUSE_PRESS = 1,
-    REVT_MOUSE_RELEASE = 2,
-    REVT_MOUSE_LEAVE = 3,
-    REVT_MOUSE_ENTER = 4
+    RippleEventType_MouseMove = 0,
+    RippleEventType_MousePress = 1,
+    RippleEventType_MouseRelease = 2,
+    RippleEventType_MouseLeave = 3,
+    RippleEventType_MouseEnter = 4
 } RippleEventType;
 
 STRUCT(RippleMouseEvent)
@@ -35,8 +35,8 @@ STRUCT(RippleMouseEvent)
 };
 
 typedef enum {
-    RCF_RGB = 0, // 0xrrggbb, alpha = 1.0f
-    RCF_RGBA = 1 // rrggbbaa
+    RippleColorFormat_RGB = 0, // 0xrrggbb, alpha = 1.0f
+    RippleColorFormat_RGBA = 1 // rrggbbaa
 } RippleColorFormat;
 
 STRUCT(RippleColor) {
@@ -70,8 +70,8 @@ STRUCT(RenderedLayout) {
 };
 
 typedef enum {
-    cld_VERTICAL = 0,
-    cld_HORIZONTAL = 1,
+    RippleChildLayoutDirection_Vertical = 0,
+    RippleChildLayoutDirection_Horizontal = 1,
 } RippleChildLayoutDirection;
 
 STRUCT(RippleElementLayoutConfig) {
@@ -204,27 +204,27 @@ thread_local RippleContext* _ripple_context = nullptr;
 
 void ripple_on_mouse_event(RippleContext* context, RippleMouseEvent evt)
 {
-    if (evt.type == REVT_MOUSE_PRESS)
+    if (evt.type == RippleEventType_MousePress)
     {
         if (evt.button == 0) context->current_window.cursor_state.left.pressed = true;
         if (evt.button == 1) context->current_window.cursor_state.right.pressed = true;
         if (evt.button == 2) context->current_window.cursor_state.middle.pressed = true;
     }
-    else if (evt.type == REVT_MOUSE_RELEASE)
+    else if (evt.type == RippleEventType_MouseRelease)
     {
         if (evt.button == 0) context->current_window.cursor_state.left.released = true;
         if (evt.button == 1) context->current_window.cursor_state.right.released = true;
         if (evt.button == 2) context->current_window.cursor_state.middle.released = true;
     }
-    else if (evt.type == REVT_MOUSE_LEAVE)
+    else if (evt.type == RippleEventType_MouseLeave)
     {
         context->current_window.cursor_state.valid = false;
     }
-    else if (evt.type == REVT_MOUSE_ENTER)
+    else if (evt.type == RippleEventType_MouseEnter)
     {
         context->current_window.cursor_state.valid = true;
     }
-    else if (evt.type == REVT_MOUSE_MOVE)
+    else if (evt.type == RippleEventType_MouseMove)
     {
         context->current_window.cursor_state.x = evt.x;
         context->current_window.cursor_state.y = evt.y;
@@ -347,10 +347,10 @@ void ripple_submit(RippleContext* context, u32 width, u32 height, RippleRenderDa
 #define APPLY_SIZING(var, value, grow, parent, child)\
 if (value._type == type)\
     switch(type){\
-        case SVT_GROW: var = grow; break;\
-        case SVT_PIXELS: var = value._value; break;\
-        case SVT_RELATIVE_CHILD: case SVT_RELATIVE_PARENT:\
-            var = (type == SVT_RELATIVE_PARENT ? parent : child) * ((f32)value._value / (f32)(2<<RIPPLE_FLOAT_PRECISION)); break;\
+        case RippleSizingValueType_Grow: var = grow; break;\
+        case RippleSizingValueType_Pixels: var = value._value; break;\
+        case RippleSizingValueType_Child: case RippleSizingValueType_Parent:\
+        var = (type == RippleSizingValueType_Parent ? parent : child) * ((f32)value._value / (f32)(2<<RIPPLE_FLOAT_PRECISION)); break;\
     }
 
 #define DIM(arg) (*(element->config.layout.direction ? &(arg).w : &(arg).h))
@@ -370,9 +370,9 @@ static RenderedLayout element_calculate_children_bounds(ElementData* element)
     _for_each_child(element)
     {
         if (child->config.layout.fixed) continue;
-        if (LAYOUT_POS(child->config.layout)._type == SVT_GROW)
+        if (LAYOUT_POS(child->config.layout)._type == RippleSizingValueType_Grow)
             DIM(layout) += DIM(child->calculated_layout);
-        if (LAYOUT_OTHER_POS(child->config.layout)._type == SVT_GROW)
+        if (LAYOUT_OTHER_POS(child->config.layout)._type == RippleSizingValueType_Grow)
             OTHER_DIM(layout) = max(OTHER_DIM(layout), OTHER_DIM(child->calculated_layout));
     }
     return layout;
@@ -403,7 +403,7 @@ static void element_position_children(ElementData* element)
     u32 offset = 0;
     _for_each_child(element) {
         if (child->config.layout.fixed) continue;
-        if (LAYOUT_POS(child->config.layout)._type != SVT_GROW)
+        if (LAYOUT_POS(child->config.layout)._type != RippleSizingValueType_Grow)
         {
             POS(child->calculated_layout) += POS(element->calculated_layout);
         }
@@ -413,7 +413,7 @@ static void element_position_children(ElementData* element)
             offset += DIM(child->calculated_layout);
         }
 
-        if (LAYOUT_OTHER_POS(child->config.layout)._type != SVT_GROW)
+        if (LAYOUT_OTHER_POS(child->config.layout)._type != RippleSizingValueType_Grow)
         {
             OTHER_POS(child->calculated_layout) += OTHER_POS(element->calculated_layout);
         }
@@ -438,7 +438,7 @@ static void element_grow_children(ElementData* element)
 
     while(free_space > 0)
     {
-        #define doest_grow_or_fixed_or_max_width (LAYOUT_DIM(child->config.layout))._type != SVT_GROW || child->config.layout.fixed || DIM(child->calculated_layout) >= MAX_DIM(child->calculated_layout)
+        #define doest_grow_or_fixed_or_max_width (LAYOUT_DIM(child->config.layout))._type != RippleSizingValueType_Grow || child->config.layout.fixed || DIM(child->calculated_layout) >= MAX_DIM(child->calculated_layout)
 
         u32 smallest_width = free_space;
         u32 second_smallest_width = free_space; // others are then resized to this
@@ -488,7 +488,7 @@ static void element_grow_children(ElementData* element)
     }
 
     _for_each_child(element) {
-        if (child->config.layout.fixed || LAYOUT_OTHER_DIM(child->config.layout)._type != SVT_GROW) continue;
+        if (child->config.layout.fixed || LAYOUT_OTHER_DIM(child->config.layout)._type != RippleSizingValueType_Grow) continue;
         OTHER_DIM(child->calculated_layout) = OTHER_DIM(element->calculated_layout);
     }
 
@@ -527,7 +527,7 @@ static void finalize_element(ElementData* element)
     RippleWindow* window = &_ripple_context->current_window;
     _for_each_child(element)
     {
-        element_apply_sizing(child, SVT_RELATIVE_PARENT, element->calculated_layout, (RenderedLayout){ 0 });
+        element_apply_sizing(child, RippleSizingValueType_Parent, element->calculated_layout, (RenderedLayout){ 0 });
 
         child->calculated_layout.w = clamp(child->calculated_layout.w, child->calculated_layout.min_w, child->calculated_layout.max_w);
         child->calculated_layout.h = clamp(child->calculated_layout.h, child->calculated_layout.min_h, child->calculated_layout.max_h);
@@ -595,10 +595,10 @@ void ripple_pop_id(void)
     ElementData *element = &window->elements.items[window->current_element.index];
     ElementData *parent = &window->elements.items[element->parent_element];
 
-    element_apply_sizing(element, SVT_GROW, (RenderedLayout){ 0 }, (RenderedLayout){ 0 });
-    element_apply_sizing(element, SVT_PIXELS, (RenderedLayout){ 0 }, (RenderedLayout){ 0 });
+    element_apply_sizing(element, RippleSizingValueType_Grow, (RenderedLayout){ 0 }, (RenderedLayout){ 0 });
+    element_apply_sizing(element, RippleSizingValueType_Pixels, (RenderedLayout){ 0 }, (RenderedLayout){ 0 });
     RenderedLayout children = element_calculate_children_bounds(element);
-    element_apply_sizing(element, SVT_RELATIVE_CHILD, (RenderedLayout){ 0 }, children);
+    element_apply_sizing(element, RippleSizingValueType_Child, (RenderedLayout){ 0 }, children);
 
     window->current_element.index = element->parent_element;
     window->current_element.id = parent->id;
@@ -649,8 +649,12 @@ static ElementState* _get_or_insert_current_element_state(void)
 #define SHAPE() (_get_or_insert_current_element_state()->layout)
 
 #define PERCENT(value, relation) { ._value = (i32)((value) * (f32)(2<<RIPPLE_FLOAT_PRECISION)), relation }
-#define PIXELS(value) { ._value = value, ._type = SVT_PIXELS }
-#define GROW { ._type = SVT_GROW }
+#define FROM_CHILD_P(percent) PERCENT((percent), RippleSizingValueType_Child)
+#define FROM_PARENT_P(percent) PERCENT((percent), RippleSizingValueType_Parent)
+#define FROM_CHILD FROM_CHILD_P(1.0f)
+#define FROM_PARENT FROM_PARENT_P(1.0f)
+#define PIXELS(value) { ._value = value, ._type = RippleSizingValueType_Pixels }
+#define GROW { ._type = RippleSizingValueType_Grow }
 
 #define RIPPLE(...) for (u8 LINE_UNIQUE_VAR(_rippleiter) = (ripple_push_id(LINE_UNIQUE_HASH), ripple_submit_element((RippleElementConfig) { .layer = _ripple_context->current_window.current_layer, __VA_ARGS__ }), 0); LINE_UNIQUE_VAR(_rippleiter) < 1; ripple_pop_id(),LINE_UNIQUE_VAR(_rippleiter)++)
 
@@ -660,8 +664,8 @@ static ElementState* _get_or_insert_current_element_state(void)
 
 #define RIPPLE_RAISE() for (u8 LINE_UNIQUE_VAR(_rippleiter) = (_ripple_context->current_window.current_layer++, 0); LINE_UNIQUE_VAR(_rippleiter) < 1; _ripple_context->current_window.current_layer--, LINE_UNIQUE_VAR(_rippleiter)++)
 
-#define RIPPLE_RGB(v) (RippleColor){ .format = RCF_RGB, .value = v }
-#define RIPPLE_RGBA(v) (RippleColor){ .format = RCF_RGBA, .value = v }
+#define RIPPLE_RGB(v) (RippleColor){ .format = RippleColorFormat_RGB, .value = v }
+#define RIPPLE_RGBA(v) (RippleColor){ .format = RippleColorFormat_RGBA, .value = v }
 
 STRUCT(RippleRectangleConfig) {
     RippleColor color;
@@ -689,7 +693,7 @@ void render_rectangle(RippleElementConfig config, RenderedLayout layout, void* w
                                );
 }
 
-#define RECTANGLE(...)\
+#define RECT(...)\
   .render_func = render_rectangle,\
   .render_data = &(RippleRectangleConfig){__VA_ARGS__},\
   .render_data_size = sizeof(RippleRectangleConfig)
@@ -728,14 +732,14 @@ void render_text(RippleElementConfig config, RenderedLayout layout, void* window
 #endif // WORDS
 
 #define CENTERED_HORIZONTAL(...) do {\
-        RIPPLE( FORM( .direction = cld_HORIZONTAL )) {\
+        RIPPLE( FORM( .direction = RippleChildLayoutDirection_Horizontal )) {\
             RIPPLE();\
             { __VA_ARGS__; }\
             RIPPLE();\
         }\
 } while (false)
 #define CENTERED_VERTICAL(...) do {\
-        RIPPLE( FORM( .width = PERCENT(1.0f, SVT_RELATIVE_CHILD), .direction = cld_VERTICAL ) ) {\
+        RIPPLE( FORM( .width = PERCENT(1.0f, RippleSizingValueType_Child), .direction = RippleChildLayoutDirection_Vertical ) ) {\
             RIPPLE();\
             { __VA_ARGS__; }\
             RIPPLE();\
