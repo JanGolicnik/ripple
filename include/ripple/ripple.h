@@ -193,7 +193,7 @@ void ripple_push_id(u64);
 void ripple_submit_element(RippleElementConfig config); // copies render data if its size is non zero
 void ripple_pop_id(void);
 
-RippleContext ripple_initialize(Allocator* stable, RippleBackendRendererConfig config);
+RippleContext ripple_initialize(Allocator* frame, Allocator* stable, RippleBackendRendererConfig config);
 void ripple_make_active_context(RippleContext* context);
 void ripple_submit(RippleContext* context, u32 width, u32 height, RippleRenderData render_data);
 
@@ -243,11 +243,11 @@ void ripple_reset(RippleContext* context)
     mrw_bump_reset(&context->frame_allocator);
 }
 
-RippleContext ripple_initialize(Allocator* stable, RippleBackendRendererConfig renderer_config)
+RippleContext ripple_initialize(Allocator* frame, Allocator* stable, RippleBackendRendererConfig renderer_config)
 {
     RippleContext context = { .initialized = true };
     context.frame_allocator = (BumpAllocator){ MRW_BUMP_IMPL };
-    ripple_backend_renderer_initialize(renderer_config);
+    ripple_backend_renderer_initialize(frame, renderer_config);
 
     vektor_init(context.current_window.elements, 0, stable);
     mapa_init(context.current_window.elements_states, mapa_hash_u64, mapa_cmp_bytes, stable);

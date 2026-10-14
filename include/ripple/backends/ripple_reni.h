@@ -184,7 +184,7 @@ struct {
     VEKTOR( _RippleImageInstancePair ) images;
 } _context;
 
-void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
+void ripple_backend_renderer_initialize(Allocator* frame, RippleBackendRendererConfig config)
 {
     mrw_debug("INITIALIZNG BACKEND");
 
@@ -196,13 +196,13 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
         fseek(file, 0, SEEK_END);
         const usize file_size = ftell(file);
         rewind(file);
-        u8 file_buffer[file_size];
+        u8* file_buffer = mrw_alloc_n(frame, u8, file_size);
         buf_set(file_buffer, 0, file_size);
         fread(file_buffer, 1, file_size, file);
         fclose(file);
 
         // bake bitmap
-        u8 bitmap_buffer[BITMAP_SIZE * BITMAP_SIZE];
+        u8* bitmap_buffer = mrw_alloc_n(frame, u8, BITMAP_SIZE * BITMAP_SIZE);
         if (stbtt_BakeFontBitmap(file_buffer, 0, FONT_SIZE, bitmap_buffer, BITMAP_SIZE, BITMAP_SIZE, 32, 96, _context.font.glyphs) == 0)
         {
             mrw_abort("failed baking bitmap");
@@ -216,7 +216,7 @@ void ripple_backend_renderer_initialize(RippleBackendRendererConfig config)
             .usage = ReniTextureUsage_TextureBinding | ReniTextureUsage_CopyDst,
         });
 
-        reni_texture_write(config.reni, _context.font.texture, (u8Slice)array_slice(bitmap_buffer));
+        reni_texture_write(config.reni, _context.font.texture, (u8Slice)slice_to(bitmap_buffer, BITMAP_SIZE * BITMAP_SIZE));
     }
 
     {
